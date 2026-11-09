@@ -5,7 +5,7 @@ resolver = "3"
 [workspace.package]
 edition = "2024"
 license = "MPL-2.0"
-repository = "https://github.com/inglettronald/pensive"
+repository = "https://github.com/inglettronald/Pensive"
 
 [workspace.dependencies]
 gpui = "=0.2.2"

@@ -22,7 +22,7 @@ sudo apt install build-essential libxkbcommon-x11-dev
 
 | Package | Why |
 |---|---|
-| `build-essential` | C compiler and linker. Rust uses it to link the final program, and a few dependencies compile small C pieces |
+| `build-essential` | C compiler and linker. Rust doesn't include one on Linux. It uses the system's to link the final program, and a few dependencies compile small C pieces |
 | `libxkbcommon-x11-dev` | Keyboard layout handling, linked into Pensive at build time. It also installs `libxcb1-dev`, the X11 connection library GPUI links against |
 
 Pensive also loads the Wayland or X11, fontconfig and Vulkan libraries when it starts. Any desktop Linux install already has them.
@@ -34,8 +34,8 @@ Install Xcode from the App Store, open it once to finish setup, then run `xcode-
 ### 3. Build and run
 
 ```sh
-git clone https://github.com/inglettronald/pensive
-cd pensive
+git clone https://github.com/inglettronald/Pensive
+cd Pensive
 cargo run
 ```
 
