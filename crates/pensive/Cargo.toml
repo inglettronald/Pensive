@@ -1,0 +1,11 @@
+[package]
+name = "pensive"
+version = "0.1.0"
+description = "A review-first Git client."
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+gpui.workspace = true
+libc.workspace = true
