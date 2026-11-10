@@ -2,6 +2,7 @@
 name = "pensive"
 version = "0.1.0"
 description = "A review-first Git client."
+readme = "../../README.md"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
