@@ -8,8 +8,18 @@ license = "MPL-2.0"
 repository = "https://github.com/inglettronald/Pensive"
 
 [workspace.dependencies]
-gpui = "=0.2.2"
-# TODO: reassess on the gpui 0.2.3 bump. gpui 0.2.2 depends on xattr 0.2.3
-# (via gpui_http_client -> zed-async-tar), which uses libc::ENOATTR.
-# libc 0.2.190 removed that constant, so newer versions fail to compile.
-libc = "=0.2.189"
+components = { path = "crates/components" }
+mock = { path = "crates/mock" }
+model = { path = "crates/model" }
+theme = { path = "crates/theme" }
+ui = { path = "crates/ui" }
+
+# GPUI is not published to crates.io past 0.2.2, so we pin a Zed release tag.
+gpui = { git = "https://github.com/zed-industries/zed", tag = "v1.27.0" }
+# Zed's workspace leaves out gpui_linux's display servers, and without them
+# Linux starts headless with no window. This is the feature set Zed itself uses.
+gpui_platform = { git = "https://github.com/zed-industries/zed", tag = "v1.27.0", features = [
+    "font-kit",
+    "wayland",
+    "x11",
+] }

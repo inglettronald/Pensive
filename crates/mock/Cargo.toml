@@ -1,0 +1,10 @@
+[package]
+name = "mock"
+version = "0.1.0"
+description = "Named mock states for views, rendered headlessly for review and regression tests."
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+gpui.workspace = true

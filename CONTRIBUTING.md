@@ -17,15 +17,16 @@ Pensive draws its interface with [GPUI](https://www.gpui.rs), which talks to you
 **Debian / Ubuntu**
 
 ```sh
-sudo apt install build-essential libxkbcommon-x11-dev
+sudo apt install build-essential libfontconfig-dev libxkbcommon-x11-dev
 ```
 
 | Package | Why |
 |---|---|
 | `build-essential` | C compiler and linker. Rust doesn't include one on Linux. It uses the system's to link the final program, and a few dependencies compile small C pieces |
+| `libfontconfig-dev` | Finds the fonts installed on your system, linked into Pensive at build time |
 | `libxkbcommon-x11-dev` | Keyboard layout handling, linked into Pensive at build time. It also installs `libxcb1-dev`, the X11 connection library GPUI links against |
 
-Pensive also loads the Wayland or X11, fontconfig and Vulkan libraries when it starts. Any desktop Linux install already has them.
+Pensive also loads the Wayland or X11 and Vulkan libraries when it starts. Any desktop Linux install already has them.
 
 **macOS**
 
@@ -47,7 +48,7 @@ The first build takes a few minutes while it downloads and compiles dependencies
 |---|---|---|
 | rustup | Installs and switches Rust versions | You, once (step 1) |
 | Rust toolchain: `rustc`, `cargo`, `rustfmt`, `clippy` | Compiler, build tool, formatter, linter | rustup, automatically, at the version in `rust-toolchain.toml` |
-| Rust libraries such as `gpui` | Code Pensive depends on | cargo, automatically, from [crates.io](https://crates.io) at the versions in `Cargo.lock` |
+| Rust libraries such as `gpui` | Code Pensive depends on | cargo, automatically, from [crates.io](https://crates.io) or the Zed Git repo at the versions in `Cargo.lock` |
 | System libraries | Your OS's desktop and graphics stack | Your package manager (step 2) |
 
 ## Before opening a pull request

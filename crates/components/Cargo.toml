@@ -1,0 +1,11 @@
+[package]
+name = "components"
+version = "0.1.0"
+description = "Stateless building blocks that render from props and the theme."
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+gpui.workspace = true
+theme.workspace = true

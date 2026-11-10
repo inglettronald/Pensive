@@ -1,27 +1,9 @@
-use gpui::{
-    App, Application, Bounds, Context, TitlebarOptions, Window, WindowBounds, WindowOptions, div,
-    prelude::*, px, rgb, size,
-};
-
-struct Pensive;
-
-impl Render for Pensive {
-    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .size_full()
-            .flex()
-            .justify_center()
-            .items_center()
-            .bg(rgb(0x1e1e1e))
-            .text_color(rgb(0xe0e0e0))
-            .text_xl()
-            .child("Pensive")
-    }
-}
+use gpui::{App, AppContext, Bounds, TitlebarOptions, WindowBounds, WindowOptions, px, size};
+use ui::Pensive;
 
 fn main() {
-    Application::new().run(|cx: &mut App| {
-        cx.on_window_closed(|cx| {
+    gpui_platform::application().run(|cx: &mut App| {
+        cx.on_window_closed(|cx, _window_id| {
             if cx.windows().is_empty() {
                 cx.quit();
             }

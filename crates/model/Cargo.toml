@@ -1,0 +1,10 @@
+[package]
+name = "model"
+version = "0.1.0"
+description = "Application state, and the traits that I/O backends implement for it."
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+gpui.workspace = true
