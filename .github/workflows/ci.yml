@@ -4,6 +4,7 @@ on:
   push:
     branches: [master]
   pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -12,6 +13,14 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -D warnings
+  # Pushes to master build every platform. Pull requests build the `always`
+  # platforms, plus any opted in with a `ci:<name>` or `ci:all` label.
+  PLATFORMS: |
+    [
+      {"name": "linux", "os": "ubuntu-24.04", "always": true},
+      {"name": "macos", "os": "macos-15"},
+      {"name": "windows", "os": "windows-2025"}
+    ]
 
 jobs:
   fmt:
@@ -21,11 +30,36 @@ jobs:
       - run: rustup toolchain install
       - run: cargo fmt --check
 
-  linux:
+  platforms:
     runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.select.outputs.matrix }}
+    steps:
+      - id: select
+        env:
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+        run: |
+          matrix=$(jq -cn \
+            --argjson platforms "$PLATFORMS" \
+            --argjson labels "$LABELS" \
+            --arg event "$GITHUB_EVENT_NAME" '
+            [($labels // [])[] | select(startswith("ci:")) | ltrimstr("ci:")] as $requested
+            | {include: [$platforms[] | . as $p
+                | select($event == "push" or .always
+                    or any($requested[]; . == "all" or . == $p.name))]}')
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: platforms
+    name: build (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.platforms.outputs.matrix) }}
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
-      - run: script/bootstrap
+      - if: runner.os == 'Linux'
+        run: script/bootstrap
       - run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
       - run: cargo clippy --all-targets
