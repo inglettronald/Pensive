@@ -1,0 +1,13 @@
+[package]
+name = "ui"
+version = "0.1.0"
+description = "Views: the screens and panels that read models and own their view state."
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+components.workspace = true
+gpui.workspace = true
+model.workspace = true
+theme.workspace = true
