@@ -52,7 +52,9 @@ The first build takes a few minutes while it downloads and compiles dependencies
 
 ## Before opening a pull request
 
+CI rejects formatting differences and any compiler or clippy warning. To run the same checks locally:
+
 ```sh
-cargo fmt
-cargo clippy
+cargo fmt --check
+cargo clippy --all-targets -- -D warnings
 ```
