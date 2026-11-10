@@ -1,6 +1,6 @@
 # Design
 
-How Pensive looks and why. The [design canvas](https://claude.ai/artifact/39s8kb64HfEHWMni3pPhTJ) is the visual reference. This doc records the decisions behind it. Once the theme crate exists, exact colors and sizes live there, not here.
+How Pensive looks and why. This doc records decisions, not values. Exact colors, sizes and spacing live in the theme crate, and until it exists, on the [design canvas](https://claude.ai/artifact/39s8kb64HfEHWMni3pPhTJ).
 
 ## Principles
 
@@ -11,19 +11,11 @@ How Pensive looks and why. The [design canvas](https://claude.ai/artifact/39s8kb
 
 ## Color
 
-### Palette
+Pensive is dark by choice and ships no light theme. Anyone who wants one can build it as a user theme.
 
-Gray 1 (darkest) to gray 12 (lightest). Dark mode first. Light mode is derived once the roles are locked.
+Components read roles, never palette steps. Roles are grouped as surfaces, borders, text, controls, diff and accent.
 
-### Roles
-
-Components read roles, never palette steps. TODO: role table (role, gray step, used for), grouped as:
-
-- Surfaces: app, panel, raised, selected
-- Borders: subtle, default, focus
-- Text: strong, default, muted, faint, disabled
-- Controls: primary and secondary buttons
-- Diff: `diff.line_number` sits at gray 8 on purpose. Line numbers are rarely read, so they are exempt from the 4.5:1 contrast rule, like disabled text.
+Disabled text and unchanged line numbers fall below the 4.5:1 contrast minimum on purpose. Disabled text is exempt by convention, and quiet line numbers let the colored numbers on changed lines stand out.
 
 ### Meaning hues
 
@@ -43,25 +35,20 @@ A user theme extends a base theme and overrides individual roles and fonts. File
 
 A UI font and a code font, both bundled with the app so every machine renders the same. Users can override either in settings.
 
-TODO: type scale (label, small, body, title, heading, code).
+## Density
 
-## Spacing, radii and density
-
-- Spacing scale: 2, 4, 6, 8, 12, 16, 24, 32 px
-- Radii: none, sm, md, lg
-
-TODO: row heights and diff line height for the chosen density.
+Two candidates, Calm and Dense, to be settled by viewing them in the running app.
 
 ## Diffs
 
 Default:
 
-- A 4 px edge bar between the line numbers and the code
+- An edge bar between the line numbers and the code
 - One column of new-file line numbers, colored on changed lines
 - No gutter tint
-- Line fill at 3.5%, changed-word highlight at 16%
+- A faint fill on changed lines and a stronger highlight on changed words
 
-Settings: change marker (edge bar or tinted lines), bar width (2, 3, 4, 6 px or a tab in the +/− column), line numbers (off, new file, both), number color, gutter tint, line fill, changed-word highlight. One shortcut cycles through the line-number modes.
+Settings: change marker (edge bar or tinted lines), bar width, line numbers (off, new file, both), number color, gutter tint, line fill, changed-word highlight. One shortcut cycles through the line-number modes.
 
 ## Navigation
 
