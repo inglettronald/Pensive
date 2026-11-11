@@ -43,6 +43,8 @@ cargo run
 
 The first build takes a few minutes while it downloads and compiles dependencies. Later builds only recompile what changed.
 
+`cargo run mocked` starts the app with sample projects instead of an empty list, so you can click around before Pensive can open real repositories. It only works in debug builds.
+
 ## Where everything comes from
 
 | Piece | What it is | Installed by |

@@ -1,10 +1,24 @@
+use std::process::ExitCode;
+
 use gpui::{App, AppContext};
 use model::Projects;
 
-fn main() {
+fn main() -> ExitCode {
+    let projects = match std::env::args().nth(1).as_deref() {
+        // Empty until a backend fills it.
+        None => Projects::default(),
+        // The sample projects, for clicking around views before there's a backend.
+        #[cfg(debug_assertions)]
+        Some("mocked") => model::fixtures::projects(),
+        Some(arg) => {
+            eprintln!("unknown argument `{arg}`");
+            return ExitCode::FAILURE;
+        }
+    };
+
     gpui_platform::application()
         .with_assets(assets::Assets)
-        .run(|cx: &mut App| {
+        .run(move |cx: &mut App| {
             theme::init(cx);
             ui::init(cx);
 
@@ -15,9 +29,9 @@ fn main() {
             })
             .detach();
 
-            // Empty until a backend fills it.
-            let projects = cx.new(|_| Projects::default());
+            let projects = cx.new(|_| projects);
             ui::open_window(projects, None, cx);
             cx.activate(true);
         });
+    ExitCode::SUCCESS
 }
