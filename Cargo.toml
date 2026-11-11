@@ -16,9 +16,11 @@ theme = { path = "crates/theme" }
 ui = { path = "crates/ui" }
 
 image = { version = "0.25", default-features = false, features = ["png"] }
+nucleo-matcher = "0.3"
 serde = { version = "1", features = ["derive"] }
 strum = { version = "0.28", features = ["derive"] }
 toml = "1"
+unicode-segmentation = "1"
 
 # GPUI is not published to crates.io past 0.2.2, so we pin a Zed release tag.
 gpui = { git = "https://github.com/zed-industries/zed", tag = "v1.27.0" }

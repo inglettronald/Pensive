@@ -1,11 +1,12 @@
-use gpui::{App, AppContext, Bounds, TitlebarOptions, WindowBounds, WindowOptions, px, size};
-use ui::Pensive;
+use gpui::{App, AppContext};
+use model::Projects;
 
 fn main() {
     gpui_platform::application()
         .with_assets(assets::Assets)
         .run(|cx: &mut App| {
             theme::init(cx);
+            ui::init(cx);
 
             cx.on_window_closed(|cx, _window_id| {
                 if cx.windows().is_empty() {
@@ -14,20 +15,9 @@ fn main() {
             })
             .detach();
 
-            let bounds = Bounds::centered(None, size(px(960.), px(640.)), cx);
-            cx.open_window(
-                WindowOptions {
-                    window_bounds: Some(WindowBounds::Windowed(bounds)),
-                    titlebar: Some(TitlebarOptions {
-                        title: Some("Pensive".into()),
-                        ..Default::default()
-                    }),
-                    app_id: Some("pensive".into()),
-                    ..Default::default()
-                },
-                |_, cx| cx.new(|_| Pensive),
-            )
-            .expect("failed to open the main window");
+            // Empty until a backend fills it.
+            let projects = cx.new(|_| Projects::default());
+            ui::open_window(projects, None, cx);
             cx.activate(true);
         });
 }

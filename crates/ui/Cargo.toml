@@ -10,8 +10,13 @@ repository.workspace = true
 components.workspace = true
 gpui.workspace = true
 model.workspace = true
+nucleo-matcher.workspace = true
 theme.workspace = true
+unicode-segmentation.workspace = true
 mock = { workspace = true, optional = true }
 
 [features]
-mocks = ["dep:mock"]
+mocks = ["dep:mock", "model/fixtures"]
+
+[dev-dependencies]
+model = { workspace = true, features = ["fixtures"] }
