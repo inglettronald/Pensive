@@ -2,30 +2,32 @@ use gpui::{App, AppContext, Bounds, TitlebarOptions, WindowBounds, WindowOptions
 use ui::Pensive;
 
 fn main() {
-    gpui_platform::application().run(|cx: &mut App| {
-        theme::init(cx);
+    gpui_platform::application()
+        .with_assets(assets::Assets)
+        .run(|cx: &mut App| {
+            theme::init(cx);
 
-        cx.on_window_closed(|cx, _window_id| {
-            if cx.windows().is_empty() {
-                cx.quit();
-            }
-        })
-        .detach();
+            cx.on_window_closed(|cx, _window_id| {
+                if cx.windows().is_empty() {
+                    cx.quit();
+                }
+            })
+            .detach();
 
-        let bounds = Bounds::centered(None, size(px(960.), px(640.)), cx);
-        cx.open_window(
-            WindowOptions {
-                window_bounds: Some(WindowBounds::Windowed(bounds)),
-                titlebar: Some(TitlebarOptions {
-                    title: Some("Pensive".into()),
+            let bounds = Bounds::centered(None, size(px(960.), px(640.)), cx);
+            cx.open_window(
+                WindowOptions {
+                    window_bounds: Some(WindowBounds::Windowed(bounds)),
+                    titlebar: Some(TitlebarOptions {
+                        title: Some("Pensive".into()),
+                        ..Default::default()
+                    }),
+                    app_id: Some("pensive".into()),
                     ..Default::default()
-                }),
-                app_id: Some("pensive".into()),
-                ..Default::default()
-            },
-            |_, cx| cx.new(|_| Pensive),
-        )
-        .expect("failed to open the main window");
-        cx.activate(true);
-    });
+                },
+                |_, cx| cx.new(|_| Pensive),
+            )
+            .expect("failed to open the main window");
+            cx.activate(true);
+        });
 }

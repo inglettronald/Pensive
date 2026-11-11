@@ -242,6 +242,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "assets"
+version = "0.1.0"
+dependencies = [
+ "gpui",
+]
+
+[[package]]
 name = "async-broadcast"
 version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2881,6 +2888,7 @@ dependencies = [
 name = "mock"
 version = "0.1.0"
 dependencies = [
+ "assets",
  "gpui",
  "gpui_platform",
  "gpui_wgpu",
@@ -3580,6 +3588,7 @@ dependencies = [
 name = "pensive"
 version = "0.1.0"
 dependencies = [
+ "assets",
  "components",
  "gpui",
  "gpui_platform",

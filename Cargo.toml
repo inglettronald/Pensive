@@ -8,6 +8,7 @@ license = "MPL-2.0"
 repository = "https://github.com/inglettronald/Pensive"
 
 [workspace.dependencies]
+assets = { path = "crates/assets" }
 components = { path = "crates/components" }
 mock = { path = "crates/mock" }
 model = { path = "crates/model" }

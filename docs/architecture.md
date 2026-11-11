@@ -6,12 +6,13 @@ Pensive is a Cargo workspace. A crate can only use the crates it lists as depend
 
 | Crate | Job | Depends on |
 |---|---|---|
-| `pensive` | The app. Opens the window and gives each model its backend. | `ui`, `model`, `theme` |
+| `pensive` | The app. Opens the window and gives each model its backend. | `ui`, `model`, `theme`, `assets` |
 | `ui` | Views: screens and panels that read models and own their view state. | `components`, `model`, `theme` |
 | `components` | Stateless building blocks that render from props and the theme. | `theme` |
 | `model` | Application state, and the traits that I/O backends implement. | |
 | `theme` | Color, type and spacing roles, with user overrides. | |
-| `mock` | Named mock states for views, rendered without a window. | |
+| `mock` | Named mock states for views, rendered without a window. | `theme`, `assets` |
+| `assets` | Files bundled into the app, such as icons, served to GPUI by path. | |
 
 Every crate also depends on `gpui`.
 

@@ -64,15 +64,16 @@ impl Mock {
     }
 
     /// Renders the mock at twice its size without opening a window, with the default theme and
-    /// the bundled fonts. Returns `None` on platforms with no headless renderer.
+    /// the bundled fonts and assets. Returns `None` on platforms with no headless renderer.
     pub fn render(&self) -> Result<Option<RgbaImage>> {
         let Some(renderer) = headless_renderer()? else {
             return Ok(None);
         };
         let renderer = Cell::new(Some(renderer));
-        let mut cx = HeadlessAppContext::with_platform(text_system(), Arc::new(()), move || {
-            Ok(renderer.take())
-        });
+        let mut cx =
+            HeadlessAppContext::with_platform(text_system(), Arc::new(assets::Assets), move || {
+                Ok(renderer.take())
+            });
         cx.update(theme::init);
         let window = cx.open_window(self.size, |window, cx| {
             let view = self.build(window, cx);

@@ -1,0 +1,10 @@
+[package]
+name = "assets"
+version = "0.1.0"
+description = "Files bundled into the app, and the source GPUI loads them from."
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+gpui.workspace = true
