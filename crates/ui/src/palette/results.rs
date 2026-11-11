@@ -567,7 +567,7 @@ fn clone_url(text: &str) -> Option<Repo> {
 
 #[cfg(test)]
 mod tests {
-    use model::fixtures::{self, MULTIVER, PENSIVE};
+    use model::fixtures::{self, HARBOR, PENSIVE};
 
     use super::*;
 
@@ -619,18 +619,18 @@ mod tests {
     #[test]
     fn a_project_keyword_lists_only_that_projects_work() {
         let projects = fixtures::projects();
-        let keyword = Keyword::Project(Some(MULTIVER));
+        let keyword = Keyword::Project(Some(HARBOR));
         let results = results(&query(&projects, Tab::All, Some(&keyword), "fix"));
         assert_eq!(
             labels(results),
-            ["Branches and worktrees in multiver (4)", "Commands (1)"]
+            ["Branches and worktrees in harbor (4)", "Commands (1)"]
         );
     }
 
     #[test]
     fn nothing_matching_in_a_project_offers_to_search_everywhere() {
         let projects = fixtures::projects();
-        let keyword = Keyword::Project(Some(MULTIVER));
+        let keyword = Keyword::Project(Some(HARBOR));
         let results = results(&query(&projects, Tab::All, Some(&keyword), "qwerty"));
         assert!(results.empty.is_some());
         let first = results.into_items().next().unwrap();

@@ -5,7 +5,7 @@ use theme::{Density, Theme, Typeset};
 
 use crate::{Icon, IconName, TabStrip};
 
-/// A keyword that narrows the results, such as `project:` `multiver`. Drawn sunken, so it reads
+/// A keyword that narrows the results, such as `project:` `harbor`. Drawn sunken, so it reads
 /// as the scope the query is typed into.
 pub struct PaletteChip {
     keyword: SharedString,

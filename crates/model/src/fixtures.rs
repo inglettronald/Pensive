@@ -10,9 +10,9 @@ const DAY: u64 = 24 * HOUR;
 const WEEK: u64 = 7 * DAY;
 
 pub const PENSIVE: ProjectId = ProjectId(0);
-pub const MULTIVER: ProjectId = ProjectId(1);
-pub const CDN_ASSETS: ProjectId = ProjectId(2);
-pub const GAMEUI: ProjectId = ProjectId(3);
+pub const HARBOR: ProjectId = ProjectId(1);
+pub const LANTERN: ProjectId = ProjectId(2);
+pub const GLYPH_UI: ProjectId = ProjectId(3);
 pub const DOTFILES: ProjectId = ProjectId(4);
 pub const ZED: ProjectId = ProjectId(5);
 
@@ -42,9 +42,9 @@ pub fn projects() -> Projects {
     Projects {
         projects: vec![
             project(PENSIVE, "pensive", "~/Projects/pensive", 2 * MINUTE),
-            project(MULTIVER, "multiver", "~/work/multiver", 26 * MINUTE),
-            project(CDN_ASSETS, "cdn-assets", "~/work/cdn-assets", 48 * MINUTE),
-            project(GAMEUI, "gameui", "~/work/gameui", 2 * HOUR),
+            project(HARBOR, "harbor", "~/code/harbor", 26 * MINUTE),
+            project(LANTERN, "lantern", "~/code/lantern", 48 * MINUTE),
+            project(GLYPH_UI, "glyph-ui", "~/code/glyph-ui", 2 * HOUR),
             project(DOTFILES, "dotfiles", "~/dotfiles", 3 * DAY),
             project(ZED, "zed", "~/src/zed", 5 * WEEK),
         ],
@@ -73,40 +73,30 @@ pub fn projects() -> Projects {
                 "fix/gutter-icons",
                 2 * DAY,
             ),
+            worktree(HARBOR, "~/code/harbor", "morgan/ui-scaling", 26 * MINUTE),
             worktree(
-                MULTIVER,
-                "~/work/multiver",
-                "dulkir/hud-scaling",
-                26 * MINUTE,
-            ),
-            worktree(
-                MULTIVER,
-                "~/work/multiver-wt/settings-search",
+                HARBOR,
+                "~/code/harbor-wt/settings-search",
                 "agent/settings-search",
                 HOUR + 5 * MINUTE,
             ),
             worktree(
-                MULTIVER,
-                "~/work/multiver-wt/tooltip-clip",
+                HARBOR,
+                "~/code/harbor-wt/tooltip-clip",
                 "fix/tooltip-clip",
                 5 * HOUR,
             ),
+            worktree(LANTERN, "~/code/lantern", "feat/thumbnail-batch", 3 * DAY),
             worktree(
-                CDN_ASSETS,
-                "~/work/cdn-assets",
-                "feat/cosmetics-batch",
-                3 * DAY,
-            ),
-            worktree(
-                CDN_ASSETS,
-                "~/work/cdn-assets-wt/cosmetics-manifest",
-                "agent/cosmetics-manifest",
+                LANTERN,
+                "~/code/lantern-wt/thumbnail-manifest",
+                "agent/thumbnail-manifest",
                 48 * MINUTE,
             ),
-            worktree(GAMEUI, "~/work/gameui", "main", 4 * WEEK),
+            worktree(GLYPH_UI, "~/code/glyph-ui", "main", 4 * WEEK),
             worktree(
-                GAMEUI,
-                "~/work/gameui-wt/lint-pass",
+                GLYPH_UI,
+                "~/code/glyph-ui-wt/lint-pass",
                 "chore/lint-pass",
                 2 * HOUR,
             ),
@@ -116,13 +106,13 @@ pub fn projects() -> Projects {
         branches: vec![
             branch(PENSIVE, "feat/command-palette", 3 * HOUR),
             branch(PENSIVE, "master", 2 * WEEK),
-            branch(MULTIVER, "dulkir/hud-scaling", 26 * MINUTE),
-            branch(MULTIVER, "dulkir/gui-tooltips", DAY),
-            branch(MULTIVER, "dulkir/fix-locale-fallback", 3 * DAY),
-            branch(MULTIVER, "fix/crash-on-resize", WEEK),
-            branch(MULTIVER, "hotfix/1.8.2", 2 * WEEK),
-            branch(MULTIVER, "master", 2 * WEEK),
-            branch(GAMEUI, "feat/gpu-instancing", 3 * WEEK),
+            branch(HARBOR, "morgan/ui-scaling", 26 * MINUTE),
+            branch(HARBOR, "morgan/gui-tooltips", DAY),
+            branch(HARBOR, "morgan/fix-locale-fallback", 3 * DAY),
+            branch(HARBOR, "fix/crash-on-resize", WEEK),
+            branch(HARBOR, "hotfix/1.8.2", 2 * WEEK),
+            branch(HARBOR, "master", 2 * WEEK),
+            branch(GLYPH_UI, "feat/gpu-instancing", 3 * WEEK),
         ],
         as_of: Some(as_of),
     }

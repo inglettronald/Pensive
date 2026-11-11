@@ -223,7 +223,7 @@ impl Render for Pensive {
 #[cfg(feature = "mocks")]
 pub(crate) fn mocks() -> Vec<mock::Mock> {
     use mock::Mock;
-    use model::fixtures::{self, MULTIVER, PENSIVE};
+    use model::fixtures::{self, HARBOR, PENSIVE};
 
     use crate::palette::Keyword;
 
@@ -281,7 +281,7 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
                 Some(PENSIVE),
                 Some(Tab::All),
                 |palette, cx| {
-                    palette.set_keyword(Some(Keyword::Project(Some(MULTIVER))), cx);
+                    palette.set_keyword(Some(Keyword::Project(Some(HARBOR))), cx);
                     palette.set_query("fix", cx);
                 },
                 w,
@@ -293,7 +293,7 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
                 Some(PENSIVE),
                 Some(Tab::All),
                 |palette, cx| {
-                    palette.set_keyword(Some(Keyword::Project(Some(MULTIVER))), cx);
+                    palette.set_keyword(Some(Keyword::Project(Some(HARBOR))), cx);
                     palette.set_query("qwerty", cx);
                 },
                 w,

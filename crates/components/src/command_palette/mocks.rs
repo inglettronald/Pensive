@@ -88,26 +88,20 @@ fn pensive() -> PaletteEntry {
         "2m",
     )
 }
-fn multiver() -> PaletteEntry {
-    project_entry(
-        "M",
-        "multiver",
-        "~/work/multiver",
-        "dulkir/hud-scaling",
-        "26m",
-    )
+fn harbor() -> PaletteEntry {
+    project_entry("H", "harbor", "~/code/harbor", "morgan/ui-scaling", "26m")
 }
-fn cdn_assets() -> PaletteEntry {
+fn lantern() -> PaletteEntry {
     project_entry(
-        "C",
-        "cdn-assets",
-        "~/work/cdn-assets",
-        "feat/cosmetics-batch",
+        "L",
+        "lantern",
+        "~/code/lantern",
+        "feat/thumbnail-batch",
         "48m",
     )
 }
-fn gameui() -> PaletteEntry {
-    project_entry("G", "gameui", "~/work/gameui", "main", "2h")
+fn glyph_ui() -> PaletteEntry {
+    project_entry("G", "glyph-ui", "~/code/glyph-ui", "main", "2h")
 }
 fn dotfiles() -> PaletteEntry {
     project_entry("D", "dotfiles", "~/dotfiles", "main", "3d")
@@ -132,7 +126,7 @@ fn landing() -> CommandPalette {
         .placeholder("Search, or paste a clone URL")
         .section(PaletteSection::new(
             "Recent",
-            [pensive(), multiver(), cdn_assets(), gameui(), dotfiles()],
+            [pensive(), harbor(), lantern(), glyph_ui(), dotfiles()],
         ))
         .section(PaletteSection::new(
             "Start",
@@ -156,11 +150,11 @@ fn active() -> CommandPalette {
                 [
                     work(IconName::FolderGit2, "feat/palette-scopes", "pensive", "4m"),
                     work(IconName::FolderGit2, "fix/fuzzy-ranking", "pensive", "11m"),
-                    work(IconName::GitBranch, "dulkir/hud-scaling", "multiver", "26m"),
+                    work(IconName::GitBranch, "morgan/ui-scaling", "harbor", "26m"),
                     work(
                         IconName::FolderGit2,
-                        "agent/cosmetics-manifest",
-                        "cdn-assets",
+                        "agent/thumbnail-manifest",
+                        "lantern",
                         "48m",
                     ),
                 ],
@@ -170,9 +164,9 @@ fn active() -> CommandPalette {
         .section(PaletteSection::new(
             "Today",
             [
-                work(IconName::FolderGit2, "chore/lint-pass", "gameui", "2h"),
+                work(IconName::FolderGit2, "chore/lint-pass", "glyph-ui", "2h"),
                 work(IconName::GitBranch, "feat/command-palette", "pensive", "3h"),
-                work(IconName::FolderGit2, "fix/tooltip-clip", "multiver", "5h"),
+                work(IconName::FolderGit2, "fix/tooltip-clip", "harbor", "5h"),
             ],
         ))
         .selected(0)
@@ -186,9 +180,9 @@ fn project() -> CommandPalette {
         .section(PaletteSection::new(
             "Projects",
             [
-                multiver(),
-                cdn_assets(),
-                gameui(),
+                harbor(),
+                lantern(),
+                glyph_ui(),
                 dotfiles(),
                 project_entry(
                     "P",
@@ -218,12 +212,12 @@ fn typing() -> CommandPalette {
         .section(PaletteSection::new(
             "Best matches",
             [
-                work(IconName::GitBranch, "dulkir/gui-tooltips", "multiver", "1d")
+                work(IconName::GitBranch, "morgan/gui-tooltips", "harbor", "1d")
                     .matches(once(7..10)),
-                gameui().matches([0..1, 4..6]),
+                glyph_ui().matches([0..1, 6..8]),
                 work(IconName::FolderGit2, "fix/gutter-icons", "pensive", "2d")
                     .matches([4..6, 11..12]),
-                work(IconName::GitBranch, "feat/gpu-instancing", "gameui", "3w").matches([
+                work(IconName::GitBranch, "feat/gpu-instancing", "glyph-ui", "3w").matches([
                     5..6,
                     7..8,
                     9..10,
@@ -255,18 +249,18 @@ fn scoped() -> CommandPalette {
     CommandPalette::new()
         .overlay()
         .tabs(TABS, None)
-        .chip(PaletteChip::new("project:").value("multiver").removable())
+        .chip(PaletteChip::new("project:").value("harbor").removable())
         .query("fix")
         .section(PaletteSection::new(
-            "Branches and worktrees in multiver",
+            "Branches and worktrees in harbor",
             [
                 branch(IconName::FolderGit2, "fix/tooltip-clip", 0..3, "5h")
-                    .detail("~/work/multiver-wt/tooltip-clip")
+                    .detail("~/code/harbor-wt/tooltip-clip")
                     .hints(switch()),
                 branch(IconName::GitBranch, "fix/crash-on-resize", 0..3, "1w"),
                 branch(
                     IconName::GitBranch,
-                    "dulkir/fix-locale-fallback",
+                    "morgan/fix-locale-fallback",
                     7..10,
                     "3d",
                 ),
@@ -275,7 +269,7 @@ fn scoped() -> CommandPalette {
         ))
         .section(PaletteSection::new(
             "Commands",
-            [command(IconName::Plus, "Create branch fix in multiver").kbd("Ctrl N")],
+            [command(IconName::Plus, "Create branch fix in harbor").kbd("Ctrl N")],
         ))
         .selected(0)
 }
@@ -305,10 +299,10 @@ fn no_results() -> CommandPalette {
     CommandPalette::new()
         .overlay()
         .tabs(TABS, None)
-        .chip(PaletteChip::new("project:").value("multiver").removable())
+        .chip(PaletteChip::new("project:").value("harbor").removable())
         .query("qwerty")
         .empty(
-            "Nothing in multiver matches \"qwerty\"",
+            "Nothing in harbor matches \"qwerty\"",
             "Searched branches, worktrees and commands",
         )
         .section(PaletteSection::new(
@@ -316,7 +310,7 @@ fn no_results() -> CommandPalette {
             [
                 command(IconName::Search, "Search every project for \"qwerty\"")
                     .hints([KeyHint::new("Enter", "Search")]),
-                command(IconName::Plus, "Create branch qwerty in multiver").kbd("Ctrl N"),
+                command(IconName::Plus, "Create branch qwerty in harbor").kbd("Ctrl N"),
             ],
         ))
         .selected(0)
@@ -469,7 +463,7 @@ fn find_settings() -> CommandPalette {
                 work(
                     IconName::FolderGit2,
                     "agent/settings-search",
-                    "multiver",
+                    "harbor",
                     "1h",
                 )
                 .matches(once(6..10)),

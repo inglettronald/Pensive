@@ -54,12 +54,12 @@ mod tests {
 
     #[test]
     fn adjacent_letters_merge_into_one_range() {
-        let (_, ranges) = Fuzzy::new("gui").score("dulkir/gui-tooltips").unwrap();
+        let (_, ranges) = Fuzzy::new("gui").score("morgan/gui-tooltips").unwrap();
         assert_eq!(ranges, vec![7..10]);
     }
 
     #[test]
     fn a_missing_letter_does_not_match() {
-        assert!(Fuzzy::new("qwerty").score("multiver").is_none());
+        assert!(Fuzzy::new("qwerty").score("harbor").is_none());
     }
 }
