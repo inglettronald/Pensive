@@ -8,3 +8,7 @@ repository.workspace = true
 
 [dependencies]
 gpui.workspace = true
+
+[features]
+# Sample projects, worktrees and branches for mocks and tests.
+fixtures = []
