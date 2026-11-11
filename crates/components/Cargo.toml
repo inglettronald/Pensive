@@ -8,4 +8,8 @@ repository.workspace = true
 
 [dependencies]
 gpui.workspace = true
+mock = { workspace = true, optional = true }
 theme.workspace = true
+
+[features]
+mocks = ["dep:mock"]

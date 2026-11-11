@@ -3,30 +3,52 @@
 use std::{cell::Cell, sync::Arc};
 
 use gpui::{
-    AnyView, App, AppContext, Context, HeadlessAppContext, IntoElement, Pixels,
-    PlatformHeadlessRenderer, PlatformTextSystem, Render, Result, Size, Window, px, size,
+    AnyElement, AnyView, App, AppContext, Context, HeadlessAppContext, IntoElement, ParentElement,
+    Pixels, PlatformHeadlessRenderer, PlatformTextSystem, Render, Result, Size, Styled, Window,
+    div, px, size,
 };
 use image::RgbaImage;
+use theme::ActiveTheme;
 
-/// One view in one state, built from fixed data.
+/// One view or component in one state, built from fixed data.
 pub struct Mock {
-    pub view: &'static str,
+    /// The view or component this shows. Also its output folder.
+    pub subject: &'static str,
     pub name: &'static str,
     pub size: Size<Pixels>,
-    pub build: fn(&mut Window, &mut App) -> AnyView,
+    content: Content,
+}
+
+enum Content {
+    View(fn(&mut Window, &mut App) -> AnyView),
+    Element(fn() -> AnyElement),
 }
 
 impl Mock {
+    /// A mock of a view, or of anything that needs `App` to set up.
     pub fn new(
-        view: &'static str,
+        subject: &'static str,
         name: &'static str,
         build: fn(&mut Window, &mut App) -> AnyView,
     ) -> Self {
+        Self::with_content(subject, name, Content::View(build))
+    }
+
+    /// A mock of a stateless component, rebuilt from its props every frame.
+    pub fn component(
+        subject: &'static str,
+        name: &'static str,
+        render: fn() -> AnyElement,
+    ) -> Self {
+        Self::with_content(subject, name, Content::Element(render))
+    }
+
+    fn with_content(subject: &'static str, name: &'static str, content: Content) -> Self {
         Self {
-            view,
+            subject,
             name,
             size: size(px(960.), px(640.)),
-            build,
+            content,
         }
     }
 
@@ -34,8 +56,15 @@ impl Mock {
         Self { size, ..self }
     }
 
-    /// Renders the mock at twice its size without opening a window. Returns `None` on platforms
-    /// with no headless renderer.
+    pub fn build(&self, window: &mut Window, cx: &mut App) -> AnyView {
+        match self.content {
+            Content::View(build) => build(window, cx),
+            Content::Element(render) => element_view(cx, render),
+        }
+    }
+
+    /// Renders the mock at twice its size without opening a window, with the default theme and
+    /// the bundled fonts. Returns `None` on platforms with no headless renderer.
     pub fn render(&self) -> Result<Option<RgbaImage>> {
         let Some(renderer) = headless_renderer()? else {
             return Ok(None);
@@ -44,13 +73,30 @@ impl Mock {
         let mut cx = HeadlessAppContext::with_platform(text_system(), Arc::new(()), move || {
             Ok(renderer.take())
         });
-        let build = self.build;
+        cx.update(theme::init);
         let window = cx.open_window(self.size, |window, cx| {
-            let view = build(window, cx);
+            let view = self.build(window, cx);
             cx.new(|_| Frame(view))
         })?;
         cx.run_until_parked();
         cx.capture_screenshot(window.into()).map(Some)
+    }
+}
+
+/// Wraps a component's render function in a view on the app background, for mocks that need
+/// `App` to set up before showing a component.
+pub fn element_view(cx: &mut App, render: fn() -> AnyElement) -> AnyView {
+    cx.new(|_| ElementView(render)).into()
+}
+
+struct ElementView(fn() -> AnyElement);
+
+impl Render for ElementView {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .size_full()
+            .bg(cx.theme().colors.surface_app)
+            .child((self.0)())
     }
 }
 

@@ -825,6 +825,7 @@ name = "components"
 version = "0.1.0"
 dependencies = [
  "gpui",
+ "mock",
  "theme",
 ]
 
@@ -2884,6 +2885,7 @@ dependencies = [
  "gpui_platform",
  "gpui_wgpu",
  "image",
+ "theme",
 ]
 
 [[package]]
@@ -3578,6 +3580,7 @@ dependencies = [
 name = "pensive"
 version = "0.1.0"
 dependencies = [
+ "components",
  "gpui",
  "gpui_platform",
  "model",
@@ -4904,6 +4907,10 @@ name = "theme"
 version = "0.1.0"
 dependencies = [
  "gpui",
+ "refineable",
+ "serde",
+ "strum",
+ "toml 1.2.1+spec-1.1.0",
 ]
 
 [[package]]

@@ -3,6 +3,8 @@ use ui::Pensive;
 
 fn main() {
     gpui_platform::application().run(|cx: &mut App| {
+        theme::init(cx);
+
         cx.on_window_closed(|cx, _window_id| {
             if cx.windows().is_empty() {
                 cx.quit();

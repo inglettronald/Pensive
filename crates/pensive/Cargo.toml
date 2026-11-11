@@ -15,6 +15,7 @@ theme.workspace = true
 ui.workspace = true
 
 [dev-dependencies]
+components = { workspace = true, features = ["mocks"] }
 ui = { workspace = true, features = ["mocks"] }
 
 [[test]]

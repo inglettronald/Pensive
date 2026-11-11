@@ -1,6 +1,6 @@
 # Design
 
-How Pensive looks and why. This doc records decisions, not values. Exact colors, sizes and spacing live in the theme crate, and until it exists, on the [design canvas](https://claude.ai/artifact/39s8kb64HfEHWMni3pPhTJ).
+How Pensive looks and why. This doc records decisions, not values. Exact colors, fonts and sizes live in the `theme` crate, and `cargo mocks theme` renders all of them. Boards that aren't built yet, such as diffs and project icons, are on the [design canvas](https://claude.ai/artifact/39s8kb64HfEHWMni3pPhTJ).
 
 ## Principles
 
@@ -29,15 +29,15 @@ One blue for interface signals: info callouts, links and the accent button.
 
 ### Themes and overrides
 
-A user theme extends a base theme and overrides individual roles and fonts. File format TBD.
+A user theme overrides individual roles and fonts in a TOML file, keyed by the role names in the `theme` crate. Where Pensive reads that file from isn't decided yet.
 
 ## Type
 
-A UI font and a code font, both bundled with the app so every machine renders the same. Users can override either in settings.
+A UI font and a code font, both bundled with the app so every machine renders the same: Inter and JetBrains Mono by default. Geist and Geist Mono are bundled too. Users can override either.
 
 ## Density
 
-Two candidates, Calm and Dense, to be settled by viewing them in the running app.
+Calm and Dense both ship, as a setting, with Calm as the default. Density changes sizes only. Fonts and colors come from the theme.
 
 ## Diffs
 

@@ -1,18 +1,22 @@
-use gpui::{Context, Window, div, prelude::*, rgb};
+use gpui::{Context, Window, div, prelude::*};
+use theme::{ActiveTheme, Typeset};
 
 /// The view that fills the main window.
 pub struct Pensive;
 
 impl Render for Pensive {
-    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = cx.theme();
+        let heading = cx.density().heading;
         div()
             .size_full()
             .flex()
             .justify_center()
             .items_center()
-            .bg(rgb(0x1e1e1e))
-            .text_color(rgb(0xe0e0e0))
-            .text_xl()
+            .bg(theme.colors.surface_app)
+            .text_color(theme.colors.text)
+            .font_family(theme.fonts.ui.clone())
+            .typeset(heading)
             .child("Pensive")
     }
 }

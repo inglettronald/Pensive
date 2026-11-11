@@ -1,5 +1,5 @@
-//! Renders every view's mocks to `target/mocks/<view>/<mock>.png`. Pass a filter to render only
-//! the mocks whose `<view>/<mock>` contains it.
+//! Renders every mock to `target/mocks/<subject>/<mock>.png`. Pass a filter to render only the
+//! mocks whose `<subject>/<mock>` contains it.
 
 use std::{path::Path, process::ExitCode};
 
@@ -14,8 +14,8 @@ fn main() -> gpui::Result<ExitCode> {
         .join("mocks");
 
     let mut matched = false;
-    for mock in ui::mocks() {
-        let id = format!("{}/{}", mock.view, mock.name);
+    for mock in components::mocks().into_iter().chain(ui::mocks()) {
+        let id = format!("{}/{}", mock.subject, mock.name);
         if !id.contains(&filter) {
             continue;
         }
