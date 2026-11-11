@@ -64,4 +64,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo clippy --all-targets
       - run: cargo build
-      - run: cargo test
+      - if: runner.os != 'Windows'
+        run: cargo test
+      # GitHub's Windows runner has no Vulkan driver, so mocks can't render there yet (PEN-24).
+      # This also skips any other integration test on Windows.
+      - if: runner.os == 'Windows'
+        run: cargo test --lib --bins
