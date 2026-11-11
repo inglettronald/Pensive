@@ -8,6 +8,7 @@ Pensive is a review-first Git client written in Rust with GPUI.
 - [docs/architecture.md](docs/architecture.md): the crates and the rules between them
 - [docs/design.md](docs/design.md): visual decisions
 - [CONTRIBUTING.md](CONTRIBUTING.md): setup, and the checks CI runs
+- [docs/decisions/](docs/decisions/): one file per decision, with the options weighed and why
 
 ## Checking your work
 
