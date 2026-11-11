@@ -1,5 +1,6 @@
 //! Stateless building blocks that render from props and the theme.
 
+mod command_palette;
 #[cfg(feature = "mocks")]
 mod gallery;
 mod icon;
@@ -15,6 +16,9 @@ use std::rc::Rc;
 
 use gpui::{App, Window};
 
+pub use command_palette::{
+    CommandPalette, KeyHint, Leading, PaletteChip, PaletteEntry, PaletteSection, TrailingText,
+};
 #[cfg(feature = "mocks")]
 pub use gallery::Gallery;
 pub use icon::{Icon, IconName};
@@ -33,6 +37,7 @@ pub type Callback<T> = Rc<dyn Fn(T, &mut Window, &mut App)>;
 pub fn mocks() -> Vec<mock::Mock> {
     [
         theme_gallery::mocks(),
+        command_palette::mocks(),
         icon::mocks(),
         kbd::mocks(),
         toggle::mocks(),
