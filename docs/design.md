@@ -54,7 +54,25 @@ Settings: change marker (edge bar or tinted lines), bar width, line numbers (off
 
 ## Navigation
 
+Navigation sits on the top and left edges only. Nothing docks on the right, so content is never boxed in from both sides.
+
+Projects switch from a dropdown in the top bar or from the command palette. There is no project rail by default, because many people only ever work in one or two projects.
+
 Breadcrumbs separate levels with a chevron, never a slash. They are used for project › branch and for file paths.
+
+## Command palette
+
+Ctrl K opens the palette from anywhere. On the landing screen the palette is the whole page, so the same keys work before and after a project is open.
+
+Three tabs sit in the search field: All, Active and Commands. Tab cycles through them. The set is fixed so it stays short and learnable. Plugins extend the palette with keywords instead, like `project:`, `branch:` or `merge:`, which narrow the results to one scope.
+
+Active lists the worktrees and branches that changed recently in any project, newest first. It is where you keep track of agent work.
+
+Rows stay quiet. Fuzzy matches are the only accent color, and the right edge shows only the time since the last change unless a scope has something worth saying in color. Each entry labels its own Enter and Ctrl Enter actions in the footer.
+
+A setting found in the palette carries its control inline, so it can be changed without leaving. Settings itself isn't listed until you search for it. The gear in the footer opens it at the palette's section.
+
+Settings: whether the tabs show, which tab Ctrl K opens on, how far back Active looks, background opacity and scrim strength. Blur behind the palette waits on GPUI support.
 
 ## Project icons
 
