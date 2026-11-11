@@ -1,0 +1,43 @@
+{
+  "skill_name": "design",
+  "evals": [
+    {
+      "id": 1,
+      "name": "setup-with-topic",
+      "prompt": "Start a design session for the landing page.",
+      "expected_output": "A tokens.css whose values match the theme crate exactly, in a session folder named after the topic, plus a short report of where the boards will live.",
+      "assertions": [
+        "tokens.css has a variable for every color role in the theme crate, each with the crate's value",
+        "tokens.css has a variable for each font, naming the crate's default families",
+        "tokens.css has a block per density preset with every size and every text role's size, line height and weight, and the default preset also applies at :root",
+        "tokens.css has a .typeset-<role> class for every text role",
+        "No value in tokens.css is invented: everything comes from the crate",
+        "The session folder is named after the topic"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "setup-without-topic",
+      "prompt": "Start a design session.",
+      "expected_output": "The agent asks what the session is for and makes no files. Models do this without the skill too, so this case guards against a regression rather than showing what the skill adds.",
+      "assertions": [
+        "The final message asks for the session's topic",
+        "No tokens.css or board files were written"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "draft-variants",
+      "prompt": "Start a design session for the landing page and draft two variants of a recent-project row: the project's letter-tile icon, its name, its path and when it was last opened.",
+      "expected_output": "HTML boards next to tokens.css showing two variants, styled only with its variables and classes, with anything the crate lacks or GPUI can't draw labeled on the board.",
+      "assertions": [
+        "The boards show two variants, and every board links tokens.css",
+        "Boards use no raw color values. Every color comes from a tokens.css variable",
+        "Text uses the .typeset-<role> classes or the text role variables, not ad hoc font sizes",
+        "Any value the crate doesn't have is labeled on the board as a proposal",
+        "Boards use nothing GPUI can't render, or label it on the board",
+        "The final message gives the paths to the boards"
+      ]
+    }
+  ]
+}

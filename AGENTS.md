@@ -13,3 +13,7 @@ Pensive is a review-first Git client written in Rust with GPUI.
 
 - `cargo fmt`, `cargo clippy --all-targets -- -D warnings` and `cargo test` must pass. CI rejects any warning.
 - To check UI, run `cargo mocks <filter>` and open the PNGs it prints. It renders without a window or display, so use it instead of launching the app.
+
+## Skills
+
+Repo skills live in `.agents/skills/`, and each one is linked from `.claude/skills/`. When adding a skill, turn off automatic invocation for both harnesses unless asked for one that runs on its own: `disable-model-invocation: true` in the frontmatter, and `policy.allow_implicit_invocation: false` in `agents/openai.yaml`.
