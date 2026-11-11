@@ -33,3 +33,11 @@ Sets up a design session whose boards use the app's own values. Boards are scree
 ## Building an approved draft
 
 Follow `docs/architecture.md` for where the code goes. Render it with `cargo mocks <filter>` and compare the PNGs to the board at the same size until they match.
+
+1. **Record the decisions.** Move what was approved into `docs/design.md`, as decisions rather than values. Proposals that became values go in code, not the doc.
+2. **Build the parts first.** Anything the boards draw in more than one place, such as a keycap or a toggle, becomes its own component with a gallery. Render and match those before building the component that uses them.
+3. **Port the boards' data as mocks.** Give each board state a mock with the same name and the same sample data, so every PNG has exactly one board to compare against. Add a Dense mock for anything with rows or a fixed height.
+4. **Derive new sizes from the theme.** Write a size the crate lacks in terms of a density field, like `row_height * 2 - 8px`, so Dense follows without a second value. Props that pick a color take a role, never a hex value.
+5. **Add icons through `assets`.** Download the Lucide SVG at the version the other icons use into `assets/icons`, list it in the `assets` crate, and add its `IconName`. A test fails if a name has no file.
+6. **Compare, then fix.** Open each PNG next to its board. On the canvas, compare against the board's source (sizes, roles, data) rather than a screenshot, unless the user asks for one. Mocks render at twice their size. For text of two sizes on one line, give both the same line height and center them, because `items_baseline` doesn't line them up in GPUI.
+7. **Hand over for review.** Run the checks in `AGENTS.md`, then show the PNGs, not a description of them. Don't commit. The user reviews the diff.
