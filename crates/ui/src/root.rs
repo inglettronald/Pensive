@@ -16,3 +16,10 @@ impl Render for Pensive {
             .child("Pensive")
     }
 }
+
+#[cfg(feature = "mocks")]
+pub(crate) fn mocks() -> Vec<mock::Mock> {
+    vec![mock::Mock::new("root", "default", |_, cx| {
+        cx.new(|_| Pensive).into()
+    })]
+}

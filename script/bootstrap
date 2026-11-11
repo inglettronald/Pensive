@@ -2,7 +2,7 @@
 # Installs everything needed to build Pensive on Debian or Ubuntu.
 set -euo pipefail
 
-packages=(build-essential libfontconfig-dev libxkbcommon-x11-dev)
+packages=(build-essential libfontconfig-dev libxkbcommon-x11-dev mesa-vulkan-drivers)
 
 if ! command -v apt-get >/dev/null; then
   echo "script/bootstrap only supports Debian and Ubuntu so far." >&2

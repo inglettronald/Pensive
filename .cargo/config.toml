@@ -1,0 +1,3 @@
+[alias]
+# `cargo mocks [FILTER]` renders mocks to target/mocks.
+mocks = "test -p pensive --test render_mocks --"

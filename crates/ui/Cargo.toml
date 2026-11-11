@@ -11,3 +11,7 @@ components.workspace = true
 gpui.workspace = true
 model.workspace = true
 theme.workspace = true
+mock = { workspace = true, optional = true }
+
+[features]
+mocks = ["dep:mock"]

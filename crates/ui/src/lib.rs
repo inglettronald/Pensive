@@ -3,3 +3,9 @@
 mod root;
 
 pub use root::Pensive;
+
+/// Every view's mocks.
+#[cfg(feature = "mocks")]
+pub fn mocks() -> Vec<mock::Mock> {
+    root::mocks()
+}

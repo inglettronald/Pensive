@@ -17,7 +17,7 @@ Pensive draws its interface with [GPUI](https://www.gpui.rs), which talks to you
 **Debian / Ubuntu**
 
 ```sh
-sudo apt install build-essential libfontconfig-dev libxkbcommon-x11-dev
+sudo apt install build-essential libfontconfig-dev libxkbcommon-x11-dev mesa-vulkan-drivers
 ```
 
 | Package | Why |
@@ -25,6 +25,7 @@ sudo apt install build-essential libfontconfig-dev libxkbcommon-x11-dev
 | `build-essential` | C compiler and linker. Rust doesn't include one on Linux. It uses the system's to link the final program, and a few dependencies compile small C pieces |
 | `libfontconfig-dev` | Finds the fonts installed on your system, linked into Pensive at build time |
 | `libxkbcommon-x11-dev` | Keyboard layout handling, linked into Pensive at build time. It also installs `libxcb1-dev`, the X11 connection library GPUI links against |
+| `mesa-vulkan-drivers` | Vulkan drivers, including a software one, so mocks render on machines without a GPU, such as CI |
 
 Pensive also loads the Wayland or X11 and Vulkan libraries when it starts. Any desktop Linux install already has them.
 

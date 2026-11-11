@@ -21,6 +21,12 @@ Every crate also depends on `gpui`.
 - Components never see models. They render from the props they're given.
 - Backends implement traits defined in `model`. `ui` never depends on a backend crate, so only `pensive` sees both sides.
 
+## Mocks
+
+Each view declares named mocks next to its code: the view built from fixed data. They sit behind a `mocks` feature on `ui` and `components`, so they never ship in the app.
+
+`cargo mocks` renders every mock to `target/mocks/<view>/<mock>.png` without opening a window. `cargo mocks root` renders only the mocks whose `<view>/<mock>` contains `root`. `cargo test` renders them too, so CI checks that every mock renders on every platform. On Windows, mocks render with wgpu rather than the app's DirectX 11 renderer, so fine details of text can differ from the running app.
+
 ## GPUI
 
 crates.io stops at gpui 0.2.2, which can't render headless. We pin `gpui` and `gpui_platform` to a Zed release tag in the root `Cargo.toml`. To upgrade, change both tags together.

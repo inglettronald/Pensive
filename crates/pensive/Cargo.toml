@@ -13,3 +13,10 @@ gpui_platform.workspace = true
 model.workspace = true
 theme.workspace = true
 ui.workspace = true
+
+[dev-dependencies]
+ui = { workspace = true, features = ["mocks"] }
+
+[[test]]
+name = "render_mocks"
+harness = false

@@ -14,6 +14,8 @@ model = { path = "crates/model" }
 theme = { path = "crates/theme" }
 ui = { path = "crates/ui" }
 
+image = { version = "0.25", default-features = false, features = ["png"] }
+
 # GPUI is not published to crates.io past 0.2.2, so we pin a Zed release tag.
 gpui = { git = "https://github.com/zed-industries/zed", tag = "v1.27.0" }
 # Zed's workspace leaves out gpui_linux's display servers, and without them
@@ -23,3 +25,4 @@ gpui_platform = { git = "https://github.com/zed-industries/zed", tag = "v1.27.0"
     "wayland",
     "x11",
 ] }
+gpui_wgpu = { git = "https://github.com/zed-industries/zed", tag = "v1.27.0" }
