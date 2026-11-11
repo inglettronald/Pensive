@@ -6,12 +6,15 @@ mod results;
 
 use components::{CommandPalette, PaletteChip, PaletteSection};
 use gpui::{
-    App, Context, Entity, EventEmitter, FocusHandle, Focusable, KeyBinding, ScrollHandle,
-    Subscription, Window, actions, div, prelude::*,
+    App, Context, Entity, EventEmitter, FocusHandle, Focusable, ScrollHandle, Subscription, Window,
+    actions, div, prelude::*,
 };
 use model::{ProjectId, Projects};
 
-use crate::text_input::{self, Changed, TextInput};
+use crate::{
+    key_binding,
+    text_input::{self, Changed, TextInput},
+};
 use results::{Query, Results, results};
 
 actions!(
@@ -31,13 +34,13 @@ const CONTEXT: &str = "CommandPalette";
 
 pub(crate) fn bind_keys(cx: &mut App) {
     cx.bind_keys([
-        KeyBinding::new("down", SelectNext, Some(CONTEXT)),
-        KeyBinding::new("up", SelectPrevious, Some(CONTEXT)),
-        KeyBinding::new("tab", NextTab, Some(CONTEXT)),
-        KeyBinding::new("shift-tab", PreviousTab, Some(CONTEXT)),
-        KeyBinding::new("enter", Confirm, Some(CONTEXT)),
-        KeyBinding::new("secondary-enter", ConfirmSecondary, Some(CONTEXT)),
-        KeyBinding::new("escape", Dismiss, Some(CONTEXT)),
+        key_binding("down", SelectNext, Some(CONTEXT), cx),
+        key_binding("up", SelectPrevious, Some(CONTEXT), cx),
+        key_binding("tab", NextTab, Some(CONTEXT), cx),
+        key_binding("shift-tab", PreviousTab, Some(CONTEXT), cx),
+        key_binding("enter", Confirm, Some(CONTEXT), cx),
+        key_binding("secondary-enter", ConfirmSecondary, Some(CONTEXT), cx),
+        key_binding("escape", Dismiss, Some(CONTEXT), cx),
     ]);
 }
 

@@ -2,20 +2,23 @@
 //! project, with the command palette over it when Ctrl K opens it.
 
 use gpui::{
-    App, Bounds, Context, Entity, FocusHandle, Focusable, KeyBinding, Subscription, Window,
-    WindowBounds, WindowOptions, actions, div, hsla, prelude::*, px, size, svg,
+    App, Bounds, Context, Entity, FocusHandle, Focusable, Subscription, Window, WindowBounds,
+    WindowOptions, actions, div, hsla, prelude::*, px, size, svg,
 };
 use model::{ProjectId, Projects};
 use theme::{ActiveTheme, Typeset};
 
-use crate::palette::{PaletteEvent, PaletteView, Tab};
+use crate::{
+    key_binding,
+    palette::{PaletteEvent, PaletteView, Tab},
+};
 
 actions!(pensive, [OpenPalette, OpenActive]);
 
 pub(crate) fn bind_keys(cx: &mut App) {
     cx.bind_keys([
-        KeyBinding::new("secondary-k", OpenPalette, None),
-        KeyBinding::new("secondary-shift-k", OpenActive, None),
+        key_binding("secondary-k", OpenPalette, None, cx),
+        key_binding("secondary-shift-k", OpenActive, None, cx),
     ]);
 }
 

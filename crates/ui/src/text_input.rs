@@ -6,13 +6,15 @@ use std::ops::Range;
 
 use gpui::{
     App, Bounds, ClipboardItem, Context, CursorStyle, ElementId, ElementInputHandler, Entity,
-    EntityInputHandler, EventEmitter, FocusHandle, Focusable, GlobalElementId, KeyBinding,
-    LayoutId, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, PaintQuad, Pixels, Point,
+    EntityInputHandler, EventEmitter, FocusHandle, Focusable, GlobalElementId, LayoutId,
+    MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, PaintQuad, Pixels, Point,
     ShapedLine, SharedString, Style, TextRun, UTF16Selection, UnderlineStyle, Window, actions, div,
     fill, point, prelude::*, px, relative, size,
 };
 use theme::ActiveTheme;
 use unicode_segmentation::UnicodeSegmentation;
+
+use crate::key_binding;
 
 actions!(
     text_input,
@@ -37,19 +39,19 @@ const CONTEXT: &str = "TextInput";
 
 pub(crate) fn bind_keys(cx: &mut App) {
     cx.bind_keys([
-        KeyBinding::new("backspace", Backspace, Some(CONTEXT)),
-        KeyBinding::new("delete", Delete, Some(CONTEXT)),
-        KeyBinding::new("left", Left, Some(CONTEXT)),
-        KeyBinding::new("right", Right, Some(CONTEXT)),
-        KeyBinding::new("shift-left", SelectLeft, Some(CONTEXT)),
-        KeyBinding::new("shift-right", SelectRight, Some(CONTEXT)),
-        KeyBinding::new("secondary-a", SelectAll, Some(CONTEXT)),
-        KeyBinding::new("secondary-v", Paste, Some(CONTEXT)),
-        KeyBinding::new("secondary-c", Copy, Some(CONTEXT)),
-        KeyBinding::new("secondary-x", Cut, Some(CONTEXT)),
-        KeyBinding::new("home", Home, Some(CONTEXT)),
-        KeyBinding::new("end", End, Some(CONTEXT)),
-        KeyBinding::new("ctrl-cmd-space", ShowCharacterPalette, Some(CONTEXT)),
+        key_binding("backspace", Backspace, Some(CONTEXT), cx),
+        key_binding("delete", Delete, Some(CONTEXT), cx),
+        key_binding("left", Left, Some(CONTEXT), cx),
+        key_binding("right", Right, Some(CONTEXT), cx),
+        key_binding("shift-left", SelectLeft, Some(CONTEXT), cx),
+        key_binding("shift-right", SelectRight, Some(CONTEXT), cx),
+        key_binding("secondary-a", SelectAll, Some(CONTEXT), cx),
+        key_binding("secondary-v", Paste, Some(CONTEXT), cx),
+        key_binding("secondary-c", Copy, Some(CONTEXT), cx),
+        key_binding("secondary-x", Cut, Some(CONTEXT), cx),
+        key_binding("home", Home, Some(CONTEXT), cx),
+        key_binding("end", End, Some(CONTEXT), cx),
+        key_binding("ctrl-cmd-space", ShowCharacterPalette, Some(CONTEXT), cx),
     ]);
 }
 
