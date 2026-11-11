@@ -20,6 +20,8 @@ Every crate also depends on `gpui`.
 - Views can trigger I/O but never perform it. Git, the filesystem, the clock, the network, environment variables and randomness go through a model. That way any view can render from mock data.
 - Components never see models. They render from the props they're given.
 - Backends implement traits defined in `model`. `ui` never depends on a backend crate, so only `pensive` sees both sides.
+- A new component ships with its gallery. A new view ships with mocks for the states that change the screen, usually empty, loading, error and a typical case.
+- Every visual state of a component can be set through its props, so a mock can show it without input.
 
 ## Mocks
 
