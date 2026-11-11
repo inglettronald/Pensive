@@ -1,0 +1,111 @@
+//! An icon from the bundled Lucide set, tinted like text.
+
+use gpui::{App, Hsla, IntoElement, Pixels, RenderOnce, SharedString, Styled, Window, px, svg};
+use strum::{IntoStaticStr, VariantArray};
+use theme::ActiveTheme;
+
+/// A Lucide icon, named as Lucide names it. Each one is a file in `assets/icons`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, VariantArray, IntoStaticStr)]
+#[strum(serialize_all = "kebab-case")]
+pub enum IconName {
+    Archive,
+    ArrowDownToLine,
+    ArrowUpFromLine,
+    ChevronDown,
+    ChevronRight,
+    Download,
+    Folder,
+    #[strum(serialize = "folder-git-2")]
+    FolderGit2,
+    GitBranch,
+    GitCommitHorizontal,
+    GitMerge,
+    Plus,
+    RefreshCw,
+    Search,
+    SearchX,
+    Settings,
+    X,
+}
+
+impl IconName {
+    pub fn path(self) -> SharedString {
+        format!("icons/{}.svg", <&str>::from(self)).into()
+    }
+}
+
+#[derive(IntoElement)]
+pub struct Icon {
+    name: IconName,
+    size: Pixels,
+    color: Option<Hsla>,
+}
+
+impl Icon {
+    /// A 16 px icon in `text_muted`.
+    pub fn new(name: IconName) -> Self {
+        Self {
+            name,
+            size: px(16.),
+            color: None,
+        }
+    }
+
+    pub fn size(mut self, size: Pixels) -> Self {
+        self.size = size;
+        self
+    }
+
+    pub fn color(mut self, color: Hsla) -> Self {
+        self.color = Some(color);
+        self
+    }
+}
+
+impl RenderOnce for Icon {
+    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+        svg()
+            .path(self.name.path())
+            .size(self.size)
+            .flex_none()
+            .text_color(self.color.unwrap_or(cx.theme().colors.text_muted))
+    }
+}
+
+#[cfg(feature = "mocks")]
+pub(crate) fn mocks() -> Vec<mock::Mock> {
+    use gpui::size;
+
+    vec![
+        mock::Mock::component("icon", "gallery", || {
+            let named = |size: f32| {
+                IconName::VARIANTS.iter().map(move |&name| {
+                    (
+                        <&str>::from(name),
+                        Icon::new(name).size(px(size)).into_any_element(),
+                    )
+                })
+            };
+            crate::Gallery::new("Icon")
+                .section("16 px", named(16.))
+                .section("20 px", named(20.))
+                .into_any_element()
+        })
+        .size(size(px(960.), px(480.))),
+    ]
+}
+
+#[cfg(test)]
+mod tests {
+    use gpui::AssetSource;
+
+    use super::*;
+
+    #[test]
+    fn every_icon_is_bundled() {
+        for &name in IconName::VARIANTS {
+            let file = assets::Assets.load(&name.path()).unwrap();
+            assert!(file.is_some(), "{} is missing from assets", name.path());
+        }
+    }
+}
