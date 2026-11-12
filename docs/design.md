@@ -31,7 +31,7 @@ One blue for interface signals: info callouts, links and the accent button.
 
 ### Themes and overrides
 
-A user theme overrides individual roles and fonts in a TOML file, keyed by the role names in the `theme` crate. Where Pensive reads that file from isn't decided yet.
+A user theme overrides individual roles and fonts in a TOML file, keyed by the role names in the `theme` crate. [Settings storage](decisions/settings-storage.md) covers where theme files live and how one extends another.
 
 ## Type
 
