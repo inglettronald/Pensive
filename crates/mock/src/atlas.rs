@@ -58,13 +58,11 @@ impl Atlas {
     }
 
     fn columns(&self) -> usize {
-        (self.cards.len() as f64).sqrt().ceil().max(1.) as usize
+        columns(self.cards.len())
     }
 
     fn largest_mock(&self) -> Size<Pixels> {
-        self.cards
-            .iter()
-            .fold(Size::default(), |largest, card| largest.max(&card.size))
+        largest(self.cards.iter().map(|card| card.size))
     }
 
     fn card_size(&self) -> Size<Pixels> {
@@ -86,16 +84,31 @@ impl Atlas {
     }
 
     fn summary(&self) -> SharedString {
-        let largest = self.largest_mock();
-        format!(
-            "{} mocks · {} × {} · cargo mocks {}/",
-            self.cards.len(),
-            largest.width.as_f32(),
-            largest.height.as_f32(),
-            self.subject,
-        )
-        .into()
+        summary(self.subject, self.cards.len(), self.largest_mock())
     }
+}
+
+/// About as many columns as rows, for a grid of `count` cards.
+pub fn columns(count: usize) -> usize {
+    (count as f64).sqrt().ceil().max(1.) as usize
+}
+
+/// The size every card leaves room for.
+pub fn largest(sizes: impl IntoIterator<Item = Size<Pixels>>) -> Size<Pixels> {
+    sizes
+        .into_iter()
+        .fold(Size::default(), |largest, size| largest.max(&size))
+}
+
+/// The line under a subject's name: how many mocks, the largest one's size and the command that
+/// renders them.
+pub fn summary(subject: &str, count: usize, largest: Size<Pixels>) -> SharedString {
+    format!(
+        "{count} mocks · {} × {} · cargo mocks {subject}/",
+        largest.width.as_f32(),
+        largest.height.as_f32(),
+    )
+    .into()
 }
 
 impl Render for Atlas {

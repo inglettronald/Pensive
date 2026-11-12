@@ -1,6 +1,6 @@
 //! Named mock states for views, rendered headlessly for review and regression tests.
 
-mod atlas;
+pub mod atlas;
 
 use std::{cell::Cell, sync::Arc};
 
@@ -14,6 +14,7 @@ use image::RgbaImage;
 use theme::ActiveTheme;
 
 /// One view or component in one state, built from fixed data.
+#[derive(Clone)]
 pub struct Mock {
     /// The view or component this shows. Also its output folder.
     pub subject: &'static str,
@@ -22,6 +23,7 @@ pub struct Mock {
     content: Content,
 }
 
+#[derive(Clone)]
 enum Content {
     View(fn(&mut Window, &mut App) -> AnyView),
     Element(fn() -> AnyElement),
@@ -57,6 +59,11 @@ impl Mock {
 
     pub fn size(self, size: Size<Pixels>) -> Self {
         Self { size, ..self }
+    }
+
+    /// `<subject>/<name>`, which is also its PNG's path under `target/mocks`.
+    pub fn id(&self) -> String {
+        format!("{}/{}", self.subject, self.name)
     }
 
     pub fn build(&self, window: &mut Window, cx: &mut App) -> AnyView {

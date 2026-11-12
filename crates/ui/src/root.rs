@@ -10,6 +10,8 @@ use gpui::{
 use model::{ProjectId, Projects};
 use theme::{ActiveTheme, Typeset};
 
+#[cfg(feature = "mocks")]
+use crate::mock_browser::{MockBrowser, MockBrowserEvent, MockMode, ViewMocks};
 use crate::{
     key_binding,
     palette::{Keyword, OPEN_ON, PaletteEvent, PaletteView, Tab, scrim},
@@ -38,6 +40,9 @@ pub struct Pensive {
     project: Option<(ProjectId, Entity<ProjectView>)>,
     palette: Entity<PaletteView>,
     palette_open: bool,
+    /// Set while the window shows the mock browser, or a mock opened from it.
+    #[cfg(feature = "mocks")]
+    mocks: Option<MockMode>,
     focus_handle: FocusHandle,
     _subscription: Subscription,
 }
@@ -57,6 +62,8 @@ impl Pensive {
             project: None,
             palette,
             palette_open: false,
+            #[cfg(feature = "mocks")]
+            mocks: None,
             focus_handle: cx.focus_handle(),
             _subscription: subscription,
         };
@@ -97,6 +104,8 @@ impl Pensive {
 
     /// Shows `project`, with a fresh view unless it's the one already shown.
     fn show_project(&mut self, project: ProjectId, window: &mut Window, cx: &mut Context<Self>) {
+        #[cfg(feature = "mocks")]
+        self.leave_mocks(cx);
         if self.project_id() != Some(project) {
             let projects = self.projects.clone();
             let view = cx.new(|cx| ProjectView::new(projects, project, cx));
@@ -137,6 +146,83 @@ impl Pensive {
                 self.close_palette(window, cx);
             }
             PaletteEvent::Dismiss => self.close_palette(window, cx),
+        }
+    }
+
+    /// Whether this is the window's own view rather than one inside a mock.
+    fn is_window_root(&self, window: &Window, cx: &Context<Self>) -> bool {
+        window.root::<Self>().flatten() == Some(cx.entity())
+    }
+
+    /// Ctrl Shift M: the browser from anywhere, back to it from a mock, or out of it.
+    #[cfg(feature = "mocks")]
+    pub(crate) fn view_mocks(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        match &mut self.mocks {
+            None => {
+                let browser = cx.new(MockBrowser::new);
+                let subscription = cx.subscribe_in(&browser, window, Self::on_mock_browser_event);
+                self.mocks = Some(MockMode::new(browser, subscription, cx));
+            }
+            Some(mode) if mode.shown.is_some() => mode.restore(cx),
+            Some(_) => return self.back_from_mocks(window, cx),
+        }
+        if let Some(mode) = &self.mocks {
+            window.focus(&mode.browser.focus_handle(cx), cx);
+        }
+        cx.notify();
+    }
+
+    #[cfg(feature = "mocks")]
+    fn on_mock_browser_event(
+        &mut self,
+        _: &Entity<MockBrowser>,
+        event: &MockBrowserEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        match event {
+            MockBrowserEvent::Open { mock, component } => {
+                self.open_mock(mock.clone(), *component, window, cx)
+            }
+            MockBrowserEvent::Back => self.back_from_mocks(window, cx),
+        }
+    }
+
+    #[cfg(feature = "mocks")]
+    pub(crate) fn open_mock(
+        &mut self,
+        mock: mock::Mock,
+        component: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(mode) = &mut self.mocks {
+            window.focus(&self.focus_handle, cx);
+            mode.show(mock, component, window, cx);
+            cx.notify();
+        }
+    }
+
+    #[cfg(feature = "mocks")]
+    pub(crate) fn mock_browser(&self) -> Option<Entity<MockBrowser>> {
+        Some(self.mocks.as_ref()?.browser.clone())
+    }
+
+    /// Out of the mocks, to the project or landing screen as it was.
+    #[cfg(feature = "mocks")]
+    fn back_from_mocks(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.leave_mocks(cx);
+        match &self.project {
+            Some((_, view)) => window.focus(&view.focus_handle(cx), cx),
+            None => self.open_palette(None, window, cx),
+        }
+    }
+
+    #[cfg(feature = "mocks")]
+    fn leave_mocks(&mut self, cx: &mut Context<Self>) {
+        if let Some(mut mode) = self.mocks.take() {
+            mode.restore(cx);
+            cx.notify();
         }
     }
 
@@ -222,10 +308,26 @@ pub fn open_window(projects: Entity<Projects>, project: Option<ProjectId>, cx: &
 
 impl Render for Pensive {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let title_bar = self.title_bar(window, cx);
-        let content = match &self.project {
-            Some((_, view)) => view.clone().into_any_element(),
-            None => self.landing(cx).into_any_element(),
+        #[cfg(feature = "mocks")]
+        let mocks = self.mocks.as_ref().map(|mode| mode.render(cx));
+        #[cfg(not(feature = "mocks"))]
+        let mocks: Option<gpui::AnyElement> = None;
+        let screen = match mocks {
+            Some(mocks) => mocks,
+            None => {
+                let title_bar = self.title_bar(window, cx);
+                let content = match &self.project {
+                    Some((_, view)) => view.clone().into_any_element(),
+                    None => self.landing(cx).into_any_element(),
+                };
+                div()
+                    .flex()
+                    .flex_col()
+                    .size_full()
+                    .child(title_bar)
+                    .child(div().flex().flex_col().flex_1().min_h_0().child(content))
+                    .into_any_element()
+            }
         };
         let theme = cx.theme();
         let root = div()
@@ -247,8 +349,7 @@ impl Render for Pensive {
             .on_action(cx.listener(|pensive, _: &ClosePalette, window, cx| {
                 pensive.close_palette(window, cx)
             }))
-            .child(title_bar)
-            .child(div().flex().flex_col().flex_1().min_h_0().child(content))
+            .child(screen)
             .when(self.project.is_some() && self.palette_open, |root| {
                 root.key_context(PALETTE_OVERLAY).child(
                     div()
@@ -269,7 +370,20 @@ impl Render for Pensive {
                         .child(self.palette.clone()),
                 )
             });
-        window_frame(root.into_any_element(), window, cx)
+        #[cfg(feature = "mocks")]
+        let root = root.on_action(cx.listener(|pensive, _: &ViewMocks, window, cx| {
+            if pensive.is_window_root(window, cx) {
+                pensive.view_mocks(window, cx)
+            } else {
+                cx.propagate()
+            }
+        }));
+        // A window shown inside a mock leaves the frame to the real one.
+        if self.is_window_root(window, cx) {
+            window_frame(root.into_any_element(), window, cx)
+        } else {
+            root.into_any_element()
+        }
     }
 }
 
@@ -462,5 +576,44 @@ mod tests {
 
         cx.simulate_keystrokes("escape");
         assert!(!palette_open(&view, cx));
+    }
+
+    #[cfg(feature = "mocks")]
+    #[gpui::test]
+    fn the_mock_browser_opens_a_mock_and_puts_the_app_back(cx: &mut TestAppContext) {
+        use crate::mock_browser::ViewMocks;
+
+        let (view, cx) = pensive_window(cx);
+        let mocks = |cx: &mut VisualTestContext| {
+            view.read_with(cx, |pensive, _| {
+                pensive.mocks.as_ref().map(|mode| mode.shown.is_some())
+            })
+        };
+        let row_height = |cx: &mut VisualTestContext| cx.update(|_, cx| cx.density().row_height);
+        let calm = row_height(cx);
+
+        cx.dispatch_action(ViewMocks);
+        assert_eq!(mocks(cx), Some(false));
+
+        let browser = view.read_with(cx, |pensive, _| pensive.mock_browser().unwrap());
+        browser.update(cx, |browser, cx| browser.select_subject("project", cx));
+        // The last project mock is the Dense one, which changes the density for the whole app.
+        // Right stops at the last mock, however many there are.
+        cx.simulate_keystrokes(&["right"; 20].join(" "));
+        cx.simulate_keystrokes("enter");
+        assert_eq!(mocks(cx), Some(true));
+        assert_ne!(row_height(cx), calm);
+
+        cx.dispatch_action(ViewMocks);
+        assert_eq!(mocks(cx), Some(false));
+        assert_eq!(row_height(cx), calm);
+
+        cx.simulate_keystrokes("escape");
+        assert_eq!(mocks(cx), None);
+        let project_focused = cx.update(|window, cx| {
+            let (_, project) = view.read(cx).project.as_ref().unwrap();
+            project.focus_handle(cx).is_focused(window)
+        });
+        assert!(project_focused);
     }
 }
