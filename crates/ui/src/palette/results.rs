@@ -513,7 +513,7 @@ fn project_item(query: &Query, project: &Project, matches: Vec<Range<usize>>) ->
     let mut entry = PaletteEntry::new(project.name.clone())
         .leading(Leading::Tile(tile.into()))
         .matches(matches)
-        .detail(project.root.display().to_string())
+        .detail(project.repository.root.display().to_string())
         .when(when)
         .hints(open_hints("Open"));
     if let Some(branch) = query.projects.current_branch(project.id) {

@@ -10,5 +10,6 @@ Words that mean something specific in Pensive. Where a term also exists in GPUI 
 | Element | What views and components render into, such as `div()` and text. GPUI's lowest level. |
 | Mock | A view or component rendered in one named state from fixtures. Mock as in mockup, not a test double. |
 | Gallery | A component's mock that shows all its states in a labeled grid. |
+| Atlas | Every mock of one subject in a numbered grid. `cargo mocks` writes it to `target/mocks/<subject>.png` when it renders all of them. A gallery is one mock. An atlas is built from several. |
 | Fixture | Fixed sample data for mocks, tests and `cargo run mocked`, in `model` behind a `fixtures` feature. |
 | Fake | A test double that stands in for backend logic, such as a `GitBackend` that answers from fixtures. Never called a mock. |

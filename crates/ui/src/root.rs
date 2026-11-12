@@ -224,8 +224,10 @@ impl Render for Pensive {
 
 #[cfg(feature = "mocks")]
 pub(crate) fn mocks() -> Vec<mock::Mock> {
+    use std::sync::Arc;
+
     use mock::Mock;
-    use model::fixtures::{self, HARBOR, PENSIVE};
+    use model::fixtures::{self, FakeGit, HARBOR, PENSIVE};
 
     use gpui::AnyView;
 
@@ -254,7 +256,7 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
 
     vec![
         Mock::new("root", "empty", |window, cx| {
-            let projects = cx.new(|_| Projects::default());
+            let projects = cx.new(|_| Projects::new(Arc::new(FakeGit::default())));
             cx.new(|cx| Pensive::new(projects, None, window, cx)).into()
         }),
         Mock::new("root", "landing", |w, cx| {

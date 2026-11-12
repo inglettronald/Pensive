@@ -10,12 +10,14 @@ repository = "https://github.com/inglettronald/Pensive"
 [workspace.dependencies]
 assets = { path = "crates/assets" }
 components = { path = "crates/components" }
+git = { path = "crates/git" }
 mock = { path = "crates/mock" }
 model = { path = "crates/model" }
 settings = { path = "crates/settings" }
 theme = { path = "crates/theme" }
 ui = { path = "crates/ui" }
 
+anyhow = "1"
 etcetera = "0.11"
 futures = "0.3"
 image = { version = "0.25", default-features = false, features = ["png"] }
@@ -24,6 +26,7 @@ nucleo-matcher = "0.3"
 serde = { version = "1", features = ["derive"] }
 serde_ignored = "0.1"
 strum = { version = "0.28", features = ["derive"] }
+tempfile = "3"
 toml = { version = "1", features = ["preserve_order"] }
 toml_edit = "0.25"
 unicode-segmentation = "1"
@@ -39,3 +42,15 @@ gpui_platform = { git = "https://github.com/zed-industries/zed", tag = "v1.27.0"
 ] }
 gpui_wgpu = { git = "https://github.com/zed-industries/zed", tag = "v1.27.0" }
 refineable = { git = "https://github.com/zed-industries/zed", tag = "v1.27.0" }
+
+# Line tables keep file and line numbers in backtraces through gpui, and
+# take far less disk than full debug info.
+[profile.dev.package."*"]
+debug = "line-tables-only"
+
+# Opt-in full debug info for dependencies. See CONTRIBUTING.md.
+[profile.debug-deps]
+inherits = "dev"
+
+[profile.debug-deps.package."*"]
+debug = "full"
