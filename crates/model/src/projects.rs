@@ -1,7 +1,8 @@
 //! The projects Pensive knows about, with their worktrees and branches.
 
 use std::{
-    path::PathBuf,
+    collections::HashMap,
+    path::{Path, PathBuf},
     sync::Arc,
     time::{Duration, SystemTime},
 };
@@ -9,7 +10,7 @@ use std::{
 use anyhow::Result;
 use gpui::{Context, SharedString, Task};
 
-use crate::{GitBackend, Repository};
+use crate::{Changes, GitBackend, Repository};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ProjectId(pub usize);
@@ -22,6 +23,17 @@ pub struct Project {
     /// When Pensive last opened it.
     pub last_opened: SystemTime,
     pub repository: Repository,
+}
+
+impl Project {
+    /// The name's first letter in upper case, for the letter tile that stands in for an icon.
+    pub fn initial(&self) -> SharedString {
+        self.name
+            .chars()
+            .next()
+            .map(|letter| letter.to_uppercase().to_string().into())
+            .unwrap_or_default()
+    }
 }
 
 /// A checkout of a repository.
@@ -66,6 +78,8 @@ pub struct Projects {
     pub projects: Vec<Project>,
     /// When this was last refreshed. Ages are measured from here, so views never read the clock.
     pub as_of: Option<SystemTime>,
+    /// Each worktree's changes, by its path, once they've been read.
+    changes: HashMap<PathBuf, Changes>,
     git: Arc<dyn GitBackend>,
 }
 
@@ -75,6 +89,7 @@ impl Projects {
         Self {
             projects: Vec::new(),
             as_of: None,
+            changes: HashMap::new(),
             git,
         }
     }
@@ -128,6 +143,55 @@ impl Projects {
             repository,
         });
         id
+    }
+
+    /// The changes in the worktree at `worktree`, once read.
+    pub fn changes(&self, worktree: &Path) -> Option<&Changes> {
+        self.changes.get(worktree)
+    }
+
+    /// Reads the changes in the worktree at `worktree` off the UI thread, replacing what's
+    /// cached.
+    pub fn read_changes(&mut self, worktree: PathBuf, cx: &mut Context<Self>) -> Task<Result<()>> {
+        let git = self.git.clone();
+        cx.spawn(async move |this, cx| {
+            let read = worktree.clone();
+            let changes = cx
+                .background_executor()
+                .spawn(async move { git.changes(&read) })
+                .await?;
+            this.update(cx, |this, cx| {
+                this.insert_changes(worktree, changes);
+                cx.notify();
+            })
+        })
+    }
+
+    pub(crate) fn insert_changes(&mut self, worktree: PathBuf, changes: Changes) {
+        self.changes.insert(worktree, changes);
+    }
+
+    /// Stages or unstages one file in the cached changes. Git's index follows once a backend
+    /// writes it.
+    pub fn set_staged(
+        &mut self,
+        worktree: &Path,
+        path: &Path,
+        staged: bool,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(changes) = self.changes.get_mut(worktree) {
+            changes.set_staged(path, staged);
+            cx.notify();
+        }
+    }
+
+    /// [`Self::set_staged`] for every file.
+    pub fn set_all_staged(&mut self, worktree: &Path, staged: bool, cx: &mut Context<Self>) {
+        if let Some(changes) = self.changes.get_mut(worktree) {
+            changes.set_all_staged(staged);
+            cx.notify();
+        }
     }
 
     pub fn project(&self, id: ProjectId) -> Option<&Project> {
@@ -287,6 +351,20 @@ mod tests {
         let open = projects.update(cx, |projects, cx| projects.open("~/nowhere".into(), cx));
         assert!(open.await.is_err());
         projects.read_with(cx, |projects, _| assert!(projects.projects.is_empty()));
+    }
+
+    #[gpui::test]
+    async fn read_changes_caches_them_by_worktree(cx: &mut TestAppContext) {
+        let projects = cx.new(|_| Projects::new(Arc::new(FakeGit::default())));
+        let read = projects.update(cx, |projects, cx| {
+            projects.read_changes(fixtures::PENSIVE_ROOT.into(), cx)
+        });
+        read.await.unwrap();
+        projects.read_with(cx, |projects, _| {
+            let changes = projects.changes(Path::new(fixtures::PENSIVE_ROOT)).unwrap();
+            assert_eq!(changes.uncommitted.len(), 7);
+            assert!(projects.changes(Path::new("~/code/harbor")).is_none());
+        });
     }
 
     #[test]

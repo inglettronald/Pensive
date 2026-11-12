@@ -7,12 +7,15 @@ use std::{
 
 use anyhow::Result;
 
-use crate::{Branch, Worktree};
+use crate::{Branch, Changes, Worktree};
 
 /// Calls block, so models run them off the UI thread.
 pub trait GitBackend: Send + Sync + Debug {
     /// Reads the repository that contains `path`.
     fn repository(&self, path: &Path) -> Result<Repository>;
+
+    /// Reads the uncommitted changes and the branch's commits in the worktree at `worktree`.
+    fn changes(&self, worktree: &Path) -> Result<Changes>;
 }
 
 /// A repository as Git reports it.

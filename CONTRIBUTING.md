@@ -45,7 +45,7 @@ The first build takes a few minutes while it downloads and compiles dependencies
 
 `cargo run <path>...` opens the repositories at those paths. Until Pensive remembers projects, that's the only way to open one.
 
-`cargo run mocked` starts the app with sample projects instead, so you can click around views without real repositories. It only works in debug builds.
+`cargo run mocked` starts the app with sample projects and changes instead, so you can click around views without real repositories. It only works in debug builds.
 
 ## Where everything comes from
 

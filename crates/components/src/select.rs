@@ -1,11 +1,9 @@
 //! The closed state of a dropdown: the current value and a chevron.
 
-use std::rc::Rc;
-
 use gpui::{App, ElementId, SharedString, Window, div, prelude::*, px};
 use theme::{ActiveTheme, Typeset};
 
-use crate::{Callback, Icon, IconName};
+use crate::{Callback, Icon, IconName, callback};
 
 #[derive(IntoElement)]
 pub struct Select {
@@ -25,7 +23,7 @@ impl Select {
 
     /// Called when the select is clicked, to open its options.
     pub fn on_click(mut self, handler: impl Fn(&mut Window, &mut App) + 'static) -> Self {
-        self.on_click = Some(Rc::new(move |(), window, cx| handler(window, cx)));
+        self.on_click = Some(callback(handler));
         self
     }
 }

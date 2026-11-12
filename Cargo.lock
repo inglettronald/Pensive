@@ -5377,6 +5377,7 @@ dependencies = [
  "nucleo-matcher",
  "serde",
  "settings",
+ "strum",
  "theme",
  "unicode-segmentation",
 ]

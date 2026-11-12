@@ -5,8 +5,8 @@ mod parse;
 
 use std::{collections::HashMap, fs, path::Path, time::SystemTime};
 
-use anyhow::{Context as _, Result};
-use model::{Branch, GitBackend, Repository, Worktree};
+use anyhow::{Context as _, Result, bail};
+use model::{Branch, Changes, GitBackend, Repository, Worktree};
 
 use crate::{command::git, parse::ListedWorktree};
 
@@ -30,6 +30,13 @@ impl GitBackend for GitCli {
             branches: branches(&root)?,
             root,
         })
+    }
+
+    fn changes(&self, worktree: &Path) -> Result<Changes> {
+        bail!(
+            "reading changes from Git isn't built yet, so {} shows none",
+            worktree.display()
+        )
     }
 }
 

@@ -13,12 +13,13 @@ model.workspace = true
 nucleo-matcher.workspace = true
 serde.workspace = true
 settings.workspace = true
+strum.workspace = true
 theme.workspace = true
 unicode-segmentation.workspace = true
 mock = { workspace = true, optional = true }
 
 [features]
-mocks = ["dep:mock", "model/fixtures"]
+mocks = ["dep:mock", "model/fixtures", "components/mocks"]
 
 [dev-dependencies]
 model = { workspace = true, features = ["fixtures"] }

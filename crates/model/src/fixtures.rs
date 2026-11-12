@@ -1,8 +1,10 @@
-//! Sample projects for mocks and tests: the ones drawn on the command palette's design canvas.
+//! Sample projects and changes for mocks and tests: the ones drawn on the design canvases.
 
+mod changes;
 mod fake_config;
 mod fake_git;
 
+pub use changes::changes;
 pub use fake_config::FakeConfig;
 pub use fake_git::FakeGit;
 
@@ -19,6 +21,8 @@ const DAY: u64 = 24 * HOUR;
 const WEEK: u64 = 7 * DAY;
 
 pub const PENSIVE: ProjectId = ProjectId(0);
+/// The pensive project's main worktree, which has the sample changes.
+pub const PENSIVE_ROOT: &str = "~/Projects/pensive";
 pub const HARBOR: ProjectId = ProjectId(1);
 pub const LANTERN: ProjectId = ProjectId(2);
 pub const GLYPH_UI: ProjectId = ProjectId(3);
@@ -33,6 +37,7 @@ pub fn projects() -> Projects {
         projects.add(repository, opened);
     }
     projects.as_of = Some(as_of());
+    projects.insert_changes(PENSIVE_ROOT.into(), changes());
     projects
 }
 

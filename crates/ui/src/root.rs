@@ -1,16 +1,20 @@
-//! The view that fills each window: the landing screen with no project open, otherwise the
-//! project, with the command palette over it when Ctrl K opens it.
+//! The view that fills each window: the title bar over the landing screen with no project open,
+//! otherwise over the project, with the command palette over both when Ctrl K opens it.
 
+use components::{TitleBar, TitleBarProject};
 use gpui::{
     App, Bounds, Context, Entity, FocusHandle, Focusable, Subscription, TitlebarOptions, Window,
-    WindowBounds, WindowOptions, actions, div, prelude::*, px, size, svg,
+    WindowBounds, WindowDecorations, WindowOptions, actions, div, prelude::*, px, size, svg,
 };
 use model::{ProjectId, Projects};
 use theme::{ActiveTheme, Typeset};
 
 use crate::{
     key_binding,
-    palette::{OPEN_ON, PaletteEvent, PaletteView, Tab, scrim},
+    palette::{Keyword, OPEN_ON, PaletteEvent, PaletteView, Tab, scrim},
+    project::ProjectView,
+    view_callback,
+    window_frame::{draws_window_controls, window_frame},
 };
 
 actions!(pensive, [OpenPalette, OpenActive]);
@@ -24,7 +28,8 @@ pub(crate) fn bind_keys(cx: &mut App) {
 
 pub struct Pensive {
     projects: Entity<Projects>,
-    project: Option<ProjectId>,
+    /// The project shown, with its view.
+    project: Option<(ProjectId, Entity<ProjectView>)>,
     palette: Entity<PaletteView>,
     palette_open: bool,
     focus_handle: FocusHandle,
@@ -43,7 +48,7 @@ impl Pensive {
         let subscription = cx.subscribe_in(&palette, window, Self::on_palette_event);
         let mut pensive = Self {
             projects,
-            project,
+            project: None,
             palette,
             palette_open: false,
             focus_handle: cx.focus_handle(),
@@ -51,16 +56,20 @@ impl Pensive {
         };
         match project {
             None => pensive.open_palette(None, window, cx),
-            Some(_) => window.focus(&pensive.focus_handle, cx),
+            Some(project) => pensive.show_project(project, window, cx),
         }
         pensive
+    }
+
+    fn project_id(&self) -> Option<ProjectId> {
+        self.project.as_ref().map(|(id, _)| *id)
     }
 
     /// Opens the palette on `tab`, or on the tab the `palette.open_on` setting names. On the
     /// landing screen it's already open, so this starts over.
     pub fn open_palette(&mut self, tab: Option<Tab>, window: &mut Window, cx: &mut Context<Self>) {
         let tab = tab.unwrap_or_else(|| OPEN_ON.get(cx));
-        let (project, overlay) = (self.project, self.project.is_some());
+        let (project, overlay) = (self.project_id(), self.project.is_some());
         self.palette
             .update(cx, |palette, cx| palette.reset(project, tab, overlay, cx));
         self.palette_open = true;
@@ -68,12 +77,38 @@ impl Pensive {
         cx.notify();
     }
 
-    fn close_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.project.is_some() {
-            self.palette_open = false;
-            window.focus(&self.focus_handle, cx);
-            cx.notify();
+    /// Opens the palette narrowed to `keyword`, as the title bar's crumbs do.
+    fn open_palette_scoped(
+        &mut self,
+        keyword: Keyword,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.open_palette(None, window, cx);
+        self.palette
+            .update(cx, |palette, cx| palette.set_keyword(Some(keyword), cx));
+    }
+
+    /// Shows `project`, with a fresh view unless it's the one already shown.
+    fn show_project(&mut self, project: ProjectId, window: &mut Window, cx: &mut Context<Self>) {
+        if self.project_id() != Some(project) {
+            let projects = self.projects.clone();
+            let view = cx.new(|cx| ProjectView::new(projects, project, cx));
+            self.project = Some((project, view));
         }
+        if let Some((_, view)) = &self.project {
+            window.focus(&view.focus_handle(cx), cx);
+        }
+        cx.notify();
+    }
+
+    fn close_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some((_, view)) = &self.project else {
+            return;
+        };
+        self.palette_open = false;
+        window.focus(&view.focus_handle(cx), cx);
+        cx.notify();
     }
 
     fn on_palette_event(
@@ -92,10 +127,40 @@ impl Pensive {
                 self.close_palette(window, cx);
             }
             PaletteEvent::Open { project, .. } => {
-                self.project = Some(project);
+                self.show_project(project, window, cx);
                 self.close_palette(window, cx);
             }
             PaletteEvent::Dismiss => self.close_palette(window, cx),
+        }
+    }
+
+    fn title_bar(&self, window: &Window, cx: &mut Context<Self>) -> TitleBar {
+        let projects = self.projects.read(cx);
+        let project = self.project_id().and_then(|id| {
+            let project = projects.project(id)?;
+            Some(TitleBarProject {
+                initial: project.initial(),
+                name: project.name.clone(),
+                branch: projects.current_branch(id).cloned(),
+            })
+        });
+        let has_project = project.is_some();
+        let open = |keyword: Option<Keyword>| {
+            view_callback(cx, move |this: &mut Self, window, cx| {
+                match keyword.clone() {
+                    Some(keyword) => this.open_palette_scoped(keyword, window, cx),
+                    None => this.open_palette(None, window, cx),
+                }
+            })
+        };
+        let title_bar = TitleBar::new(project).controls(draws_window_controls(window));
+        if has_project {
+            title_bar
+                .on_project(open(Some(Keyword::Project(None))))
+                .on_branch(open(Some(Keyword::Branch)))
+                .on_palette(open(None))
+        } else {
+            title_bar
         }
     }
 
@@ -127,41 +192,6 @@ impl Pensive {
                     .child("Ctrl K brings this palette back from anywhere in Pensive"),
             )
     }
-
-    /// Stands in for the project window until the app shell is designed.
-    fn project_window(&self, project: ProjectId, cx: &mut Context<Self>) -> impl IntoElement {
-        let theme = cx.theme();
-        let density = cx.density();
-        let projects = self.projects.read(cx);
-        let name = projects
-            .project(project)
-            .map(|project| project.name.clone())
-            .unwrap_or_default();
-        let branch = projects
-            .current_branch(project)
-            .cloned()
-            .unwrap_or_default();
-        div()
-            .size_full()
-            .flex()
-            .flex_col()
-            .items_center()
-            .justify_center()
-            .gap_1()
-            .child(
-                div()
-                    .typeset(density.heading)
-                    .text_color(theme.colors.text_strong)
-                    .child(name),
-            )
-            .child(
-                div()
-                    .font_family(theme.fonts.code.clone())
-                    .typeset(density.small)
-                    .text_color(theme.colors.text_muted)
-                    .child(branch),
-            )
-    }
 }
 
 /// Opens a window on `project`, or on the landing screen.
@@ -172,8 +202,10 @@ pub fn open_window(projects: Entity<Projects>, project: Option<ProjectId>, cx: &
             window_bounds: Some(WindowBounds::Windowed(bounds)),
             titlebar: Some(TitlebarOptions {
                 title: Some("Pensive".into()),
-                ..Default::default()
+                appears_transparent: true,
+                traffic_light_position: Some(TitleBar::TRAFFIC_LIGHTS),
             }),
+            window_decorations: Some(WindowDecorations::Client),
             app_id: Some("pensive".into()),
             ..Default::default()
         },
@@ -183,11 +215,18 @@ pub fn open_window(projects: Entity<Projects>, project: Option<ProjectId>, cx: &
 }
 
 impl Render for Pensive {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let title_bar = self.title_bar(window, cx);
+        let content = match &self.project {
+            Some((_, view)) => view.clone().into_any_element(),
+            None => self.landing(cx).into_any_element(),
+        };
         let theme = cx.theme();
         let root = div()
             .id("pensive")
             .relative()
+            .flex()
+            .flex_col()
             .size_full()
             .track_focus(&self.focus_handle)
             .bg(theme.colors.surface_app)
@@ -198,27 +237,24 @@ impl Render for Pensive {
             }))
             .on_action(cx.listener(|pensive, _: &OpenActive, window, cx| {
                 pensive.open_palette(Some(Tab::Active), window, cx)
-            }));
-        match self.project {
-            None => root.child(self.landing(cx)),
-            Some(project) => {
-                root.child(self.project_window(project, cx))
-                    .when(self.palette_open, |root| {
-                        root.child(
-                            div()
-                                .absolute()
-                                .inset_0()
-                                .flex()
-                                .flex_col()
-                                .items_center()
-                                .pt_16()
-                                .pb_16()
-                                .bg(scrim(cx))
-                                .child(self.palette.clone()),
-                        )
-                    })
-            }
-        }
+            }))
+            .child(title_bar)
+            .child(div().flex().flex_col().flex_1().min_h_0().child(content))
+            .when(self.project.is_some() && self.palette_open, |root| {
+                root.child(
+                    div()
+                        .absolute()
+                        .inset_0()
+                        .flex()
+                        .flex_col()
+                        .items_center()
+                        .pt_16()
+                        .pb_16()
+                        .bg(scrim(cx))
+                        .child(self.palette.clone()),
+                )
+            });
+        window_frame(root.into_any_element(), window, cx)
     }
 }
 
@@ -226,12 +262,11 @@ impl Render for Pensive {
 pub(crate) fn mocks() -> Vec<mock::Mock> {
     use std::sync::Arc;
 
+    use gpui::AnyView;
     use mock::Mock;
     use model::fixtures::{self, FakeGit, HARBOR, PENSIVE};
 
-    use gpui::AnyView;
-
-    use crate::palette::{Keyword, declare_settings};
+    use crate::palette::declare_settings;
 
     /// A window on the sample projects, with the palette open on `tab` and set up by `setup`.
     fn window(
@@ -256,6 +291,7 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
 
     vec![
         Mock::new("root", "empty", |window, cx| {
+            declare_settings(cx);
             let projects = cx.new(|_| Projects::new(Arc::new(FakeGit::default())));
             cx.new(|cx| Pensive::new(projects, None, window, cx)).into()
         }),
