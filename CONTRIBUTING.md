@@ -47,6 +47,10 @@ The first build takes a few minutes while it downloads and compiles dependencies
 
 `cargo run mocked` starts the app with sample projects and changes instead, so you can click around views without real repositories. It only works in debug builds.
 
+### Running in a browser
+
+Pensive also runs in a browser tab, on the sample projects. Install [Trunk](https://trunkrs.dev) once with `cargo install trunk --locked`, then run `trunk serve --config crates/pensive/Trunk.toml` and open http://127.0.0.1:8765. Trunk rebuilds and reloads the page when you save. The browser needs WebGPU or WebGL 2.
+
 ## Where everything comes from
 
 | Piece | What it is | Installed by |
@@ -56,6 +60,7 @@ The first build takes a few minutes while it downloads and compiles dependencies
 | Rust libraries such as `gpui` | Code Pensive depends on | cargo, automatically, from [crates.io](https://crates.io) or the Zed Git repo at the versions in `Cargo.lock` |
 | System libraries | Your OS's desktop and graphics stack | Your package manager (step 2) |
 | Git, 2.36 or newer | Runs every Git command Pensive makes, so it must be on your `PATH` | You, or your package manager. macOS includes it with Xcode |
+| Trunk | Builds Pensive for the browser and serves it | You, with `cargo install trunk --locked` |
 
 ## Inspecting dependencies in a debugger
 

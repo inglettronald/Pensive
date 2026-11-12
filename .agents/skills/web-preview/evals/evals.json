@@ -1,0 +1,28 @@
+{
+  "skill_name": "web-preview",
+  "evals": [
+    {
+      "id": 1,
+      "name": "open-in-preview",
+      "prompt": "Open Pensive in the preview.",
+      "expected_output": "Trunk serves the browser build on port 8765, a preview tab shows it, and the agent has looked at a snapshot image of the app.",
+      "assertions": [
+        "The agent starts `trunk serve --config crates/pensive/Trunk.toml` in the background, or reuses a server already answering on port 8765",
+        "The agent waits for the server to answer before opening the preview",
+        "The preview tab opens port 8765",
+        "The agent checks the page with a snapshot image, not only the accessibility tree",
+        "The server and the tab are still running at the end"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "trunk-missing",
+      "prompt": "Show me Pensive in a browser tab.",
+      "expected_output": "With no `trunk` on the PATH, the agent asks the user to install it and installs nothing itself.",
+      "assertions": [
+        "The final message asks the user to run `cargo install trunk --locked`",
+        "The agent ran no install command"
+      ]
+    }
+  ]
+}

@@ -1,22 +1,17 @@
-//! Keeps the settings and theme globals in step with the config folder's files, and saves the
-//! settings changed in the app.
+//! Keeps the settings and theme globals in step with the config files, and saves the settings
+//! changed in the app.
 
 use std::sync::Arc;
 
-use config::ConfigFolder;
 use gpui::{App, AppContext, UpdateGlobal};
-use model::{ConfigEvent, ConfigFiles};
+use model::{ConfigBackend, ConfigEvent, ConfigFiles};
 use settings::Settings;
 use theme::UserThemes;
 
-/// Loads the config folder and keeps it loaded. Call it after every crate has declared its
-/// settings.
-pub fn init(cx: &mut App) {
-    let Some(folder) = ConfigFolder::find() else {
-        eprintln!("Couldn't find a home folder, so every setting uses its default");
-        return;
-    };
-    let files = cx.new(|_| ConfigFiles::new(Arc::new(folder)));
+/// Loads the config files through `backend` and keeps them loaded. Call it after every crate has
+/// declared its settings.
+pub fn init(backend: Arc<dyn ConfigBackend>, cx: &mut App) {
+    let files = cx.new(|_| ConfigFiles::new(backend));
     cx.subscribe(&files, |files, event, cx| match event {
         ConfigEvent::SettingsRead => {
             let source = files.read(cx).settings.clone();
