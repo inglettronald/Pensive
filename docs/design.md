@@ -56,9 +56,41 @@ Settings: change marker (edge bar or tinted lines), bar width, line numbers (off
 
 Navigation sits on the top and left edges only. Nothing docks on the right, so content is never boxed in from both sides.
 
-Projects switch from a dropdown in the top bar or from the command palette. There is no project rail by default, because many people only ever work in one or two projects.
+Projects switch from the title bar or from the command palette. There is no project rail by default, because many people only ever work in one or two projects.
 
 Breadcrumbs separate levels with a chevron, never a slash. They are used for project › branch and for file paths.
+
+## Window
+
+The [app shell canvas](https://claude.ai/artifact/NoZcJwhCJx8EmwybV3RLyB) has the approved drafts.
+
+The app owns the projects, the command palette, Settings and the theme. A window shows one project. Switching projects replaces it, and Ctrl Enter in the palette opens one in a new window instead.
+
+A window has a title bar, the sidebar on the left and the main view. There is no status bar.
+
+Pensive draws its own title bar. It holds project › branch as a breadcrumb, the palette trigger in the middle, the settings gear and the window controls. Clicking a crumb opens the palette scoped with `project:` or `branch:`. macOS keeps its own window buttons on the left.
+
+Overlays such as tooltips draw above every pane, so no pane clips them.
+
+## Sidebar
+
+The sidebar is the current branch as a timeline, newest at the top: uncommitted work, the commits that aren't pushed, then the pushed ones. A HEAD marker sits where committed work starts and an origin marker where pushed work starts. The line is dashed along uncommitted work and fades out below the oldest commit.
+
+Git actions live in the sidebar, next to the changes they act on. Fetch, pull and push sit in its header. Pull and push show an arrow and a count, and hide at zero. The commit box is pinned to the bottom, so it is always on screen. The Commit button is outlined rather than filled, so it doesn't outshine the code, and its Ctrl Enter hint sits inside it.
+
+The Uncommitted node stages or unstages everything, and fills like a file's ring: empty, half or full. An arrow beside it folds the file list.
+
+A commit title fades out at the sidebar's edge instead of ending in an ellipsis. A small chip after it marks a commit with a description. Opening a commit shows its description, then its files. Its node gets a ring, so the selected background only ever marks the file shown in the main view.
+
+## Changed files
+
+Files show as a list, a tree or by symbol, switched by an icon control on the Uncommitted node. The choice applies to an open commit too.
+
+A file's ring takes its status color and fills when it's staged. A commit's files are always filled, since they're all in it. Clicking a ring stages or unstages the file.
+
+Every file row shows its added and removed line counts. The folder isn't on the row. Hovering the file shows its full path in a tooltip, and Ctrl Shift C copies it while the tooltip is open, leaving plain Ctrl C alone.
+
+The tree draws a guide under each folder's chevron and folds a chain of single-child folders into one row. By symbol, each file lists the functions, types and headings its hunks touch, each with an icon and its own line counts.
 
 ## Command palette
 
