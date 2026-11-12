@@ -3,8 +3,9 @@
 
 use components::{TitleBar, TitleBarProject};
 use gpui::{
-    App, Bounds, Context, Entity, FocusHandle, Focusable, Subscription, TitlebarOptions, Window,
-    WindowBounds, WindowDecorations, WindowOptions, actions, div, prelude::*, px, size, svg,
+    App, Bounds, Context, Entity, FocusHandle, Focusable, MouseButton, Subscription,
+    TitlebarOptions, Window, WindowBounds, WindowDecorations, WindowOptions, actions, div,
+    prelude::*, px, size, svg,
 };
 use model::{ProjectId, Projects};
 use theme::{ActiveTheme, Typeset};
@@ -17,12 +18,17 @@ use crate::{
     window_frame::{draws_window_controls, window_frame},
 };
 
-actions!(pensive, [OpenPalette, OpenActive]);
+actions!(pensive, [OpenPalette, OpenActive, ClosePalette]);
+
+/// Set on the window while the palette is open over a project, so Escape closes it wherever
+/// focus is.
+const PALETTE_OVERLAY: &str = "PaletteOverlay";
 
 pub(crate) fn bind_keys(cx: &mut App) {
     cx.bind_keys([
         key_binding("secondary-k", OpenPalette, None, cx),
         key_binding("secondary-shift-k", OpenActive, None, cx),
+        key_binding("escape", ClosePalette, Some(PALETTE_OVERLAY), cx),
     ]);
 }
 
@@ -238,11 +244,20 @@ impl Render for Pensive {
             .on_action(cx.listener(|pensive, _: &OpenActive, window, cx| {
                 pensive.open_palette(Some(Tab::Active), window, cx)
             }))
+            .on_action(cx.listener(|pensive, _: &ClosePalette, window, cx| {
+                pensive.close_palette(window, cx)
+            }))
             .child(title_bar)
             .child(div().flex().flex_col().flex_1().min_h_0().child(content))
             .when(self.project.is_some() && self.palette_open, |root| {
-                root.child(
+                root.key_context(PALETTE_OVERLAY).child(
                     div()
+                        .id("scrim")
+                        .occlude()
+                        .on_mouse_down(
+                            MouseButton::Left,
+                            cx.listener(|pensive, _, window, cx| pensive.close_palette(window, cx)),
+                        )
                         .absolute()
                         .inset_0()
                         .flex()
@@ -371,4 +386,81 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
             )
         }),
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use gpui::{Modifiers, Pixels, Point, TestAppContext, VisualTestContext, point};
+    use model::fixtures::{self, PENSIVE};
+
+    use super::*;
+
+    /// A window on pensive, laid out and idle.
+    fn pensive_window(cx: &mut TestAppContext) -> (Entity<Pensive>, &mut VisualTestContext) {
+        cx.update(|cx| {
+            theme::init(cx);
+            crate::init(cx);
+        });
+        let projects = cx.new(|_| fixtures::projects());
+        let (view, cx) =
+            cx.add_window_view(|window, cx| Pensive::new(projects, Some(PENSIVE), window, cx));
+        cx.run_until_parked();
+        (view, cx)
+    }
+
+    fn click(cx: &mut VisualTestContext, position: Point<Pixels>) {
+        cx.simulate_mouse_move(position, None, Modifiers::none());
+        cx.simulate_click(position, Modifiers::none());
+    }
+
+    fn palette_open(view: &Entity<Pensive>, cx: &mut VisualTestContext) -> bool {
+        view.read_with(cx, |pensive, _| pensive.palette_open)
+    }
+
+    fn input_focused(view: &Entity<Pensive>, cx: &mut VisualTestContext) -> bool {
+        cx.update(|window, cx| view.read(cx).palette.focus_handle(cx).is_focused(window))
+    }
+
+    #[gpui::test]
+    fn a_crumb_opens_the_palette_scoped_with_its_input_focused(cx: &mut TestAppContext) {
+        let (view, cx) = pensive_window(cx);
+        for (x, scope) in [(50., Keyword::Project(None)), (150., Keyword::Branch)] {
+            click(cx, point(px(x), px(20.)));
+            assert!(palette_open(&view, cx));
+            let keyword = view.read_with(cx, |pensive, cx| {
+                pensive.palette.read(cx).keyword().cloned()
+            });
+            assert_eq!(keyword, Some(scope));
+            assert!(input_focused(&view, cx));
+            cx.simulate_keystrokes("escape");
+            assert!(!palette_open(&view, cx));
+        }
+    }
+
+    #[gpui::test]
+    fn a_click_outside_the_palette_closes_it(cx: &mut TestAppContext) {
+        let (view, cx) = pensive_window(cx);
+        cx.dispatch_action(OpenPalette);
+        let center = cx.update(|window, _| window.viewport_size().width / 2.);
+
+        click(cx, point(center, px(90.)));
+        assert!(palette_open(&view, cx));
+        assert!(input_focused(&view, cx));
+
+        click(cx, point(px(20.), px(300.)));
+        assert!(!palette_open(&view, cx));
+    }
+
+    #[gpui::test]
+    fn escape_closes_the_palette_wherever_focus_is(cx: &mut TestAppContext) {
+        let (view, cx) = pensive_window(cx);
+        cx.dispatch_action(OpenPalette);
+        view.update_in(cx, |pensive, window, cx| {
+            window.focus(&pensive.focus_handle, cx)
+        });
+        assert!(!input_focused(&view, cx));
+
+        cx.simulate_keystrokes("escape");
+        assert!(!palette_open(&view, cx));
+    }
 }

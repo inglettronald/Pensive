@@ -192,6 +192,11 @@ impl PaletteView {
         cx.notify();
     }
 
+    #[cfg(test)]
+    pub(crate) fn keyword(&self) -> Option<&Keyword> {
+        self.keyword.as_ref()
+    }
+
     pub fn set_query(&mut self, text: &str, cx: &mut Context<Self>) {
         self.input
             .update(cx, |input, cx| input.set_text(text.to_string(), cx));
