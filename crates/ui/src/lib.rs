@@ -1,5 +1,7 @@
 //! Views: the screens and panels that read models and own their view state.
 
+#[cfg(feature = "mocks")]
+mod mock_browser;
 mod notices;
 mod palette;
 mod project;
@@ -11,6 +13,8 @@ use std::rc::Rc;
 
 use gpui::{Action, App, Context, KeyBinding, KeyBindingContextPredicate, Window};
 
+#[cfg(feature = "mocks")]
+pub use mock_browser::MockThumbnails;
 pub use palette::{Keyword, PaletteEvent, PaletteView, Tab};
 pub use root::{Pensive, open_window};
 
@@ -21,6 +25,8 @@ pub fn init(cx: &mut App) {
     palette::bind_keys(cx);
     project::bind_keys(cx);
     root::bind_keys(cx);
+    #[cfg(feature = "mocks")]
+    mock_browser::bind_keys(cx);
 }
 
 /// Binds `keys` to `action` in `context`. Unlike `KeyBinding::new`, it reads `secondary-` as Cmd
@@ -60,8 +66,14 @@ fn view_callback_with<V: 'static, T: 'static>(
 /// Every view's mocks.
 #[cfg(feature = "mocks")]
 pub fn mocks() -> Vec<mock::Mock> {
-    [root::mocks(), project::mocks()]
+    [root::mocks(), project::mocks(), mock_browser::mocks()]
         .into_iter()
         .flatten()
         .collect()
+}
+
+/// Every component's mocks, then every view's.
+#[cfg(feature = "mocks")]
+pub fn every_mock() -> Vec<mock::Mock> {
+    components::mocks().into_iter().chain(mocks()).collect()
 }

@@ -20,12 +20,18 @@ ui.workspace = true
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 config.workspace = true
 git.workspace = true
+image = { workspace = true, optional = true }
+mock = { workspace = true, optional = true }
 
 [target.'cfg(target_family = "wasm")'.dependencies]
 log.workspace = true
 
+[features]
+# The mock browser on Ctrl Shift M, with thumbnails rendered at launch. `cargo mocked` turns it
+# on. It never ships in the app.
+mocks = ["ui/mocks", "dep:image", "dep:mock"]
+
 [dev-dependencies]
-components = { workspace = true, features = ["mocks"] }
 mock.workspace = true
 ui = { workspace = true, features = ["mocks"] }
 

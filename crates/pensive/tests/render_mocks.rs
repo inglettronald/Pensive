@@ -16,14 +16,13 @@ fn main() -> gpui::Result<ExitCode> {
         .parent()
         .expect("the target tmp dir is inside the target dir")
         .join("mocks");
-    let id = |mock: &Mock| format!("{}/{}", mock.subject, mock.name);
 
-    let mocks: Vec<Mock> = components::mocks().into_iter().chain(ui::mocks()).collect();
+    let mocks = ui::every_mock();
     let mut matched = false;
     for subject_mocks in mocks.chunk_by(|a, b| a.subject == b.subject) {
         let matching: Vec<&Mock> = subject_mocks
             .iter()
-            .filter(|mock| id(mock).contains(&filter))
+            .filter(|mock| mock.id().contains(&filter))
             .collect();
         let Some(first) = matching.first() else {
             continue;
@@ -38,7 +37,7 @@ fn main() -> gpui::Result<ExitCode> {
                 println!("skipped: this platform has no headless renderer");
                 return Ok(ExitCode::SUCCESS);
             };
-            let path = out_dir.join(format!("{}.png", id(mock)));
+            let path = out_dir.join(format!("{}.png", mock.id()));
             std::fs::create_dir_all(path.parent().expect("the path has a view directory"))?;
             image.save(&path)?;
             println!("{}", path.display());

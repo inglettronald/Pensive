@@ -3722,11 +3722,11 @@ name = "pensive"
 version = "0.1.0"
 dependencies = [
  "assets",
- "components",
  "config",
  "git",
  "gpui",
  "gpui_platform",
+ "image",
  "log",
  "mock",
  "model",
