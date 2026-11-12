@@ -1,14 +1,15 @@
-//! Sample projects for mocks and tests, the ones drawn on the command palette's design canvas, and
-//! a Fake `GitBackend` that answers from them.
+//! Sample projects for mocks and tests: the ones drawn on the command palette's design canvas.
+
+mod fake_git;
+
+pub use fake_git::FakeGit;
 
 use std::{
-    path::{Path, PathBuf},
+    sync::Arc,
     time::{Duration, SystemTime},
 };
 
-use anyhow::{Context as _, Result};
-
-use crate::{Branch, GitBackend, Project, ProjectId, Projects, Worktree};
+use crate::{Branch, ProjectId, Projects, Repository, Worktree};
 
 const MINUTE: u64 = 60;
 const HOUR: u64 = 60 * MINUTE;
@@ -22,165 +23,127 @@ pub const GLYPH_UI: ProjectId = ProjectId(3);
 pub const DOTFILES: ProjectId = ProjectId(4);
 pub const ZED: ProjectId = ProjectId(5);
 
-/// Six projects with worktrees and branches of every age the palette groups by.
+/// Six projects with worktrees and branches of every age the palette groups by, read through
+/// `FakeGit`.
 pub fn projects() -> Projects {
-    let as_of = SystemTime::UNIX_EPOCH + Duration::from_secs(1_800_000_000);
-    let ago = |seconds: u64| as_of - Duration::from_secs(seconds);
+    let mut projects = Projects::new(Arc::new(FakeGit::default()));
+    for (repository, opened) in repositories() {
+        projects.add(repository, opened);
+    }
+    projects.as_of = Some(as_of());
+    projects
+}
 
-    let project = |id, name: &str, root: &str, opened| Project {
-        id,
-        name: name.to_string().into(),
-        root: root.into(),
-        last_opened: ago(opened),
-    };
-    let worktree = |project, path: &str, branch: &str, changed| Worktree {
-        project,
+fn as_of() -> SystemTime {
+    SystemTime::UNIX_EPOCH + Duration::from_secs(1_800_000_000)
+}
+
+/// The sample repositories in `ProjectId` order, each with when it was last opened.
+fn repositories() -> Vec<(Repository, SystemTime)> {
+    let ago = |seconds: u64| as_of() - Duration::from_secs(seconds);
+    let worktree = |path: &str, branch: &str, changed| Worktree {
         path: path.into(),
         branch: Some(branch.to_string().into()),
         last_change: ago(changed),
     };
-    let branch = |project, name: &str, committed| Branch {
-        project,
+    let branch = |name: &str, committed| Branch {
         name: name.to_string().into(),
         last_commit: ago(committed),
     };
+    let repository = |root: &str, worktrees, branches, opened| {
+        let repository = Repository {
+            root: root.into(),
+            worktrees,
+            branches,
+        };
+        (repository, ago(opened))
+    };
 
-    Projects {
-        projects: vec![
-            project(PENSIVE, "pensive", "~/Projects/pensive", 2 * MINUTE),
-            project(HARBOR, "harbor", "~/code/harbor", 26 * MINUTE),
-            project(LANTERN, "lantern", "~/code/lantern", 48 * MINUTE),
-            project(GLYPH_UI, "glyph-ui", "~/code/glyph-ui", 2 * HOUR),
-            project(DOTFILES, "dotfiles", "~/dotfiles", 3 * DAY),
-            project(ZED, "zed", "~/src/zed", 5 * WEEK),
-        ],
-        worktrees: vec![
-            worktree(
-                PENSIVE,
-                "~/Projects/pensive",
-                "feat/command-palette",
-                3 * HOUR,
-            ),
-            worktree(
-                PENSIVE,
-                "~/Projects/pensive-wt/palette-scopes",
-                "feat/palette-scopes",
-                4 * MINUTE,
-            ),
-            worktree(
-                PENSIVE,
-                "~/Projects/pensive-wt/fuzzy-ranking",
-                "fix/fuzzy-ranking",
-                11 * MINUTE,
-            ),
-            worktree(
-                PENSIVE,
-                "~/Projects/pensive-wt/gutter-icons",
-                "fix/gutter-icons",
-                2 * DAY,
-            ),
-            worktree(HARBOR, "~/code/harbor", "morgan/ui-scaling", 26 * MINUTE),
-            worktree(
-                HARBOR,
-                "~/code/harbor-wt/settings-search",
-                "agent/settings-search",
-                HOUR + 5 * MINUTE,
-            ),
-            worktree(
-                HARBOR,
-                "~/code/harbor-wt/tooltip-clip",
-                "fix/tooltip-clip",
-                5 * HOUR,
-            ),
-            worktree(LANTERN, "~/code/lantern", "feat/thumbnail-batch", 3 * DAY),
-            worktree(
-                LANTERN,
-                "~/code/lantern-wt/thumbnail-manifest",
-                "agent/thumbnail-manifest",
-                48 * MINUTE,
-            ),
-            worktree(GLYPH_UI, "~/code/glyph-ui", "main", 4 * WEEK),
-            worktree(
-                GLYPH_UI,
-                "~/code/glyph-ui-wt/lint-pass",
-                "chore/lint-pass",
-                2 * HOUR,
-            ),
-            worktree(DOTFILES, "~/dotfiles", "main", 6 * WEEK),
-            worktree(ZED, "~/src/zed", "main", 5 * WEEK),
-        ],
-        branches: vec![
-            branch(PENSIVE, "feat/command-palette", 3 * HOUR),
-            branch(PENSIVE, "master", 2 * WEEK),
-            branch(HARBOR, "morgan/ui-scaling", 26 * MINUTE),
-            branch(HARBOR, "morgan/gui-tooltips", DAY),
-            branch(HARBOR, "morgan/fix-locale-fallback", 3 * DAY),
-            branch(HARBOR, "fix/crash-on-resize", WEEK),
-            branch(HARBOR, "hotfix/1.8.2", 2 * WEEK),
-            branch(HARBOR, "master", 2 * WEEK),
-            branch(GLYPH_UI, "feat/gpu-instancing", 3 * WEEK),
-        ],
-        as_of: Some(as_of),
-        ..Projects::default()
-    }
-}
-
-/// Answers from `projects()`, as though every sample project were a repository on disk.
-pub struct FakeGit(Projects);
-
-impl Default for FakeGit {
-    fn default() -> Self {
-        Self(projects())
-    }
-}
-
-impl FakeGit {
-    fn project_at(&self, root: &Path) -> Result<ProjectId> {
-        self.0
-            .projects
-            .iter()
-            .find(|project| project.root == root)
-            .map(|project| project.id)
-            .with_context(|| format!("{} is not a sample project", root.display()))
-    }
-}
-
-impl GitBackend for FakeGit {
-    fn root(&self, path: &Path) -> Result<PathBuf> {
-        self.0
-            .worktrees
-            .iter()
-            .find(|worktree| worktree.path == path)
-            .and_then(|worktree| self.0.project(worktree.project))
-            .map(|project| project.root.clone())
-            .with_context(|| format!("{} is not in a sample project", path.display()))
-    }
-
-    fn worktrees(&self, project: ProjectId, root: &Path) -> Result<Vec<Worktree>> {
-        let sample = self.project_at(root)?;
-        Ok(self
-            .0
-            .worktrees
-            .iter()
-            .filter(|worktree| worktree.project == sample)
-            .map(|worktree| Worktree {
-                project,
-                ..worktree.clone()
-            })
-            .collect())
-    }
-
-    fn branches(&self, project: ProjectId, root: &Path) -> Result<Vec<Branch>> {
-        let sample = self.project_at(root)?;
-        Ok(self
-            .0
-            .branches
-            .iter()
-            .filter(|branch| branch.project == sample)
-            .map(|branch| Branch {
-                project,
-                ..branch.clone()
-            })
-            .collect())
-    }
+    vec![
+        repository(
+            "~/Projects/pensive",
+            vec![
+                worktree("~/Projects/pensive", "feat/command-palette", 3 * HOUR),
+                worktree(
+                    "~/Projects/pensive-wt/palette-scopes",
+                    "feat/palette-scopes",
+                    4 * MINUTE,
+                ),
+                worktree(
+                    "~/Projects/pensive-wt/fuzzy-ranking",
+                    "fix/fuzzy-ranking",
+                    11 * MINUTE,
+                ),
+                worktree(
+                    "~/Projects/pensive-wt/gutter-icons",
+                    "fix/gutter-icons",
+                    2 * DAY,
+                ),
+            ],
+            vec![
+                branch("feat/command-palette", 3 * HOUR),
+                branch("master", 2 * WEEK),
+            ],
+            2 * MINUTE,
+        ),
+        repository(
+            "~/code/harbor",
+            vec![
+                worktree("~/code/harbor", "morgan/ui-scaling", 26 * MINUTE),
+                worktree(
+                    "~/code/harbor-wt/settings-search",
+                    "agent/settings-search",
+                    HOUR + 5 * MINUTE,
+                ),
+                worktree(
+                    "~/code/harbor-wt/tooltip-clip",
+                    "fix/tooltip-clip",
+                    5 * HOUR,
+                ),
+            ],
+            vec![
+                branch("morgan/ui-scaling", 26 * MINUTE),
+                branch("morgan/gui-tooltips", DAY),
+                branch("morgan/fix-locale-fallback", 3 * DAY),
+                branch("fix/crash-on-resize", WEEK),
+                branch("hotfix/1.8.2", 2 * WEEK),
+                branch("master", 2 * WEEK),
+            ],
+            26 * MINUTE,
+        ),
+        repository(
+            "~/code/lantern",
+            vec![
+                worktree("~/code/lantern", "feat/thumbnail-batch", 3 * DAY),
+                worktree(
+                    "~/code/lantern-wt/thumbnail-manifest",
+                    "agent/thumbnail-manifest",
+                    48 * MINUTE,
+                ),
+            ],
+            Vec::new(),
+            48 * MINUTE,
+        ),
+        repository(
+            "~/code/glyph-ui",
+            vec![
+                worktree("~/code/glyph-ui", "main", 4 * WEEK),
+                worktree("~/code/glyph-ui-wt/lint-pass", "chore/lint-pass", 2 * HOUR),
+            ],
+            vec![branch("feat/gpu-instancing", 3 * WEEK)],
+            2 * HOUR,
+        ),
+        repository(
+            "~/dotfiles",
+            vec![worktree("~/dotfiles", "main", 6 * WEEK)],
+            Vec::new(),
+            3 * DAY,
+        ),
+        repository(
+            "~/src/zed",
+            vec![worktree("~/src/zed", "main", 5 * WEEK)],
+            Vec::new(),
+            5 * WEEK,
+        ),
+    ]
 }

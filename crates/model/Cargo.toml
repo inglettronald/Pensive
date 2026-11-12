@@ -10,6 +10,9 @@ repository.workspace = true
 anyhow.workspace = true
 gpui.workspace = true
 
+[dev-dependencies]
+gpui = { workspace = true, features = ["test-support"] }
+
 [features]
 # Sample projects, worktrees and branches for mocks and tests.
 fixtures = []

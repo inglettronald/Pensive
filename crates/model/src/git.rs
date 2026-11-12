@@ -1,18 +1,27 @@
-//! The trait that Git backends implement. Calls block, so models run them off the UI thread.
+//! The trait that Git backends implement, and the repository it reads.
 
-use std::path::{Path, PathBuf};
+use std::{
+    fmt::Debug,
+    path::{Path, PathBuf},
+};
 
 use anyhow::Result;
 
-use crate::{Branch, ProjectId, Worktree};
+use crate::{Branch, Worktree};
 
-pub trait GitBackend: Send + Sync {
-    /// The main worktree of the repository that contains `path`.
-    fn root(&self, path: &Path) -> Result<PathBuf>;
+/// Calls block, so models run them off the UI thread.
+pub trait GitBackend: Send + Sync + Debug {
+    /// Reads the repository that contains `path`.
+    fn repository(&self, path: &Path) -> Result<Repository>;
+}
 
-    /// The checked-out worktrees of the repository at `root`, labeled as `project`'s.
-    fn worktrees(&self, project: ProjectId, root: &Path) -> Result<Vec<Worktree>>;
-
-    /// The local branches of the repository at `root`, labeled as `project`'s.
-    fn branches(&self, project: ProjectId, root: &Path) -> Result<Vec<Branch>>;
+/// A repository as Git reports it.
+#[derive(Clone, Debug)]
+pub struct Repository {
+    /// The first folder `git worktree list` gives: the main worktree, or the repository itself
+    /// when it's bare.
+    pub root: PathBuf,
+    /// The worktrees that are checked out, the main one first.
+    pub worktrees: Vec<Worktree>,
+    pub branches: Vec<Branch>,
 }
