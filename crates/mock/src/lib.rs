@@ -1,11 +1,14 @@
 //! Named mock states for views, rendered headlessly for review and regression tests.
 
+mod atlas;
+
 use std::{cell::Cell, sync::Arc};
 
+pub use atlas::Atlas;
 use gpui::{
-    AnyElement, AnyView, App, AppContext, Context, HeadlessAppContext, IntoElement, ParentElement,
-    Pixels, PlatformHeadlessRenderer, PlatformTextSystem, Render, Result, Size, Styled, Window,
-    div, px, size,
+    AnyElement, AnyView, App, AppContext, Context, Entity, HeadlessAppContext, IntoElement,
+    ParentElement, Pixels, PlatformHeadlessRenderer, PlatformTextSystem, Render, Result, Size,
+    Styled, Window, div, px, size,
 };
 use image::RgbaImage;
 use theme::ActiveTheme;
@@ -66,22 +69,30 @@ impl Mock {
     /// Renders the mock at twice its size without opening a window, with the default theme and
     /// the bundled fonts and assets. Returns `None` on platforms with no headless renderer.
     pub fn render(&self) -> Result<Option<RgbaImage>> {
-        let Some(renderer) = headless_renderer()? else {
-            return Ok(None);
-        };
-        let renderer = Cell::new(Some(renderer));
-        let mut cx =
-            HeadlessAppContext::with_platform(text_system(), Arc::new(assets::Assets), move || {
-                Ok(renderer.take())
-            });
-        cx.update(theme::init);
-        let window = cx.open_window(self.size, |window, cx| {
+        render_headless(self.size, |window, cx| {
             let view = self.build(window, cx);
             cx.new(|_| Frame(view))
-        })?;
-        cx.run_until_parked();
-        cx.capture_screenshot(window.into()).map(Some)
+        })
     }
+}
+
+/// Opens a window of `size` on the headless renderer and captures it at twice its size.
+fn render_headless<V: Render>(
+    size: Size<Pixels>,
+    build_root: impl FnOnce(&mut Window, &mut App) -> Entity<V>,
+) -> Result<Option<RgbaImage>> {
+    let Some(renderer) = headless_renderer()? else {
+        return Ok(None);
+    };
+    let renderer = Cell::new(Some(renderer));
+    let mut cx =
+        HeadlessAppContext::with_platform(text_system(), Arc::new(assets::Assets), move || {
+            Ok(renderer.take())
+        });
+    cx.update(theme::init);
+    let window = cx.open_window(size, build_root)?;
+    cx.run_until_parked();
+    cx.capture_screenshot(window.into()).map(Some)
 }
 
 /// Wraps a component's render function in a view on the app background, for mocks that need

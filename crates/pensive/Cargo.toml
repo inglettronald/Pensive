@@ -17,6 +17,7 @@ ui.workspace = true
 
 [dev-dependencies]
 components = { workspace = true, features = ["mocks"] }
+mock.workspace = true
 ui = { workspace = true, features = ["mocks"] }
 
 [[test]]
