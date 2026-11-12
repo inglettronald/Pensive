@@ -22,4 +22,5 @@ mock = { workspace = true, optional = true }
 mocks = ["dep:mock", "model/fixtures", "components/mocks"]
 
 [dev-dependencies]
+gpui = { workspace = true, features = ["test-support"] }
 model = { workspace = true, features = ["fixtures"] }

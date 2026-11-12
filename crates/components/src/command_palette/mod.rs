@@ -326,6 +326,7 @@ impl RenderOnce for CommandPalette {
         }
 
         div()
+            .occlude()
             .w(px(576.))
             .min_h_0()
             .flex()
