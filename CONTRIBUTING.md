@@ -2,7 +2,7 @@
 
 ## Setting up your machine
 
-You need three things: Rust, a few system libraries, and the source code. After the first build, `cargo run` is all you need.
+You need four things: Rust, a few system libraries, Git 2.36 or newer, and the source code. After the first build, `cargo run` is all you need.
 
 On Debian or Ubuntu, `script/bootstrap` does steps 1 and 2 for you.
 
@@ -43,7 +43,9 @@ cargo run
 
 The first build takes a few minutes while it downloads and compiles dependencies. Later builds only recompile what changed.
 
-`cargo run mocked` starts the app with sample projects instead of an empty list, so you can click around before Pensive can open real repositories. It only works in debug builds.
+`cargo run <path>...` opens the repositories at those paths. Until Pensive remembers projects, that's the only way to open one.
+
+`cargo run mocked` starts the app with sample projects instead, so you can click around views without real repositories. It only works in debug builds.
 
 ## Where everything comes from
 
@@ -53,6 +55,7 @@ The first build takes a few minutes while it downloads and compiles dependencies
 | Rust toolchain: `rustc`, `cargo`, `rustfmt`, `clippy` | Compiler, build tool, formatter, linter | rustup, automatically, at the version in `rust-toolchain.toml` |
 | Rust libraries such as `gpui` | Code Pensive depends on | cargo, automatically, from [crates.io](https://crates.io) or the Zed Git repo at the versions in `Cargo.lock` |
 | System libraries | Your OS's desktop and graphics stack | Your package manager (step 2) |
+| Git, 2.36 or newer | Runs every Git command Pensive makes, so it must be on your `PATH` | You, or your package manager. macOS includes it with Xcode |
 
 ## Inspecting dependencies in a debugger
 

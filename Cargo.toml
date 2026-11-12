@@ -10,15 +10,18 @@ repository = "https://github.com/inglettronald/Pensive"
 [workspace.dependencies]
 assets = { path = "crates/assets" }
 components = { path = "crates/components" }
+git = { path = "crates/git" }
 mock = { path = "crates/mock" }
 model = { path = "crates/model" }
 theme = { path = "crates/theme" }
 ui = { path = "crates/ui" }
 
+anyhow = "1"
 image = { version = "0.25", default-features = false, features = ["png"] }
 nucleo-matcher = "0.3"
 serde = { version = "1", features = ["derive"] }
 strum = { version = "0.28", features = ["derive"] }
+tempfile = "3"
 toml = "1"
 unicode-segmentation = "1"
 

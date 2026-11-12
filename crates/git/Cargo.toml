@@ -1,0 +1,14 @@
+[package]
+name = "git"
+version = "0.1.0"
+description = "A Git backend that runs the git command line."
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+model.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

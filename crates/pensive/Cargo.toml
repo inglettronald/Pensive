@@ -9,6 +9,7 @@ repository.workspace = true
 
 [dependencies]
 assets.workspace = true
+git.workspace = true
 gpui.workspace = true
 gpui_platform.workspace = true
 model = { workspace = true, features = ["fixtures"] }
