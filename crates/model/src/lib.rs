@@ -2,6 +2,8 @@
 
 #[cfg(feature = "fixtures")]
 pub mod fixtures;
+mod git;
 mod projects;
 
+pub use git::GitBackend;
 pub use projects::{Branch, Project, ProjectId, Projects, Work, WorkKind, Worktree};

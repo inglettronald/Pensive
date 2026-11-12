@@ -1,8 +1,14 @@
-//! Sample projects for mocks and tests: the ones drawn on the command palette's design canvas.
+//! Sample projects for mocks and tests, the ones drawn on the command palette's design canvas, and
+//! a Fake `GitBackend` that answers from them.
 
-use std::time::{Duration, SystemTime};
+use std::{
+    path::{Path, PathBuf},
+    time::{Duration, SystemTime},
+};
 
-use crate::{Branch, Project, ProjectId, Projects, Worktree};
+use anyhow::{Context as _, Result};
+
+use crate::{Branch, GitBackend, Project, ProjectId, Projects, Worktree};
 
 const MINUTE: u64 = 60;
 const HOUR: u64 = 60 * MINUTE;
@@ -115,5 +121,66 @@ pub fn projects() -> Projects {
             branch(GLYPH_UI, "feat/gpu-instancing", 3 * WEEK),
         ],
         as_of: Some(as_of),
+        ..Projects::default()
+    }
+}
+
+/// Answers from `projects()`, as though every sample project were a repository on disk.
+pub struct FakeGit(Projects);
+
+impl Default for FakeGit {
+    fn default() -> Self {
+        Self(projects())
+    }
+}
+
+impl FakeGit {
+    fn project_at(&self, root: &Path) -> Result<ProjectId> {
+        self.0
+            .projects
+            .iter()
+            .find(|project| project.root == root)
+            .map(|project| project.id)
+            .with_context(|| format!("{} is not a sample project", root.display()))
+    }
+}
+
+impl GitBackend for FakeGit {
+    fn root(&self, path: &Path) -> Result<PathBuf> {
+        self.0
+            .worktrees
+            .iter()
+            .find(|worktree| worktree.path == path)
+            .and_then(|worktree| self.0.project(worktree.project))
+            .map(|project| project.root.clone())
+            .with_context(|| format!("{} is not in a sample project", path.display()))
+    }
+
+    fn worktrees(&self, project: ProjectId, root: &Path) -> Result<Vec<Worktree>> {
+        let sample = self.project_at(root)?;
+        Ok(self
+            .0
+            .worktrees
+            .iter()
+            .filter(|worktree| worktree.project == sample)
+            .map(|worktree| Worktree {
+                project,
+                ..worktree.clone()
+            })
+            .collect())
+    }
+
+    fn branches(&self, project: ProjectId, root: &Path) -> Result<Vec<Branch>> {
+        let sample = self.project_at(root)?;
+        Ok(self
+            .0
+            .branches
+            .iter()
+            .filter(|branch| branch.project == sample)
+            .map(|branch| Branch {
+                project,
+                ..branch.clone()
+            })
+            .collect())
     }
 }

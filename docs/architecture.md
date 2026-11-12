@@ -6,21 +6,23 @@ Pensive is a Cargo workspace. A crate can only use the crates it lists as depend
 
 | Crate | Job | Depends on |
 |---|---|---|
-| `pensive` | The app. Opens the window and gives each model its backend. | `ui`, `model`, `theme`, `assets` |
+| `pensive` | The app. Opens the window and gives each model its backend. | `ui`, `model`, `git`, `theme`, `assets` |
 | `ui` | Views: screens and panels that read models and own their view state. | `components`, `model`, `theme` |
 | `components` | Stateless building blocks that render from props and the theme. | `theme` |
 | `model` | Application state, and the traits that I/O backends implement. | |
+| `git` | The Git backend, which runs the `git` command line. | `model` |
 | `theme` | Color, type and spacing roles, with user overrides. | |
 | `mock` | Named mock states for views, rendered without a window. | `theme`, `assets` |
 | `assets` | Files bundled into the app, such as icons, served to GPUI by path. | |
 
-Every crate also depends on `gpui`.
+Every crate except `git` also depends on `gpui`.
 
 ## Rules
 
 - Views can trigger I/O but never perform it. Git, the filesystem, the clock, the network, environment variables and randomness go through a model. That way any view can render from mock data.
 - Components never see models. They render from the props they're given.
 - Backends implement traits defined in `model`. `ui` never depends on a backend crate, so only `pensive` sees both sides.
+- Backend calls block, so models run them on GPUI's background executor.
 - A new component ships with its gallery. A new view ships with mocks for the states that change the screen, usually empty, loading, error and a typical case.
 - Every visual state of a component can be set through its props, so a mock can show it without input.
 

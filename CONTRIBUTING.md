@@ -43,7 +43,11 @@ cargo run
 
 The first build takes a few minutes while it downloads and compiles dependencies. Later builds only recompile what changed.
 
-`cargo run mocked` starts the app with sample projects instead of an empty list, so you can click around before Pensive can open real repositories. It only works in debug builds.
+Pensive runs your own `git`, so Git 2.36 or newer must be on your `PATH`.
+
+`cargo run <path>...` opens the repositories at those paths. Until Pensive remembers projects, that's the only way to open one.
+
+`cargo run mocked` starts the app with sample projects instead, so you can click around views without real repositories. It only works in debug builds.
 
 ## Where everything comes from
 
