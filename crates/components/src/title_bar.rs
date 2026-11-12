@@ -2,8 +2,8 @@
 //! controls, with the empty space dragging the window.
 
 use gpui::{
-    App, Div, ElementId, Entity, MouseButton, Pixels, Point, SharedString, Stateful, Window,
-    WindowControlArea, div, point, prelude::*, px,
+    AnyElement, App, Div, ElementId, Entity, MouseButton, Pixels, Point, SharedString, Stateful,
+    Window, WindowControlArea, div, point, prelude::*, px,
 };
 use theme::{ActiveTheme, Typeset};
 
@@ -23,6 +23,7 @@ pub struct TitleBarProject {
 #[derive(IntoElement)]
 pub struct TitleBar {
     project: Option<TitleBarProject>,
+    location: Option<AnyElement>,
     controls: bool,
     on_project: Option<Callback<()>>,
     on_branch: Option<Callback<()>>,
@@ -38,11 +39,18 @@ impl TitleBar {
     pub fn new(project: Option<TitleBarProject>) -> Self {
         Self {
             project,
+            location: None,
             controls: false,
             on_project: None,
             on_branch: None,
             on_palette: None,
         }
+    }
+
+    /// Shown in place of project › branch, on screens that aren't a project.
+    pub fn location(mut self, location: impl IntoElement) -> Self {
+        self.location = Some(location.into_any_element());
+        self
     }
 
     /// Draws minimize, maximize and close, for platforms that leave them to the app.
@@ -133,7 +141,9 @@ impl RenderOnce for TitleBar {
                     .chain(branch.map(IntoElement::into_any_element)),
             )
             .chevron_size(px(14.))
+            .into_any_element()
         });
+        let location = self.location.or(location);
 
         let palette = self.on_palette.map(|handler| {
             div()

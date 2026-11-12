@@ -1,5 +1,7 @@
 mod backends;
 mod config_sync;
+#[cfg(feature = "mocks")]
+mod mock_thumbnails;
 
 use gpui::{App, AppContext};
 
@@ -21,6 +23,8 @@ fn main() {
         .run(move |cx: &mut App| {
             theme::init(cx);
             ui::init(cx);
+            #[cfg(feature = "mocks")]
+            mock_thumbnails::start(cx);
             if let Some(config) = config {
                 config_sync::init(config, cx);
             }
