@@ -15,7 +15,7 @@ pub struct Startup {
 }
 
 /// The repositories named on the command line, read with the `git` command, and the config
-/// folder in the home folder.
+/// folder in the home folder. A demo build opens the sample projects instead.
 #[cfg(not(target_family = "wasm"))]
 pub fn startup() -> Startup {
     let args: Vec<PathBuf> = std::env::args_os().skip(1).map(PathBuf::from).collect();
@@ -23,12 +23,11 @@ pub fn startup() -> Startup {
     if config.is_none() {
         eprintln!("Couldn't find a home folder, so every setting uses its default");
     }
-    let (projects, paths) = match args.as_slice() {
-        // The sample projects, for clicking around views without real repositories.
-        #[cfg(debug_assertions)]
-        [arg] if arg.as_os_str() == "mocked" => (model::fixtures::projects(), Vec::new()),
+    let (projects, paths) = if cfg!(feature = "demo") {
+        (model::fixtures::projects(), Vec::new())
+    } else {
         // Until Pensive remembers projects, they come from the command line.
-        _ => (Projects::new(Arc::new(git::GitCli)), args),
+        (Projects::new(Arc::new(git::GitCli)), args)
     };
     Startup {
         projects,
