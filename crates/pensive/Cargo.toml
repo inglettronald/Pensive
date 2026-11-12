@@ -27,9 +27,9 @@ mock = { workspace = true, optional = true }
 log.workspace = true
 
 [features]
-# The mock browser on Ctrl Shift M, with thumbnails rendered at launch. `cargo mocked` turns it
-# on. It never ships in the app.
-mocks = ["ui/mocks", "dep:image", "dep:mock"]
+# The sample projects in place of real ones, and the mock browser on Ctrl Shift M with thumbnails
+# rendered at launch. `cargo demo` turns it on. It never ships in the app.
+demo = ["ui/mocks", "dep:image", "dep:mock"]
 
 [dev-dependencies]
 mock.workspace = true

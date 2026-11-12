@@ -45,7 +45,13 @@ The first build takes a few minutes while it downloads and compiles dependencies
 
 `cargo run <path>...` opens the repositories at those paths. Until Pensive remembers projects, that's the only way to open one.
 
-`cargo run mocked` starts the app with sample projects and changes instead, so you can click around views without real repositories. It only works in debug builds. `cargo mocked` does the same with the mock browser: Ctrl Shift M lists every mock with its thumbnail and opens any of them in the window.
+| Command | What it does |
+|---|---|
+| `cargo run <path>...` | The app, on real repositories |
+| `cargo demo` | The app on the sample projects, so you can click around without real repositories. Ctrl Shift M opens the mock browser, which lists every mock with its thumbnail and opens any of them in the window. |
+| `cargo mocks [filter]` | Renders mocks to PNGs in `target/mocks`, without opening a window |
+
+`cargo demo` and `cargo mocks` are aliases in `.cargo/config.toml`. `cargo demo` is `cargo run -p pensive --features demo`: it builds the `pensive` crate with its `demo` feature, which compiles in the sample projects and the mock browser.
 
 ### Running in a browser
 
