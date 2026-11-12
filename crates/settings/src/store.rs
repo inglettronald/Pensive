@@ -7,7 +7,8 @@ use crate::AnySetting;
 
 #[derive(Default)]
 pub struct Settings {
-    declared: Vec<&'static dyn AnySetting>,
+    /// Each setting with the section it's listed under.
+    declared: Vec<(&'static str, &'static dyn AnySetting)>,
     source: String,
     /// The values in `source` that belong to a declared setting and are valid for it.
     values: toml::Table,
@@ -19,20 +20,25 @@ pub struct Settings {
 impl Global for Settings {}
 
 impl Settings {
-    /// Adds `settings` to the ones the palette and settings window list. Call it before loading
-    /// the file, so their keys are known.
-    pub fn declare(settings: impl IntoIterator<Item = &'static dyn AnySetting>, cx: &mut App) {
-        cx.default_global::<Settings>().declared.extend(settings);
+    /// Adds `settings` to the ones the palette and settings window list, under `section`. Call
+    /// it before loading the file, so their keys are known.
+    pub fn declare(
+        section: &'static str,
+        settings: impl IntoIterator<Item = &'static dyn AnySetting>,
+        cx: &mut App,
+    ) {
+        let declared = &mut cx.default_global::<Settings>().declared;
+        declared.extend(settings.into_iter().map(|setting| (section, setting)));
     }
 
-    pub fn declared(&self) -> &[&'static dyn AnySetting] {
-        &self.declared
+    /// Every declared setting with its section, in the order they were declared.
+    pub fn declared(&self) -> impl Iterator<Item = (&'static str, &'static dyn AnySetting)> {
+        self.declared.iter().copied()
     }
 
     pub fn find(&self, key: &str) -> Option<&'static dyn AnySetting> {
-        self.declared
-            .iter()
-            .copied()
+        self.declared()
+            .map(|(_, setting)| setting)
             .find(|setting| setting.key() == key)
     }
 
@@ -89,10 +95,10 @@ impl Settings {
             };
             if let Some(setting) = self.find(&path) {
                 match setting.check(&value) {
-                    None => {
+                    Ok(()) => {
                         valid.insert(key, value);
                     }
-                    Some(error) => problems.push(format!(
+                    Err(error) => problems.push(format!(
                         "`{path}` uses the default because its value is wrong: {}",
                         error.trim()
                     )),
@@ -173,7 +179,6 @@ mod tests {
 
     static SHOW_TABS: Setting<bool> = Setting {
         key: "palette.show_tabs",
-        section: "Palette",
         name: "Tabs",
         description: "",
         default: true,
@@ -182,7 +187,6 @@ mod tests {
 
     static DAYS: Setting<u32> = Setting {
         key: "palette.active_days",
-        section: "Palette",
         name: "Active",
         description: "",
         default: 7,
@@ -191,7 +195,6 @@ mod tests {
 
     static DENSITY: Setting<String> = Setting {
         key: "density",
-        section: "Appearance",
         name: "Density",
         description: "",
         default: String::new(),
@@ -200,7 +203,11 @@ mod tests {
 
     fn settings(source: &str) -> (Settings, Vec<String>) {
         let mut settings = Settings {
-            declared: vec![&SHOW_TABS, &DAYS, &DENSITY],
+            declared: vec![
+                ("Palette", &SHOW_TABS),
+                ("Palette", &DAYS),
+                ("Appearance", &DENSITY),
+            ],
             ..Default::default()
         };
         let problems = settings.load(source);

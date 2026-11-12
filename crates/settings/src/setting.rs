@@ -10,8 +10,6 @@ use crate::Settings;
 pub struct Setting<T: 'static> {
     /// Its dotted path in `settings.toml`, like `palette.show_tabs`.
     pub key: &'static str,
-    /// The heading it's listed under.
-    pub section: &'static str,
     pub name: &'static str,
     pub description: &'static str,
     pub default: T,
@@ -54,12 +52,7 @@ pub enum ControlState {
     },
 }
 
-/// A type a setting can hold.
-pub trait SettingValue: Clone + PartialEq + Serialize + DeserializeOwned + Sync + 'static {}
-
-impl<T: Clone + PartialEq + Serialize + DeserializeOwned + Sync + 'static> SettingValue for T {}
-
-impl<T: SettingValue> Setting<T> {
+impl<T: Clone + PartialEq + Serialize + DeserializeOwned + Sync> Setting<T> {
     /// The user's value, or the default when they haven't set one or it isn't valid.
     pub fn get(&self, cx: &App) -> T {
         cx.try_global::<Settings>()
@@ -87,7 +80,6 @@ impl<T: SettingValue> Setting<T> {
 /// A setting of any type, for listing settings and changing them from a control.
 pub trait AnySetting: Sync {
     fn key(&self) -> &'static str;
-    fn section(&self) -> &'static str;
     fn name(&self) -> &'static str;
     fn description(&self) -> &'static str;
     fn state(&self, cx: &App) -> ControlState;
@@ -95,17 +87,13 @@ pub trait AnySetting: Sync {
     fn step(&self, step: isize, cx: &mut App);
     /// Picks the choice at `index`.
     fn choose(&self, index: usize, cx: &mut App);
-    /// Why `value` can't be this setting's value, if it can't.
-    fn check(&self, value: &toml::Value) -> Option<String>;
+    /// Whether `value` can be this setting's value, and why not.
+    fn check(&self, value: &toml::Value) -> Result<(), String>;
 }
 
-impl<T: SettingValue> AnySetting for Setting<T> {
+impl<T: Clone + PartialEq + Serialize + DeserializeOwned + Sync> AnySetting for Setting<T> {
     fn key(&self) -> &'static str {
         self.key
-    }
-
-    fn section(&self) -> &'static str {
-        self.section
     }
 
     fn name(&self) -> &'static str {
@@ -129,9 +117,11 @@ impl<T: SettingValue> AnySetting for Setting<T> {
             Control::Select(_) => ControlState::Select {
                 label: match selected {
                     Some(index) => choices[index].label.clone(),
-                    None => toml::Value::try_from(value)
-                        .map(|value| value.to_string().into())
-                        .unwrap_or_default(),
+                    None => match toml::Value::try_from(value) {
+                        Ok(toml::Value::String(text)) => text.into(),
+                        Ok(value) => value.to_string().into(),
+                        Err(_) => SharedString::default(),
+                    },
                 },
             },
         }
@@ -161,12 +151,12 @@ impl<T: SettingValue> AnySetting for Setting<T> {
         }
     }
 
-    fn check(&self, value: &toml::Value) -> Option<String> {
+    fn check(&self, value: &toml::Value) -> Result<(), String> {
         value
             .clone()
             .try_into::<T>()
-            .err()
-            .map(|error| error.to_string())
+            .map(|_| ())
+            .map_err(|error| error.to_string())
     }
 }
 

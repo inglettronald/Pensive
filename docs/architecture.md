@@ -6,11 +6,11 @@ Pensive is a Cargo workspace. A crate can only use the crates it lists as depend
 
 | Crate | Job | Depends on |
 |---|---|---|
-| `pensive` | The app. Opens the window, gives each model its backend, and reads and writes the config folder. | `ui`, `model`, `settings`, `theme`, `assets` |
+| `pensive` | The app. Opens the window and gives each model its backend. | `ui`, `model`, `settings`, `theme`, `assets` |
 | `ui` | Views: screens and panels that read models and own their view state. | `components`, `model`, `settings`, `theme` |
 | `components` | Stateless building blocks that render from props and the theme. | `theme` |
 | `model` | Application state, and the traits that I/O backends implement. | |
-| `settings` | Declared settings, and the store that reads and edits the user's settings file without touching the disk. | |
+| `settings` | Declared settings, and the store that holds the settings file's text and the values in it. It does no I/O. | |
 | `theme` | Color, type and spacing roles, with user themes and the appearance settings. | `settings` |
 | `mock` | Named mock states for views, rendered without a window. | `theme`, `assets` |
 | `assets` | Files bundled into the app, such as icons, served to GPUI by path. | |
@@ -20,7 +20,7 @@ Every crate also depends on `gpui`.
 ## Rules
 
 - Views can trigger I/O but never perform it. Git, the filesystem, the clock, the network, environment variables and randomness go through a model. That way any view can render from mock data.
-- Each crate declares the settings it reads. Views read and change them through the `Settings` global, and `pensive` reads and writes the file.
+- Each crate declares the settings it reads, and code reads and changes a setting through its declaration.
 - Components never see models. They render from the props they're given.
 - Backends implement traits defined in `model`. `ui` never depends on a backend crate, so only `pensive` sees both sides.
 - A new component ships with its gallery. A new view ships with mocks for the states that change the screen, usually empty, loading, error and a typical case.

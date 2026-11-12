@@ -16,7 +16,7 @@ use super::{
     Action, Keyword, Tab,
     commands::{Command, Listed, commands},
     fuzzy::Fuzzy,
-    settings::days_label,
+    options::days_label,
 };
 
 const BEST_MATCHES: usize = 6;
@@ -35,8 +35,9 @@ pub(crate) struct Query<'a> {
     pub active_days: u32,
 }
 
-/// A setting and what its control shows now.
+/// A setting, the section it's listed under, and what its control shows now.
 pub(crate) struct SettingRow {
+    pub section: &'static str,
     pub setting: &'static dyn AnySetting,
     pub state: ControlState,
 }
@@ -78,7 +79,7 @@ pub(crate) fn results(query: &Query) -> Results {
                 query.projects.recent().into_iter().map(Candidate::Project),
             ),
         ),
-        (Some(Keyword::Setting), _) => settings(query),
+        (Some(Keyword::Setting), _) => setting_results(query),
         (Some(Keyword::Branch), _) => one_section(
             "Branches and worktrees",
             rank(
@@ -260,10 +261,10 @@ fn in_project(query: &Query, id: ProjectId) -> Results {
     }
 }
 
-fn settings(query: &Query) -> Results {
+fn setting_results(query: &Query) -> Results {
     let mut sections: Vec<(&str, Vec<Candidate>)> = Vec::new();
     for row in query.settings {
-        let section = row.setting.section();
+        let section = row.section;
         match sections.iter_mut().find(|(label, _)| *label == section) {
             Some((_, rows)) => rows.push(Candidate::Setting(row)),
             None => sections.push((section, vec![Candidate::Setting(row)])),
@@ -310,10 +311,11 @@ fn active(query: &Query) -> Results {
             .and_then(|as_of| as_of.duration_since(work.last_change).ok())
             .unwrap_or_default()
     };
+    // Active keeps work up to `days` old, so Earlier only shows when that's longer than a week.
     let group = |work: &Work| match age(work) {
         age if age < Duration::from_secs(60 * 60) => 0,
         age if age < DAY => 1,
-        age if age <= DAY * 7 => 2,
+        age if age < DAY * 7 || days <= 7 => 2,
         _ => 3,
     };
     let mut sections: Vec<Section> = ["Last hour", "Today", "This week", "Earlier"]
@@ -660,7 +662,7 @@ mod tests {
     use model::fixtures::{self, HARBOR, PENSIVE};
 
     use super::*;
-    use crate::palette::settings::{ACTIVE_DAYS, SCRIM, SHOW_TABS};
+    use crate::palette::options::{ACTIVE_DAYS, SCRIM, SHOW_TABS};
 
     fn labels(results: Results) -> Vec<String> {
         results
@@ -707,6 +709,7 @@ mod tests {
         let rows: Vec<SettingRow> = [&SHOW_TABS as &dyn AnySetting, &SCRIM, &ACTIVE_DAYS]
             .into_iter()
             .map(|setting| SettingRow {
+                section: "Palette",
                 setting,
                 state: ControlState::Toggle(true),
             })

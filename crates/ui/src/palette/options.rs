@@ -1,24 +1,22 @@
 //! The palette's own settings.
 
-use gpui::App;
+use gpui::{App, Hsla, hsla};
 use settings::{AnySetting, Choice, Control, Setting, Settings};
 
 use super::Tab;
 
-pub static SHOW_TABS: Setting<bool> = Setting {
+pub(crate) static SHOW_TABS: Setting<bool> = Setting {
     key: "palette.show_tabs",
-    section: "Palette",
     name: "Tabs",
     description: "All, Active and Commands in the search field",
     default: true,
     control: Control::Toggle,
 };
 
-pub static OPEN_ON: Setting<Tab> = Setting {
+pub(crate) static OPEN_ON: Setting<Tab> = Setting {
     key: "palette.open_on",
-    section: "Palette",
-    name: "Ctrl K opens on",
-    description: "The tab the palette starts on",
+    name: "Starting tab",
+    description: "The tab the palette opens on",
     default: Tab::All,
     control: Control::Segmented(|_| {
         Tab::ALL
@@ -29,9 +27,8 @@ pub static OPEN_ON: Setting<Tab> = Setting {
     }),
 };
 
-pub static ACTIVE_DAYS: Setting<u32> = Setting {
+pub(crate) static ACTIVE_DAYS: Setting<u32> = Setting {
     key: "palette.active_days",
-    section: "Palette",
     name: "Active looks back",
     description: "How old work can be and still show in Active",
     default: 7,
@@ -42,18 +39,16 @@ pub static ACTIVE_DAYS: Setting<u32> = Setting {
     }),
 };
 
-pub static OPACITY: Setting<u32> = Setting {
+pub(crate) static OPACITY: Setting<u32> = Setting {
     key: "palette.opacity",
-    section: "Palette",
     name: "Opacity",
     description: "How solid the palette's background is over a window",
     default: 100,
     control: Control::Select(|_| percents([70, 80, 90, 100])),
 };
 
-pub static SCRIM: Setting<u32> = Setting {
+pub(crate) static SCRIM: Setting<u32> = Setting {
     key: "palette.scrim",
-    section: "Palette",
     name: "Scrim",
     description: "How much the window behind the palette dims",
     default: 50,
@@ -80,10 +75,15 @@ pub(crate) fn days_label(days: u32) -> String {
 pub(crate) fn declare(cx: &mut App) {
     let settings: [&'static dyn AnySetting; 5] =
         [&SHOW_TABS, &OPEN_ON, &ACTIVE_DAYS, &OPACITY, &SCRIM];
-    Settings::declare(settings, cx);
+    Settings::declare("Palette", settings, cx);
 }
 
 /// A fraction from a setting kept in percent.
 pub(crate) fn fraction(setting: &Setting<u32>, cx: &App) -> f32 {
     setting.get(cx).min(100) as f32 / 100.
+}
+
+/// The color that dims the window behind the palette.
+pub(crate) fn scrim(cx: &App) -> Hsla {
+    hsla(0., 0., 0., fraction(&SCRIM, cx))
 }

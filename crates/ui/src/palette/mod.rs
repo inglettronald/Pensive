@@ -2,10 +2,9 @@
 
 mod commands;
 mod fuzzy;
+mod options;
 mod results;
-mod settings;
 
-use ::settings::{AnySetting, ControlState, Settings};
 use components::{CommandPalette, PaletteChip, PaletteSection};
 use gpui::{
     App, Context, Entity, EventEmitter, FocusHandle, Focusable, ScrollHandle, Subscription, Window,
@@ -13,13 +12,14 @@ use gpui::{
 };
 use model::{ProjectId, Projects};
 use serde::{Deserialize, Serialize};
+use settings::{AnySetting, ControlState, Settings};
 
 use crate::{
     key_binding,
     text_input::{self, Changed, TextInput},
 };
+pub(crate) use options::{OPEN_ON, declare as declare_settings, scrim};
 use results::{Query, Results, SettingRow, results};
-pub(crate) use settings::{OPEN_ON, SCRIM, declare as declare_settings, fraction};
 
 actions!(
     command_palette,
@@ -233,13 +233,13 @@ impl PaletteView {
 
     fn results(&self, cx: &App) -> Results {
         let text = self.input.read(cx).text();
-        let settings: Vec<SettingRow> = cx
+        let setting_rows: Vec<SettingRow> = cx
             .try_global::<Settings>()
-            .map(|settings| settings.declared())
-            .unwrap_or_default()
-            .iter()
-            .map(|setting| SettingRow {
-                setting: *setting,
+            .into_iter()
+            .flat_map(Settings::declared)
+            .map(|(section, setting)| SettingRow {
+                section,
+                setting,
                 state: setting.state(cx),
             })
             .collect();
@@ -249,8 +249,8 @@ impl PaletteView {
             tab: self.tab,
             keyword: self.keyword.as_ref(),
             text,
-            settings: &settings,
-            active_days: settings::ACTIVE_DAYS.get(cx).max(1),
+            settings: &setting_rows,
+            active_days: options::ACTIVE_DAYS.get(cx).max(1),
         })
     }
 
@@ -345,17 +345,14 @@ impl PaletteView {
         }
     }
 
-    /// The selected row, when the cursor is at the end of the query so arrows can act on it.
-    fn selected_at_end(&self, cx: &App) -> Option<results::Item> {
-        let at_end = self.input.read(cx).cursor_at_end();
-        at_end
-            .then(|| self.results(cx).into_items().nth(self.selected))
-            .flatten()
-    }
-
-    /// ← and → at the end of the query change the selected setting's choice.
+    /// ← and → change the selected setting's choice while the query is empty. With text in the
+    /// query, they move the cursor.
     fn change_choice(&mut self, step: isize, cx: &mut Context<Self>) -> bool {
-        let Some(Action::Step(key)) = self.selected_at_end(cx).map(|item| item.action) else {
+        if !self.input.read(cx).text().is_empty() {
+            return false;
+        }
+        let selected = self.results(cx).into_items().nth(self.selected);
+        let Some(Action::Step(key)) = selected.map(|item| item.action) else {
             return false;
         };
         let toggle = find_setting(key, cx)
@@ -372,7 +369,12 @@ impl PaletteView {
         if self.change_choice(1, cx) {
             return;
         }
-        match self.selected_at_end(cx).and_then(|item| item.narrow) {
+        let at_end = self.input.read(cx).cursor_at_end();
+        let narrow = at_end
+            .then(|| self.results(cx).into_items().nth(self.selected))
+            .flatten()
+            .and_then(|item| item.narrow);
+        match narrow {
             Some(keyword) => {
                 self.set_keyword(Some(keyword), cx);
                 self.set_query("", cx);
@@ -449,9 +451,10 @@ impl Render for PaletteView {
                 .ok();
         };
 
-        let tabs = match settings::SHOW_TABS.get(cx) {
-            true => Tab::LABELS.as_slice(),
-            false => &[],
+        let tabs: &[&str] = if options::SHOW_TABS.get(cx) {
+            &Tab::LABELS
+        } else {
+            &[]
         };
         let mut palette = CommandPalette::new()
             .input(self.input.clone())
@@ -481,7 +484,7 @@ impl Render for PaletteView {
         if self.overlay {
             palette = palette
                 .overlay()
-                .opacity(settings::fraction(&settings::OPACITY, cx));
+                .opacity(options::fraction(&options::OPACITY, cx));
         }
 
         div()

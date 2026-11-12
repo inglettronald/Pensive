@@ -1,7 +1,7 @@
 [package]
 name = "theme"
 version = "0.1.0"
-description = "The colors, fonts and sizes that components read, with user overrides."
+description = "The colors, fonts and sizes that components read, with user themes and the appearance settings."
 edition.workspace = true
 license.workspace = true
 repository.workspace = true

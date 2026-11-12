@@ -57,7 +57,10 @@ impl RenderOnce for Select {
                     .color(colors.text_faint),
             )
             .when_some(self.on_click, |select, handler| {
-                select.on_click(move |_, window, cx| handler((), window, cx))
+                select.on_click(move |_, window, cx| {
+                    cx.stop_propagation();
+                    handler((), window, cx)
+                })
             })
     }
 }

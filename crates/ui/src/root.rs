@@ -2,15 +2,15 @@
 //! project, with the command palette over it when Ctrl K opens it.
 
 use gpui::{
-    App, Bounds, Context, Entity, FocusHandle, Focusable, Subscription, Window, WindowBounds,
-    WindowOptions, actions, div, hsla, prelude::*, px, size, svg,
+    App, Bounds, Context, Entity, FocusHandle, Focusable, Subscription, TitlebarOptions, Window,
+    WindowBounds, WindowOptions, actions, div, prelude::*, px, size, svg,
 };
 use model::{ProjectId, Projects};
 use theme::{ActiveTheme, Typeset};
 
 use crate::{
     key_binding,
-    palette::{OPEN_ON, PaletteEvent, PaletteView, SCRIM, Tab},
+    palette::{OPEN_ON, PaletteEvent, PaletteView, Tab, scrim},
 };
 
 actions!(pensive, [OpenPalette, OpenActive]);
@@ -50,14 +50,16 @@ impl Pensive {
             _subscription: subscription,
         };
         match project {
-            None => pensive.open_palette(Tab::All, window, cx),
+            None => pensive.open_palette(None, window, cx),
             Some(_) => window.focus(&pensive.focus_handle, cx),
         }
         pensive
     }
 
-    /// Opens the palette on `tab`. On the landing screen it's already open, so this starts over.
-    pub fn open_palette(&mut self, tab: Tab, window: &mut Window, cx: &mut Context<Self>) {
+    /// Opens the palette on `tab`, or on the tab the `palette.open_on` setting names. On the
+    /// landing screen it's already open, so this starts over.
+    pub fn open_palette(&mut self, tab: Option<Tab>, window: &mut Window, cx: &mut Context<Self>) {
+        let tab = tab.unwrap_or_else(|| OPEN_ON.get(cx));
         let (project, overlay) = (self.project, self.project.is_some());
         self.palette
             .update(cx, |palette, cx| palette.reset(project, tab, overlay, cx));
@@ -168,7 +170,7 @@ pub fn open_window(projects: Entity<Projects>, project: Option<ProjectId>, cx: &
     cx.open_window(
         WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(bounds)),
-            titlebar: Some(gpui::TitlebarOptions {
+            titlebar: Some(TitlebarOptions {
                 title: Some("Pensive".into()),
                 ..Default::default()
             }),
@@ -192,10 +194,10 @@ impl Render for Pensive {
             .text_color(theme.colors.text)
             .font_family(theme.fonts.ui.clone())
             .on_action(cx.listener(|pensive, _: &OpenPalette, window, cx| {
-                pensive.open_palette(OPEN_ON.get(cx), window, cx)
+                pensive.open_palette(None, window, cx)
             }))
             .on_action(cx.listener(|pensive, _: &OpenActive, window, cx| {
-                pensive.open_palette(Tab::Active, window, cx)
+                pensive.open_palette(Some(Tab::Active), window, cx)
             }));
         match self.project {
             None => root.child(self.landing(cx)),
@@ -211,7 +213,7 @@ impl Render for Pensive {
                                 .items_center()
                                 .pt_16()
                                 .pb_16()
-                                .bg(hsla(0., 0., 0., crate::palette::fraction(&SCRIM, cx)))
+                                .bg(scrim(cx))
                                 .child(self.palette.clone()),
                         )
                     })
@@ -225,7 +227,9 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
     use mock::Mock;
     use model::fixtures::{self, HARBOR, PENSIVE};
 
-    use crate::palette::Keyword;
+    use gpui::AnyView;
+
+    use crate::palette::{Keyword, declare_settings};
 
     /// A window on the sample projects, with the palette open on `tab` and set up by `setup`.
     fn window(
@@ -234,13 +238,13 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
         setup: fn(&mut PaletteView, &mut Context<PaletteView>),
         window: &mut Window,
         cx: &mut App,
-    ) -> gpui::AnyView {
-        crate::palette::declare_settings(cx);
+    ) -> AnyView {
+        declare_settings(cx);
         let projects = cx.new(|_| fixtures::projects());
         let view = cx.new(|cx| Pensive::new(projects, project, window, cx));
         view.update(cx, |pensive, cx| {
             if let Some(tab) = tab {
-                pensive.open_palette(tab, window, cx);
+                pensive.open_palette(Some(tab), window, cx);
             }
             pensive.palette.update(cx, setup);
         });

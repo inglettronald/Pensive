@@ -1,5 +1,4 @@
-//! A named set of colors and fonts, user themes layered over it, and the theme in use built
-//! from them.
+//! A named set of colors and fonts, and the user themes layered over it.
 
 use std::collections::BTreeMap;
 
@@ -9,8 +8,10 @@ use serde::{Deserialize, de::DeserializeOwned};
 
 use crate::{ThemeColors, ThemeColorsRefinement, ThemeFonts, ThemeFontsRefinement};
 
-/// The built-in theme every user theme ends up extending.
-pub const BASE_THEME: &str = "pensive-dark";
+/// The built-in theme every user theme ends up extending, as `settings.toml` names it.
+pub(crate) const BASE_THEME: &str = "pensive-dark";
+/// The built-in theme's name as the app shows it.
+pub(crate) const BASE_THEME_NAME: &str = "Pensive Dark";
 
 #[derive(Clone, Debug)]
 pub struct Theme {
@@ -51,7 +52,7 @@ impl Global for UserThemes {}
 impl Theme {
     pub fn pensive_dark() -> Self {
         Self {
-            name: "Pensive Dark".into(),
+            name: BASE_THEME_NAME.into(),
             colors: ThemeColors::dark(),
             fonts: ThemeFonts::default_pair(),
         }
@@ -104,8 +105,13 @@ impl ThemeOverride {
     pub fn from_toml(source: &str) -> Result<(Self, Vec<String>), toml::de::Error> {
         let mut table: toml::Table = source.parse()?;
         let mut problems = Vec::new();
-        drop_invalid::<ThemeColorsRefinement>(&mut table, "colors", &mut problems);
-        drop_invalid::<ThemeFontsRefinement>(&mut table, "fonts", &mut problems);
+        if let Some(toml::Value::Table(colors)) = table.get_mut("colors") {
+            drop_invalid::<ThemeColorsRefinement>(colors, "colors.", &mut problems);
+        }
+        if let Some(toml::Value::Table(fonts)) = table.get_mut("fonts") {
+            drop_invalid::<ThemeFontsRefinement>(fonts, "fonts.", &mut problems);
+        }
+        drop_invalid::<Self>(&mut table, "", &mut problems);
         let theme_override = serde_ignored::deserialize(toml::Value::Table(table), |path| {
             problems.push(format!("`{path}` isn't a theme key"))
         })?;
@@ -113,22 +119,20 @@ impl ThemeOverride {
     }
 }
 
-/// Removes each entry of `table[section]` that doesn't parse as part of `T`.
+/// Removes each entry of `entries` that doesn't parse as part of `T`. `prefix` is the path to
+/// `entries` in the file, for reporting.
 fn drop_invalid<T: DeserializeOwned>(
-    table: &mut toml::Table,
-    section: &str,
+    entries: &mut toml::Table,
+    prefix: &str,
     problems: &mut Vec<String>,
 ) {
-    let Some(toml::Value::Table(entries)) = table.get_mut(section) else {
-        return;
-    };
     entries.retain(|key, value| {
         let entry = toml::Table::from_iter([(key.to_string(), value.clone())]);
         match toml::Value::Table(entry).try_into::<T>() {
             Ok(_) => true,
             Err(error) => {
                 problems.push(format!(
-                    "`{section}.{key}` is left out because its value is wrong: {}",
+                    "`{prefix}{key}` is left out because its value is wrong: {}",
                     error.message()
                 ));
                 false
@@ -138,9 +142,10 @@ fn drop_invalid<T: DeserializeOwned>(
 }
 
 impl UserThemes {
-    /// Reads theme files, given as each file's name without `.toml` and its text. Returns what's
-    /// wrong with them, each problem naming its file.
-    pub fn load(files: impl IntoIterator<Item = (String, String)>) -> (Self, Vec<String>) {
+    /// Replaces the themes with the files given, as each file's name without `.toml` and its
+    /// text. A file that isn't valid TOML keeps its last good version. Returns what's wrong with
+    /// the files, each problem naming its file.
+    pub fn load(&mut self, files: impl IntoIterator<Item = (String, String)>) -> Vec<String> {
         let mut themes = BTreeMap::new();
         let mut problems = Vec::new();
         for (name, source) in files {
@@ -159,10 +164,16 @@ impl UserThemes {
                     );
                     themes.insert(name.into(), theme);
                 }
-                Err(error) => problems.push(format!("{name}.toml: {error}")),
+                Err(error) => {
+                    problems.push(format!("{name}.toml: {error}"));
+                    if let Some(last_good) = self.0.remove(name.as_str()) {
+                        themes.insert(name.into(), last_good);
+                    }
+                }
             }
         }
-        (Self(themes), problems)
+        self.0 = themes;
+        problems
     }
 
     pub fn names(&self) -> impl Iterator<Item = &SharedString> {
@@ -197,12 +208,18 @@ mod tests {
         assert_eq!(theme.fonts.ui, base.fonts.ui);
     }
 
-    fn themes(files: &[(&str, &str)]) -> (UserThemes, Vec<String>) {
-        UserThemes::load(
+    fn load(themes: &mut UserThemes, files: &[(&str, &str)]) -> Vec<String> {
+        themes.load(
             files
                 .iter()
                 .map(|(name, source)| (name.to_string(), source.to_string())),
         )
+    }
+
+    fn themes(files: &[(&str, &str)]) -> (UserThemes, Vec<String>) {
+        let mut themes = UserThemes::default();
+        let problems = load(&mut themes, files);
+        (themes, problems)
     }
 
     #[test]
@@ -259,5 +276,28 @@ mod tests {
         assert_eq!(problems[1], "`colors.text_mute` isn't a theme key");
         assert!(theme_override.colors.text.is_none());
         assert!(theme_override.colors.border.is_some());
+    }
+
+    #[test]
+    fn a_bad_top_level_value_is_left_out_and_the_rest_applies() {
+        let (theme_override, problems) = ThemeOverride::from_toml(
+            "extends = 5
+[colors]
+text = \"#111111\"",
+        )
+        .unwrap();
+        assert_eq!(problems.len(), 1);
+        assert!(problems[0].starts_with("`extends` is left out"));
+        assert!(theme_override.extends.is_none());
+        assert!(theme_override.colors.text.is_some());
+    }
+
+    #[test]
+    fn a_theme_file_that_isnt_valid_toml_keeps_its_last_good_version() {
+        let (mut themes, _) = themes(&[("nord", "[colors]\ntext = \"#111111\"")]);
+        let problems = load(&mut themes, &[("nord", "[colors")]);
+        assert_eq!(problems.len(), 1);
+        let (theme, _) = Theme::named("nord", &themes);
+        assert_eq!(theme.colors.text, rgb(0x111111).into());
     }
 }

@@ -23,16 +23,6 @@ struct Config {
 
 impl Global for Config {}
 
-impl Config {
-    fn settings_file(&self) -> PathBuf {
-        self.dir.join("settings.toml")
-    }
-
-    fn themes_dir(&self) -> PathBuf {
-        self.dir.join("themes")
-    }
-}
-
 /// Loads the config folder and keeps it loaded. Call it after every crate has declared its
 /// settings.
 pub fn init(cx: &mut App) {
@@ -40,21 +30,16 @@ pub fn init(cx: &mut App) {
         eprintln!("Couldn't find a home folder, so every setting uses its default");
         return;
     };
-    let mut config = Config {
+    let watcher = watch(&dir, cx);
+    cx.set_global(Config {
         dir,
         on_disk: String::new(),
-        _watcher: None,
-    };
-    if let Err(error) = fs::create_dir_all(config.themes_dir()) {
-        eprintln!("Couldn't create {}: {error}", config.themes_dir().display());
-    }
-    config._watcher = watch(&config, cx);
-    cx.set_global(config);
+        _watcher: watcher,
+    });
     reload(cx);
     cx.observe_global::<Settings>(|cx| {
         write_changes(cx);
-        theme::apply(cx);
-        cx.refresh_windows();
+        apply_theme(cx);
     })
     .detach();
 }
@@ -70,9 +55,18 @@ fn config_dir() -> Option<PathBuf> {
     )
 }
 
+fn settings_file(dir: &Path) -> PathBuf {
+    dir.join("settings.toml")
+}
+
+fn themes_dir(dir: &Path) -> PathBuf {
+    dir.join("themes")
+}
+
 /// Watches the folder, the themes in it, and the real folder of a symlinked `settings.toml`.
-/// Editors often save by replacing the file, so this watches folders rather than files.
-fn watch(config: &Config, cx: &mut App) -> Option<notify::RecommendedWatcher> {
+/// Editors often save by replacing the file, so this watches folders rather than files. A folder
+/// that doesn't exist yet isn't watched until the next launch.
+fn watch(dir: &Path, cx: &mut App) -> Option<notify::RecommendedWatcher> {
     let (changed, mut changes) = mpsc::unbounded();
     let mut watcher = notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
         if event.is_ok_and(|event| !event.kind.is_access()) {
@@ -81,16 +75,17 @@ fn watch(config: &Config, cx: &mut App) -> Option<notify::RecommendedWatcher> {
     })
     .inspect_err(|error| eprintln!("Settings won't reload while Pensive runs: {error}"))
     .ok()?;
-    let linked = fs::canonicalize(config.settings_file())
-        .ok()
-        .and_then(|file| Some(file.parent()?.to_path_buf()))
-        .filter(|dir| *dir != config.dir);
-    for dir in [Some(config.dir.clone()), Some(config.themes_dir()), linked]
+    let linked = link_target(&settings_file(dir))
+        .parent()
+        .map(Path::to_path_buf)
+        .filter(|linked| linked != dir);
+    for folder in [Some(dir.to_path_buf()), Some(themes_dir(dir)), linked]
         .into_iter()
         .flatten()
+        .filter(|folder| folder.is_dir())
     {
-        if let Err(error) = watcher.watch(&dir, RecursiveMode::NonRecursive) {
-            eprintln!("Changes in {} won't reload: {error}", dir.display());
+        if let Err(error) = watcher.watch(&folder, RecursiveMode::NonRecursive) {
+            eprintln!("Changes in {} won't reload: {error}", folder.display());
         }
     }
     cx.spawn(async move |cx| {
@@ -107,32 +102,53 @@ fn watch(config: &Config, cx: &mut App) -> Option<notify::RecommendedWatcher> {
     Some(watcher)
 }
 
-/// Reads the themes and settings from disk, applies them, and prints what's wrong with them.
+/// Reads the themes and settings from disk and prints what's wrong with them. The theme is built
+/// once: by the settings observer when the settings changed, otherwise here.
 fn reload(cx: &mut App) {
-    let config = cx.global::<Config>();
-    let (themes, mut problems) = UserThemes::load(read_themes(&config.themes_dir()));
-    let settings_file = config.settings_file();
-    cx.set_global(themes);
+    let dir = cx.global::<Config>().dir.clone();
+    let themes = read_themes(&themes_dir(&dir));
+    let problems = cx.default_global::<UserThemes>().load(themes);
+    print(problems);
 
-    let source = match fs::read_to_string(&settings_file) {
+    let source = match read_settings(&dir) {
         Ok(source) => source,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => String::new(),
         Err(error) => {
-            problems.push(format!("Couldn't read settings.toml: {error}"));
-            cx.global::<Config>().on_disk.clone()
+            eprintln!("Couldn't read settings.toml: {error}");
+            return apply_theme(cx);
         }
     };
-    if source != cx.global::<Config>().on_disk || cx.try_global::<Settings>().is_none() {
-        cx.global_mut::<Config>().on_disk = source.clone();
-        let settings_problems = Settings::update_global(cx, |settings, _| settings.load(&source));
-        problems.extend(
-            settings_problems
-                .into_iter()
-                .map(|problem| format!("settings.toml: {problem}")),
-        );
+    if source == cx.global::<Config>().on_disk {
+        return apply_theme(cx);
     }
-    problems.extend(theme::apply(cx));
+    load_settings(source, cx);
+}
+
+/// The settings file's text. A missing file reads as empty, which means every default.
+fn read_settings(dir: &Path) -> io::Result<String> {
+    match fs::read_to_string(settings_file(dir)) {
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(String::new()),
+        result => result,
+    }
+}
+
+/// Loads `source` as the settings file. The settings observer then builds the theme.
+fn load_settings(source: String, cx: &mut App) {
+    cx.global_mut::<Config>().on_disk = source.clone();
+    let problems = Settings::update_global(cx, |settings, _| settings.load(&source));
+    print(
+        problems
+            .into_iter()
+            .map(|problem| format!("settings.toml: {problem}")),
+    );
+}
+
+/// Installs the theme and density the settings ask for, and prints what went wrong.
+fn apply_theme(cx: &mut App) {
+    print(theme::apply(cx));
     cx.refresh_windows();
+}
+
+fn print(problems: impl IntoIterator<Item = String>) {
     for problem in problems {
         eprintln!("{problem}");
     }
@@ -159,7 +175,8 @@ fn read_themes(dir: &Path) -> Vec<(String, String)> {
     themes
 }
 
-/// Writes `settings.toml` when the app changed a setting.
+/// Writes `settings.toml` when the app changed a setting. If the file changed on disk since it
+/// was last read, the user's edit wins: it's loaded and the app's change is dropped.
 fn write_changes(cx: &mut App) {
     let Some(config) = cx.try_global::<Config>() else {
         return;
@@ -168,20 +185,49 @@ fn write_changes(cx: &mut App) {
     if source == config.on_disk {
         return;
     }
+    let disk = match read_settings(&config.dir) {
+        Ok(disk) => disk,
+        Err(error) => return eprintln!("Couldn't save settings.toml: {error}"),
+    };
+    if disk != config.on_disk {
+        eprintln!("settings.toml changed on disk, so the change made in Pensive wasn't saved");
+        return load_settings(disk, cx);
+    }
     let source = source.to_string();
-    match write_through_links(&config.settings_file(), &source) {
+    match write_through_links(&settings_file(&config.dir), &source) {
         Ok(()) => cx.global_mut::<Config>().on_disk = source,
         Err(error) => eprintln!("Couldn't save settings.toml: {error}"),
     }
 }
 
 /// Replaces the file at `path` in one step, so a crash never leaves half a file. When `path` is
-/// a symlink, this replaces what it points to, so the link survives.
+/// a symlink, even one whose target doesn't exist yet, this replaces the target, so the link
+/// survives.
 fn write_through_links(path: &Path, text: &str) -> io::Result<()> {
-    let target = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    let target = link_target(path);
+    if let Some(folder) = target.parent() {
+        fs::create_dir_all(folder)?;
+    }
     let temporary = target.with_extension("toml.saving");
     fs::write(&temporary, text)?;
     fs::rename(&temporary, &target)
+}
+
+/// Where `path` ends up after following its symlinks. Unlike `fs::canonicalize`, the end doesn't
+/// have to exist.
+fn link_target(path: &Path) -> PathBuf {
+    let mut path = path.to_path_buf();
+    // A loop of links stops here and fails when it's written.
+    for _ in 0..32 {
+        let Ok(target) = fs::read_link(&path) else {
+            break;
+        };
+        path = match path.parent() {
+            Some(folder) => folder.join(target),
+            None => target,
+        };
+    }
+    path
 }
 
 #[cfg(test)]
@@ -202,6 +248,24 @@ mod tests {
         let dotfiles = dir.join("dotfiles.toml");
         let link = dir.join("settings.toml");
         fs::write(&dotfiles, "density = \"calm\"\n").unwrap();
+        std::os::unix::fs::symlink(&dotfiles, &link).unwrap();
+
+        write_through_links(&link, "density = \"dense\"\n").unwrap();
+
+        assert!(fs::symlink_metadata(&link).unwrap().is_symlink());
+        assert_eq!(
+            fs::read_to_string(&dotfiles).unwrap(),
+            "density = \"dense\"\n"
+        );
+        fs::remove_dir_all(dir).ok();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn saving_through_a_dangling_symlink_creates_its_target() {
+        let dir = scratch("dangling");
+        let dotfiles = dir.join("dotfiles").join("pensive.toml");
+        let link = dir.join("settings.toml");
         std::os::unix::fs::symlink(&dotfiles, &link).unwrap();
 
         write_through_links(&link, "density = \"dense\"\n").unwrap();

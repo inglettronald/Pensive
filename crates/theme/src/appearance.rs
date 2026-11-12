@@ -1,14 +1,13 @@
-//! The appearance settings, and the theme and density in use built from them.
+//! The appearance settings, and installing the theme and density they choose.
 
 use gpui::{App, SharedString};
 use settings::{AnySetting, Choice, Control, Setting, Settings};
 use strum::VariantArray;
 
-use crate::{BASE_THEME, DensityPreset, Theme, UserThemes};
+use crate::{BASE_THEME, BASE_THEME_NAME, DensityPreset, Theme, UserThemes};
 
-pub static THEME: Setting<SharedString> = Setting {
+pub(crate) static THEME: Setting<SharedString> = Setting {
     key: "theme",
-    section: "Appearance",
     name: "Theme",
     description: "The colors, and the fonts unless they're set below",
     default: SharedString::new_static(BASE_THEME),
@@ -17,16 +16,15 @@ pub static THEME: Setting<SharedString> = Setting {
             .try_global::<UserThemes>()
             .into_iter()
             .flat_map(UserThemes::names);
-        [Choice::new(BASE_THEME.into(), Theme::pensive_dark().name)]
+        [Choice::new(BASE_THEME.into(), BASE_THEME_NAME)]
             .into_iter()
             .chain(user_themes.map(|name| Choice::new(name.clone(), name.clone())))
             .collect()
     }),
 };
 
-pub static DENSITY: Setting<DensityPreset> = Setting {
+pub(crate) static DENSITY: Setting<DensityPreset> = Setting {
     key: "density",
-    section: "Appearance",
     name: "Density",
     description: "Calm has larger text and 28 px rows",
     default: DensityPreset::Calm,
@@ -38,18 +36,16 @@ pub static DENSITY: Setting<DensityPreset> = Setting {
     }),
 };
 
-pub static UI_FONT: Setting<Option<SharedString>> = Setting {
+pub(crate) static UI_FONT: Setting<Option<SharedString>> = Setting {
     key: "fonts.ui",
-    section: "Appearance",
     name: "Interface font",
     description: "Menus, labels and body text",
     default: None,
     control: Control::Select(|_| fonts(["Inter", "Geist"])),
 };
 
-pub static CODE_FONT: Setting<Option<SharedString>> = Setting {
+pub(crate) static CODE_FONT: Setting<Option<SharedString>> = Setting {
     key: "fonts.code",
-    section: "Appearance",
     name: "Code font",
     description: "Code and diffs",
     default: None,
@@ -66,7 +62,7 @@ fn fonts(bundled: [&'static str; 2]) -> Vec<Choice<Option<SharedString>>> {
 
 pub(crate) fn declare(cx: &mut App) {
     let settings: [&'static dyn AnySetting; 4] = [&THEME, &DENSITY, &UI_FONT, &CODE_FONT];
-    Settings::declare(settings, cx);
+    Settings::declare("Appearance", settings, cx);
 }
 
 /// Installs the theme and density the settings ask for. Returns what went wrong building the
