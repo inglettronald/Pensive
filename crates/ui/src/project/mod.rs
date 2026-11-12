@@ -2,20 +2,27 @@
 
 mod files;
 mod main_view;
+#[cfg(feature = "mocks")]
+mod mocks;
 mod sidebar;
 mod tree;
 
 use std::time::Duration;
 
+use components::IconName;
 use gpui::{
     App, ClipboardItem, Context, Entity, FocusHandle, Focusable, SharedString, Subscription, Task,
     Window, actions, div, prelude::*,
 };
 use model::{Changes, FileChange};
+use strum::VariantArray;
 
 use crate::{key_binding, text_input::TextInput};
 
-actions!(project, [CopyPath, Commit]);
+#[cfg(feature = "mocks")]
+pub(crate) use mocks::mocks;
+
+actions!(project, [CopyPath, CommitStaged]);
 
 const CONTEXT: &str = "ProjectView";
 /// How long the pointer rests on a file before its path shows.
@@ -24,17 +31,28 @@ const TOOLTIP_DELAY: Duration = Duration::from_millis(500);
 pub(crate) fn bind_keys(cx: &mut App) {
     cx.bind_keys([
         key_binding("secondary-shift-c", CopyPath, Some(CONTEXT), cx),
-        key_binding("secondary-enter", Commit, Some(CONTEXT), cx),
+        key_binding("secondary-enter", CommitStaged, Some(CONTEXT), cx),
     ]);
 }
 
-/// How the sidebar lists files, for the uncommitted work and any commit that's open.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum FilesView {
+/// How the sidebar lays out files, for the uncommitted work and any commit that's open.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, VariantArray)]
+pub enum FileLayout {
     List,
     Tree,
     /// Each file with the functions, types and headings its hunks touch.
     Symbols,
+}
+
+impl FileLayout {
+    /// The icon on its segment of the switcher.
+    fn icon(self) -> IconName {
+        match self {
+            FileLayout::List => IconName::List,
+            FileLayout::Tree => IconName::ListTree,
+            FileLayout::Symbols => IconName::Braces,
+        }
+    }
 }
 
 /// Which list a file is in.
@@ -53,15 +71,16 @@ pub(crate) struct FileKey {
 
 pub struct ProjectView {
     changes: Entity<Changes>,
-    view: FilesView,
+    layout: FileLayout,
     uncommitted_open: bool,
     open_commit: Option<SharedString>,
     selected: Option<FileKey>,
-    /// A symbol of the selected file, picked in the symbol view.
+    /// A symbol of the selected file, picked in the symbol layout.
     selected_symbol: Option<usize>,
-    /// Files whose symbols are hidden in the symbol view.
+    /// Files whose symbols are hidden in the symbol layout.
     folded: Vec<FileKey>,
     hovered: Option<FileKey>,
+    hovered_commit: Option<SharedString>,
     tooltip: Option<FileKey>,
     tooltip_delay: Option<Task<()>>,
     message: Entity<TextInput>,
@@ -83,13 +102,14 @@ impl ProjectView {
         let subscription = cx.observe(&changes, |_, _, cx| cx.notify());
         Self {
             changes,
-            view: FilesView::List,
+            layout: FileLayout::List,
             uncommitted_open: true,
             open_commit: None,
             selected,
             selected_symbol: None,
             folded: Vec::new(),
             hovered: None,
+            hovered_commit: None,
             tooltip: None,
             tooltip_delay: None,
             message,
@@ -98,8 +118,8 @@ impl ProjectView {
         }
     }
 
-    pub fn set_view(&mut self, view: FilesView, cx: &mut Context<Self>) {
-        self.view = view;
+    pub fn set_layout(&mut self, layout: FileLayout, cx: &mut Context<Self>) {
+        self.layout = layout;
         self.selected_symbol = None;
         cx.notify();
     }
@@ -145,6 +165,7 @@ impl ProjectView {
 
     /// Shows the path of the `index`th uncommitted file at once, as if the pointer had rested
     /// on it.
+    #[cfg(feature = "mocks")]
     pub fn show_path(&mut self, index: usize, cx: &mut Context<Self>) {
         let key = FileKey {
             source: Source::Uncommitted,
@@ -155,7 +176,8 @@ impl ProjectView {
         cx.notify();
     }
 
-    /// Picks the `index`th symbol of the selected file, as clicking it in the symbol view does.
+    /// Picks the `index`th symbol of the selected file, as clicking it in the symbol layout does.
+    #[cfg(feature = "mocks")]
     pub fn select_symbol(&mut self, index: usize, cx: &mut Context<Self>) {
         if let Some(key) = self.selected.clone() {
             self.select(key, Some(index), cx);
@@ -207,6 +229,12 @@ impl ProjectView {
             }
             return;
         }
+        // The new row can report hover before the old one reports leaving, so the old row's
+        // path must go now, or Ctrl Shift C would copy it.
+        if self.tooltip.as_ref().is_some_and(|tooltip| *tooltip != key) {
+            self.tooltip = None;
+            cx.notify();
+        }
         self.hovered = Some(key.clone());
         self.tooltip_delay = Some(cx.spawn(async move |this, cx| {
             cx.background_executor().timer(TOOLTIP_DELAY).await;
@@ -218,6 +246,16 @@ impl ProjectView {
             })
             .ok();
         }));
+    }
+
+    /// Tracks the commit title under the pointer, whose fade must end in the hover color.
+    fn hover_commit(&mut self, sha: SharedString, hovered: bool, cx: &mut Context<Self>) {
+        if hovered {
+            self.hovered_commit = Some(sha);
+        } else if self.hovered_commit.as_ref() == Some(&sha) {
+            self.hovered_commit = None;
+        }
+        cx.notify();
     }
 
     fn file(&self, key: &FileKey, cx: &App) -> Option<FileChange> {
@@ -238,29 +276,7 @@ impl ProjectView {
     }
 
     /// Committing waits on a Git backend.
-    fn commit(&mut self, _: &Commit, _window: &mut Window, _cx: &mut Context<Self>) {}
-
-    /// Wraps a handler for components, which call back with only the window and app.
-    fn handler(
-        &self,
-        cx: &Context<Self>,
-        handler: impl Fn(&mut Self, &mut Context<Self>) + 'static,
-    ) -> impl Fn(&mut Window, &mut App) + 'static {
-        let handler = self.handler_with(cx, move |this, (), cx| handler(this, cx));
-        move |window, cx| handler((), window, cx)
-    }
-
-    /// [`Self::handler`] for components that call back with a value, such as a selected index.
-    fn handler_with<T: 'static>(
-        &self,
-        cx: &Context<Self>,
-        handler: impl Fn(&mut Self, T, &mut Context<Self>) + 'static,
-    ) -> impl Fn(T, &mut Window, &mut App) + 'static {
-        let view = cx.entity().downgrade();
-        move |value, _, cx| {
-            view.update(cx, |this, cx| handler(this, value, cx)).ok();
-        }
-    }
+    fn commit_staged(&mut self, _: &CommitStaged, _window: &mut Window, _cx: &mut Context<Self>) {}
 }
 
 impl Focusable for ProjectView {
@@ -277,7 +293,7 @@ impl Render for ProjectView {
             .key_context(CONTEXT)
             .track_focus(&self.focus_handle)
             .on_action(cx.listener(Self::copy_path))
-            .on_action(cx.listener(Self::commit))
+            .on_action(cx.listener(Self::commit_staged))
             .flex()
             .flex_1()
             .min_h_0()

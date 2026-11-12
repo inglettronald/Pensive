@@ -17,7 +17,7 @@ use gpui::{
 };
 use theme::{ActiveTheme, Typeset};
 
-use crate::{Callback, Icon, IconName, Kbd, TabStrip};
+use crate::{Callback, Icon, IconButton, IconName, Kbd, TabStrip, callback};
 use field::Field;
 
 /// A key and what pressing it does, shown in the footer.
@@ -213,7 +213,7 @@ impl CommandPalette {
 
     /// Called when the footer's gear is clicked, to open Settings.
     pub fn on_settings(mut self, handler: impl Fn(&mut Window, &mut App) + 'static) -> Self {
-        self.on_settings = Some(Rc::new(move |(), window, cx| handler(window, cx)));
+        self.on_settings = Some(callback(handler));
         self
     }
 
@@ -377,23 +377,16 @@ impl RenderOnce for CommandPalette {
                             .child(hint.label)
                     }))
                     .child(div().flex_1())
-                    .child(
-                        div()
-                            .id("settings")
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .size(px(24.))
-                            .rounded(density.radius_sm)
-                            .child(
-                                Icon::new(IconName::Settings)
-                                    .size(px(14.))
-                                    .color(colors.text_faint),
-                            )
-                            .when_some(self.on_settings, |gear, handler| {
-                                gear.on_click(move |_, window, cx| handler((), window, cx))
-                            }),
-                    ),
+                    .child({
+                        let gear = IconButton::new("settings", IconName::Settings)
+                            .color(|colors| colors.text_faint);
+                        match self.on_settings {
+                            Some(handler) => {
+                                gear.on_click(move |window, cx| handler((), window, cx))
+                            }
+                            None => gear,
+                        }
+                    }),
             )
     }
 }

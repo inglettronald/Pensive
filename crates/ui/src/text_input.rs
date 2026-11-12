@@ -1,6 +1,6 @@
-//! A single-line text field. Adapted from GPUI's `examples/input.rs` (Apache-2.0) at the Zed
-//! tag pinned in the root `Cargo.toml`: it handles IME composition, selection, the clipboard and
-//! the mouse, and is styled from the theme.
+//! A single-line text field. Adapted from GPUI's `examples/input.rs` (Apache-2.0, in this crate's
+//! `LICENSE-APACHE`) at the Zed tag pinned in the root `Cargo.toml`: it handles IME composition,
+//! selection, the clipboard and the mouse, and is styled from the theme.
 
 use std::ops::Range;
 

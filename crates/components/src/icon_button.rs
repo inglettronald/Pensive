@@ -1,11 +1,9 @@
 //! A square button that shows only an icon.
 
-use std::rc::Rc;
-
 use gpui::{App, ElementId, Hsla, Pixels, Window, div, prelude::*, px};
 use theme::{ActiveTheme, ThemeColors};
 
-use crate::{Callback, Icon, IconName};
+use crate::{Callback, Icon, IconName, callback};
 
 #[derive(IntoElement)]
 pub struct IconButton {
@@ -41,7 +39,7 @@ impl IconButton {
     }
 
     pub fn on_click(mut self, handler: impl Fn(&mut Window, &mut App) + 'static) -> Self {
-        self.on_click = Some(Rc::new(move |(), window, cx| handler(window, cx)));
+        self.on_click = Some(callback(handler));
         self
     }
 }

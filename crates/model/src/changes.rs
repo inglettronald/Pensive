@@ -32,18 +32,17 @@ pub struct Symbol {
     pub removed: usize,
 }
 
+/// What happened to a line, with its number in the new file where it has one.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LineChange {
-    Context,
-    Added,
+    Context(usize),
+    Added(usize),
     Removed,
 }
 
 #[derive(Clone, Debug)]
 pub struct HunkLine {
     pub change: LineChange,
-    /// The line's number in the new file. Removed lines have none.
-    pub number: Option<usize>,
     pub text: SharedString,
     /// Byte ranges of the words that changed, when the line pairs with one on the other side.
     pub changed: Vec<Range<usize>>,
@@ -51,7 +50,7 @@ pub struct HunkLine {
 
 #[derive(Clone, Debug)]
 pub struct Hunk {
-    /// The `@@` line, with the enclosing context Git prints after it.
+    /// A line shown above the hunk to introduce it, such as the line ranges it covers.
     pub header: SharedString,
     pub lines: Vec<HunkLine>,
 }
@@ -63,7 +62,7 @@ pub struct FileChange {
     pub status: FileStatus,
     pub added: usize,
     pub removed: usize,
-    /// Always true in a commit, since every file in it is in it.
+    /// Whether the next commit takes this file. A commit's own files are always staged.
     pub staged: bool,
     pub symbols: Vec<Symbol>,
     pub hunks: Vec<Hunk>,

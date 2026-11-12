@@ -1,18 +1,16 @@
 //! The rows of a list of changed files, as a list, a tree or by symbol.
 
-use components::{DiffStat, Fill, Icon, IconName, ListRow, StatusRing, Tooltip};
-use gpui::{AnyElement, App, Context, ElementId, Hsla, div, prelude::*, px};
+use components::{DiffStat, Icon, IconName, ListRow, RingFill, StatusRing, Tooltip};
+use gpui::{AnyElement, App, Context, ElementId, Hsla, Window, div, prelude::*, px};
 use model::{FileChange, FileStatus, SymbolKind};
 use theme::{ActiveTheme, ThemeColors};
 
+use crate::{view_callback, view_callback_with};
+
 use super::{
-    FileKey, FilesView, ProjectView, Source,
+    FileKey, FileLayout, ProjectView, Source,
     tree::{TreeRow, tree},
 };
-
-/// How far a symbol sits in from its file: past the file's arrow, so its icon lines up under the
-/// file's ring.
-const SYMBOL_INDENT: gpui::Pixels = px(18.);
 
 impl ProjectView {
     pub(super) fn file_rows(
@@ -25,13 +23,13 @@ impl ProjectView {
             source: source.clone(),
             index,
         };
-        match self.view {
-            FilesView::List => files
+        match self.layout {
+            FileLayout::List => files
                 .iter()
                 .enumerate()
                 .map(|(index, file)| self.file_row(key(index), file, 0, cx).into_any_element())
                 .collect(),
-            FilesView::Tree => tree(files.iter().map(|file| file.path.as_path()))
+            FileLayout::Tree => tree(files.iter().map(|file| file.path.as_path()))
                 .into_iter()
                 .enumerate()
                 .map(|(position, row)| match row {
@@ -45,14 +43,16 @@ impl ProjectView {
                         .into_any_element(),
                 })
                 .collect(),
-            FilesView::Symbols => {
+            FileLayout::Symbols => {
                 let mut rows = Vec::new();
                 for (index, file) in files.iter().enumerate() {
                     let key = key(index);
                     let open = !self.folded.contains(&key);
-                    let toggle = self.handler(cx, {
+                    let toggle = view_callback(cx, {
                         let key = key.clone();
-                        move |this, cx| this.toggle_folded(key.clone(), cx)
+                        move |this: &mut Self, _: &mut Window, cx: &mut Context<Self>| {
+                            this.toggle_folded(key.clone(), cx)
+                        }
                     });
                     rows.push(
                         self.file_row(key.clone(), file, 0, cx)
@@ -82,11 +82,17 @@ impl ProjectView {
         let index = key.index;
         let ring = StatusRing::new(
             ("ring", index),
-            if file.staged { Fill::Full } else { Fill::Empty },
+            if file.staged {
+                RingFill::Full
+            } else {
+                RingFill::Empty
+            },
         )
         .color(status_color(file.status));
         let ring = if uncommitted {
-            ring.on_click(self.handler(cx, move |this, cx| this.toggle_staged(index, cx)))
+            ring.on_click(view_callback(cx, move |this: &mut Self, _, cx| {
+                this.toggle_staged(index, cx)
+            }))
         } else {
             ring
         };
@@ -97,13 +103,17 @@ impl ProjectView {
             .trailing(DiffStat::new(file.added, file.removed))
             .selected(selected)
             .hovered(self.hovered.as_ref() == Some(&key))
-            .on_click(self.handler(cx, {
+            .on_click(view_callback(cx, {
                 let key = key.clone();
-                move |this, cx| this.select(key.clone(), None, cx)
+                move |this: &mut Self, _: &mut Window, cx: &mut Context<Self>| {
+                    this.select(key.clone(), None, cx)
+                }
             }))
-            .on_hover(self.handler_with(cx, {
+            .on_hover(view_callback_with(cx, {
                 let key = key.clone();
-                move |this, hovered, cx| this.hover(key.clone(), hovered, cx)
+                move |this: &mut Self, hovered: bool, _: &mut Window, cx: &mut Context<Self>| {
+                    this.hover(key.clone(), hovered, cx)
+                }
             }));
         if self.tooltip.as_ref() == Some(&key) {
             row.below(Tooltip::new(path_label(file, cx)).shortcut("Copy", "Ctrl Shift C"))
@@ -131,7 +141,8 @@ impl ProjectView {
             symbol.name.clone(),
         )
         .depth(1)
-        .indent(SYMBOL_INDENT)
+        // Past the file's arrow, so the symbol's icon lines up under the file's ring.
+        .indent(ListRow::SLOT)
         .compact()
         .muted()
         .when(symbol.kind != SymbolKind::Heading, ListRow::code)
@@ -142,9 +153,11 @@ impl ProjectView {
         )
         .trailing(DiffStat::new(symbol.added, symbol.removed))
         .selected(selected)
-        .on_click(self.handler(cx, {
+        .on_click(view_callback(cx, {
             let key = key.clone();
-            move |this, cx| this.select(key.clone(), Some(index), cx)
+            move |this: &mut Self, _: &mut Window, cx: &mut Context<Self>| {
+                this.select(key.clone(), Some(index), cx)
+            }
         }))
         .into_any_element()
     }

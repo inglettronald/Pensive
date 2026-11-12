@@ -14,6 +14,7 @@ use model::{ProjectId, Projects};
 use crate::{
     key_binding,
     text_input::{self, Changed, TextInput},
+    view_callback_with,
 };
 use results::{Query, Results, results};
 
@@ -374,18 +375,12 @@ impl Render for PaletteView {
             Keyword::Branch => PaletteChip::new("branch:").removable(),
         });
         let tab = self.keyword.is_none().then(|| self.tab.index());
-        let this = cx.entity().downgrade();
-        let on_tab = {
-            let this = this.clone();
-            move |index: usize, _: &mut Window, cx: &mut App| {
-                this.update(cx, |palette, cx| palette.set_tab(Tab::ALL[index], cx))
-                    .ok();
-            }
-        };
-        let on_activate = move |index: usize, _: &mut Window, cx: &mut App| {
-            this.update(cx, |palette, cx| palette.activate(index, false, cx))
-                .ok();
-        };
+        let on_tab = view_callback_with(cx, |palette: &mut Self, index: usize, _, cx| {
+            palette.set_tab(Tab::ALL[index], cx)
+        });
+        let on_activate = view_callback_with(cx, |palette: &mut Self, index: usize, _, cx| {
+            palette.activate(index, false, cx)
+        });
 
         let mut palette = CommandPalette::new()
             .input(self.input.clone())

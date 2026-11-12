@@ -62,13 +62,11 @@ Breadcrumbs separate levels with a chevron, never a slash. They are used for pro
 
 ## Window
 
-The [app shell canvas](https://claude.ai/artifact/NoZcJwhCJx8EmwybV3RLyB) has the approved drafts.
-
-The app owns the projects, the command palette, Settings and the theme. A window shows one project. Switching projects replaces it, and Ctrl Enter in the palette opens one in a new window instead.
+The app owns the projects, Settings and the theme. Each window has its own command palette and shows one project. Switching projects replaces the one shown, and Ctrl Enter in the palette opens one in a new window instead.
 
 A window has a title bar, the sidebar on the left and the main view. There is no status bar.
 
-Pensive draws its own title bar. It holds project › branch as a breadcrumb, the palette trigger in the middle, the settings gear and the window controls. Clicking a crumb opens the palette scoped with `project:` or `branch:`. macOS keeps its own window buttons on the left.
+Pensive draws its own title bar. It holds project › branch as a breadcrumb, the palette trigger in the middle, the settings gear and the window controls. Clicking a crumb opens the palette scoped with `project:` or `branch:`. macOS keeps its own window buttons on the left. So does a Linux compositor that decorates windows itself, and Pensive's title bar then sits under the compositor's.
 
 Overlays such as tooltips draw above every pane, so no pane clips them.
 

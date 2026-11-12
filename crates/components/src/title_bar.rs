@@ -1,29 +1,28 @@
 //! The title bar Pensive draws: project › branch, the palette trigger, the gear and the window
 //! controls, with the empty space dragging the window.
 
-use std::rc::Rc;
-
-use components::{Breadcrumb, Callback, Icon, IconButton, IconName, Kbd};
 use gpui::{
-    App, Decorations, MouseButton, SharedString, Window, WindowControlArea, div, prelude::*, px,
+    App, Div, ElementId, Entity, MouseButton, Pixels, Point, SharedString, Stateful, Window,
+    WindowControlArea, div, point, prelude::*, px,
 };
 use theme::{ActiveTheme, Typeset};
 
-/// Where the macOS window buttons sit, inside the title bar's left end.
-pub(crate) const TRAFFIC_LIGHTS: gpui::Point<gpui::Pixels> = gpui::point(px(14.), px(13.));
+use crate::{Breadcrumb, Callback, Icon, IconButton, IconName, Kbd, callback};
+
 /// Room left of the crumbs for the macOS window buttons.
-const TRAFFIC_LIGHTS_WIDTH: f32 = 76.;
+const TRAFFIC_LIGHTS_WIDTH: Pixels = px(76.);
 
 /// The project shown in the title bar.
-pub(crate) struct Location {
+pub struct TitleBarProject {
+    /// The letter on its tile.
     pub initial: SharedString,
-    pub project: SharedString,
+    pub name: SharedString,
     pub branch: Option<SharedString>,
 }
 
 #[derive(IntoElement)]
-pub(crate) struct TitleBar {
-    location: Option<Location>,
+pub struct TitleBar {
+    project: Option<TitleBarProject>,
     controls: bool,
     on_project: Option<Callback<()>>,
     on_branch: Option<Callback<()>>,
@@ -31,11 +30,14 @@ pub(crate) struct TitleBar {
 }
 
 impl TitleBar {
-    /// With no location, the bar is empty apart from the window controls, as on the landing
-    /// screen, where the palette is the page.
-    pub fn new(location: Option<Location>) -> Self {
+    /// Where the macOS window buttons sit, inside the title bar's left end.
+    pub const TRAFFIC_LIGHTS: Point<Pixels> = point(px(14.), px(13.));
+
+    /// With no project, the bar is empty apart from the gear and the window controls, as on the
+    /// landing screen, where the palette is the page.
+    pub fn new(project: Option<TitleBarProject>) -> Self {
         Self {
-            location,
+            project,
             controls: false,
             on_project: None,
             on_branch: None,
@@ -43,48 +45,38 @@ impl TitleBar {
         }
     }
 
-    /// Whether Pensive draws minimize, maximize and close. See [`draws_window_controls`].
+    /// Draws minimize, maximize and close, for platforms that leave them to the app.
     pub fn controls(mut self, controls: bool) -> Self {
         self.controls = controls;
         self
     }
 
     pub fn on_project(mut self, handler: impl Fn(&mut Window, &mut App) + 'static) -> Self {
-        self.on_project = Some(Rc::new(move |(), window, cx| handler(window, cx)));
+        self.on_project = Some(callback(handler));
         self
     }
 
     pub fn on_branch(mut self, handler: impl Fn(&mut Window, &mut App) + 'static) -> Self {
-        self.on_branch = Some(Rc::new(move |(), window, cx| handler(window, cx)));
+        self.on_branch = Some(callback(handler));
         self
     }
 
+    /// Shows the palette trigger, which calls this when clicked.
     pub fn on_palette(mut self, handler: impl Fn(&mut Window, &mut App) + 'static) -> Self {
-        self.on_palette = Some(Rc::new(move |(), window, cx| handler(window, cx)));
+        self.on_palette = Some(callback(handler));
         self
-    }
-}
-
-/// macOS keeps its own window buttons, and so does a Linux compositor that decorates the window
-/// itself. Everywhere else Pensive draws them.
-pub(crate) fn draws_window_controls(window: &Window) -> bool {
-    if cfg!(target_os = "macos") {
-        false
-    } else if cfg!(target_os = "windows") {
-        true
-    } else {
-        matches!(window.window_decorations(), Decorations::Client { .. })
     }
 }
 
 impl RenderOnce for TitleBar {
-    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let theme = cx.theme();
         let colors = &theme.colors;
         let density = cx.density();
         let crumb = |id: &'static str| {
             div()
                 .id(id)
+                .occlude()
                 .flex()
                 .items_center()
                 .gap_2()
@@ -94,8 +86,8 @@ impl RenderOnce for TitleBar {
                 .hover(|crumb| crumb.bg(colors.surface_raised))
         };
 
-        let location = self.location.map(|location| {
-            let project = crumb("project")
+        let location = self.project.map(|project| {
+            let name = crumb("project")
                 .child(
                     div()
                         .flex()
@@ -106,18 +98,18 @@ impl RenderOnce for TitleBar {
                         .bg(colors.surface_selected)
                         .text_color(colors.text_strong)
                         .typeset(density.label)
-                        .child(location.initial),
+                        .child(project.initial),
                 )
                 .child(
                     div()
                         .typeset(density.body)
                         .text_color(colors.text_strong)
-                        .child(location.project),
+                        .child(project.name),
                 )
                 .when_some(self.on_project, |crumb, handler| {
                     crumb.on_click(move |_, window, cx| handler((), window, cx))
                 });
-            let branch = location.branch.map(|branch| {
+            let branch = project.branch.map(|branch| {
                 crumb("branch")
                     .gap_1p5()
                     .child(
@@ -137,7 +129,7 @@ impl RenderOnce for TitleBar {
                     })
             });
             Breadcrumb::new(
-                std::iter::once(project.into_any_element())
+                std::iter::once(name.into_any_element())
                     .chain(branch.map(IntoElement::into_any_element)),
             )
             .chevron_size(px(14.))
@@ -146,6 +138,7 @@ impl RenderOnce for TitleBar {
         let palette = self.on_palette.map(|handler| {
             div()
                 .id("palette")
+                .occlude()
                 .flex()
                 .flex_none()
                 .items_center()
@@ -206,14 +199,14 @@ impl RenderOnce for TitleBar {
             .pl_2()
             .pr_1()
             .when(cfg!(target_os = "macos"), |bar| {
-                bar.pl(px(TRAFFIC_LIGHTS_WIDTH))
+                bar.pl(TRAFFIC_LIGHTS_WIDTH)
             })
             .border_b_1()
             .border_color(colors.border_subtle)
             .bg(colors.surface_panel)
             .font_family(theme.fonts.ui.clone())
             .child(
-                drag_area("drag-left")
+                drag_area("drag-left", window, cx)
                     .flex()
                     .items_center()
                     .flex_1()
@@ -222,28 +215,54 @@ impl RenderOnce for TitleBar {
             )
             .children(palette)
             .child(
-                drag_area("drag-right")
+                drag_area("drag-right", window, cx)
                     .flex()
                     .items_center()
                     .justify_end()
                     .flex_1()
                     .min_w_0()
                     // Settings opens from here once its window exists (PEN-11).
-                    .child(IconButton::new("settings", IconName::Settings).size(px(28.)))
+                    .child(
+                        div()
+                            .occlude()
+                            .child(IconButton::new("settings", IconName::Settings).size(px(28.))),
+                    )
                     .children(controls),
             )
     }
 }
 
-/// Space that moves the window when dragged and maximizes it when double-clicked.
-fn drag_area(id: &'static str) -> gpui::Stateful<gpui::Div> {
+/// Space that moves the window when dragged and maximizes it when double-clicked. The move
+/// starts on the first mouse move after a press, so a double-click still arrives. Windows moves
+/// the window itself, through the control area.
+fn drag_area(id: &'static str, window: &mut Window, cx: &mut App) -> Stateful<Div> {
+    let pressed: Entity<bool> = window.use_keyed_state(
+        ElementId::Name(format!("{id}-pressed").into()),
+        cx,
+        |_, _| false,
+    );
     div()
         .id(id)
         .h_full()
         .window_control_area(WindowControlArea::Drag)
-        .on_mouse_down(MouseButton::Left, |event, window, _| {
-            if event.click_count == 1 && !cfg!(target_os = "windows") {
-                window.start_window_move();
+        .on_mouse_down(MouseButton::Left, {
+            let pressed = pressed.clone();
+            move |_, _, cx| {
+                if !cfg!(target_os = "windows") {
+                    pressed.write(cx, true);
+                }
+            }
+        })
+        .on_mouse_up(MouseButton::Left, {
+            let pressed = pressed.clone();
+            move |_, _, cx| pressed.write(cx, false)
+        })
+        .on_mouse_move(move |event, window, cx| {
+            if *pressed.read(cx) {
+                pressed.write(cx, false);
+                if event.pressed_button == Some(MouseButton::Left) {
+                    window.start_window_move();
+                }
             }
         })
         .on_click(|event, window, _| {
@@ -257,10 +276,10 @@ fn drag_area(id: &'static str) -> gpui::Stateful<gpui::Div> {
         })
 }
 
-/// Windows handles these itself through the control area, for snap layouts. Linux needs the
-/// click.
+/// Windows answers these itself through the control area, for snap layouts. Elsewhere the click
+/// does it.
 fn window_control(id: &'static str, icon: IconName, area: WindowControlArea) -> impl IntoElement {
-    div().window_control_area(area).child(
+    div().occlude().window_control_area(area).child(
         IconButton::new(id, icon)
             .size(px(28.))
             .color(|colors| colors.text_faint)
@@ -284,18 +303,18 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
 
     vec![
         mock::Mock::component("title_bar", "gallery", || {
-            let pensive = || Location {
+            let bar = |title_bar: TitleBar| div().w(px(960.)).child(title_bar).into_any_element();
+            let pensive = TitleBarProject {
                 initial: "P".into(),
-                project: "pensive".into(),
+                name: "pensive".into(),
                 branch: Some("feat/command-palette".into()),
             };
-            let bar = |title_bar: TitleBar| div().w(px(960.)).child(title_bar).into_any_element();
-            components::Gallery::new("TitleBar")
+            crate::Gallery::new("TitleBar")
                 .section(
                     "Project open",
                     [(
                         "With window controls, as on Linux and Windows",
-                        bar(TitleBar::new(Some(pensive()))
+                        bar(TitleBar::new(Some(pensive))
                             .controls(true)
                             .on_palette(|_, _| {})),
                     )],
@@ -303,7 +322,7 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
                 .section(
                     "Landing",
                     [(
-                        "No project: only the controls",
+                        "No project: only the gear and the controls",
                         bar(TitleBar::new(None).controls(true)),
                     )],
                 )

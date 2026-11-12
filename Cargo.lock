@@ -5226,6 +5226,7 @@ dependencies = [
  "mock",
  "model",
  "nucleo-matcher",
+ "strum",
  "theme",
  "unicode-segmentation",
 ]

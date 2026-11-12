@@ -1,12 +1,10 @@
 //! A labeled button in one of four emphases, with an optional icon and shortcut.
 
-use std::rc::Rc;
-
 use gpui::{App, ElementId, FontWeight, Hsla, SharedString, Window, div, prelude::*, px};
 use strum::{IntoStaticStr, VariantArray};
 use theme::{ActiveTheme, ThemeColors, Typeset};
 
-use crate::{Callback, Icon, IconName};
+use crate::{Callback, Icon, IconName, callback};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, VariantArray, IntoStaticStr)]
 pub enum ButtonStyle {
@@ -124,7 +122,7 @@ impl Button {
     }
 
     pub fn on_click(mut self, handler: impl Fn(&mut Window, &mut App) + 'static) -> Self {
-        self.on_click = Some(Rc::new(move |(), window, cx| handler(window, cx)));
+        self.on_click = Some(callback(handler));
         self
     }
 }

@@ -12,13 +12,14 @@ mod icon;
 mod icon_button;
 mod kbd;
 mod list_row;
-mod rail;
 mod segmented_control;
 mod select;
 mod status_ring;
 mod tab_strip;
 #[cfg(feature = "mocks")]
 mod theme_gallery;
+mod timeline_row;
+mod title_bar;
 mod toggle;
 mod tooltip;
 
@@ -39,18 +40,24 @@ pub use gallery::Gallery;
 pub use icon::{Icon, IconName};
 pub use icon_button::IconButton;
 pub use kbd::Kbd;
-pub use list_row::{INDENT, ListRow};
-pub use rail::{Line, Node, RAIL_WIDTH, Rail};
+pub use list_row::ListRow;
 pub use segmented_control::SegmentedControl;
 pub use select::Select;
-pub use status_ring::{Fill, StatusRing};
+pub use status_ring::{RingFill, StatusRing};
 pub use tab_strip::TabStrip;
+pub use timeline_row::{TimelineLine, TimelineNode, TimelineRow};
+pub use title_bar::{TitleBar, TitleBarProject};
 pub use toggle::Toggle;
 pub use tooltip::Tooltip;
 
 /// How a component reports a change: called with the new value. An `Rc`, so a component can
 /// share one callback among its children.
 pub type Callback<T> = Rc<dyn Fn(T, &mut Window, &mut App)>;
+
+/// A [`Callback`] for an event that carries no value, such as a click.
+pub fn callback(handler: impl Fn(&mut Window, &mut App) + 'static) -> Callback<()> {
+    Rc::new(move |(), window, cx| handler(window, cx))
+}
 
 /// Every component's mocks.
 #[cfg(feature = "mocks")]
@@ -71,7 +78,8 @@ pub fn mocks() -> Vec<mock::Mock> {
         diff_stat::mocks(),
         list_row::mocks(),
         tooltip::mocks(),
-        rail::mocks(),
+        timeline_row::mocks(),
+        title_bar::mocks(),
         diff::mocks(),
         fade_text::mocks(),
     ]

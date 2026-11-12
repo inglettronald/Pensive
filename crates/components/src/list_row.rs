@@ -8,12 +8,10 @@ use gpui::{
 };
 use theme::{ActiveTheme, Typeset};
 
-use crate::{Callback, Icon, IconName};
+use crate::{Callback, Icon, IconName, callback};
 
 /// How far each level of a tree moves in: one disclosure arrow's width.
-pub const INDENT: Pixels = px(12.);
-/// The slot an arrow or a leading mark takes, including its gap to what follows.
-const SLOT: Pixels = px(18.);
+const INDENT: Pixels = px(12.);
 /// Where a guide sits in its indent column: under the parent's arrow.
 const GUIDE_OFFSET: Pixels = px(5.5);
 
@@ -22,12 +20,10 @@ pub struct ListRow {
     id: ElementId,
     depth: usize,
     indent: Pixels,
-    guides: bool,
     disclosure: Option<bool>,
     leading: Option<AnyElement>,
     label: SharedString,
     code: bool,
-    small: bool,
     muted: bool,
     compact: bool,
     trailing: Option<AnyElement>,
@@ -45,12 +41,10 @@ impl ListRow {
             id: id.into(),
             depth: 0,
             indent: INDENT,
-            guides: true,
             disclosure: None,
             leading: None,
             label: label.into(),
             code: false,
-            small: false,
             muted: false,
             compact: false,
             trailing: None,
@@ -63,20 +57,19 @@ impl ListRow {
         }
     }
 
-    /// How many levels in, each with a guide unless guides are off.
+    /// The slot an arrow or a leading mark takes, including its gap to what follows. Indenting a
+    /// row by it lines its leading mark up under its parent's.
+    pub const SLOT: Pixels = px(18.);
+
+    /// How many levels in, each with a guide under its parent's arrow.
     pub fn depth(mut self, depth: usize) -> Self {
         self.depth = depth;
         self
     }
 
-    /// Overrides [`INDENT`], such as to line a child up under its parent's leading mark.
+    /// Overrides the 12 px indent, such as to line a child up under its parent's leading mark.
     pub fn indent(mut self, indent: Pixels) -> Self {
         self.indent = indent;
-        self
-    }
-
-    pub fn guides(mut self, guides: bool) -> Self {
-        self.guides = guides;
         self
     }
 
@@ -100,7 +93,6 @@ impl ListRow {
 
     /// Small text in a row 4 px shorter, for rows nested under another, such as symbols.
     pub fn compact(mut self) -> Self {
-        self.small = true;
         self.compact = true;
         self
     }
@@ -134,13 +126,13 @@ impl ListRow {
     }
 
     pub fn on_click(mut self, handler: impl Fn(&mut Window, &mut App) + 'static) -> Self {
-        self.on_click = Some(Rc::new(move |(), window, cx| handler(window, cx)));
+        self.on_click = Some(callback(handler));
         self
     }
 
     /// Called when the arrow is clicked, instead of the row's own click.
     pub fn on_disclosure(mut self, handler: impl Fn(&mut Window, &mut App) + 'static) -> Self {
-        self.on_disclosure = Some(Rc::new(move |(), window, cx| handler(window, cx)));
+        self.on_disclosure = Some(callback(handler));
         self
     }
 
@@ -169,7 +161,7 @@ impl RenderOnce for ListRow {
             colors.text
         };
         let label_start = self.indent * self.depth as f32
-            + SLOT
+            + Self::SLOT
                 * (usize::from(self.disclosure.is_some()) + usize::from(self.leading.is_some()))
                     as f32;
 
@@ -197,20 +189,18 @@ impl RenderOnce for ListRow {
                     .flex_none()
                     .self_stretch()
                     .w(self.indent)
-                    .when(self.guides, |column| {
-                        column.child(
-                            div()
-                                .absolute()
-                                .top_0()
-                                .bottom_0()
-                                .left(GUIDE_OFFSET)
-                                .w(px(1.))
-                                .bg(colors.border_subtle),
-                        )
-                    })
+                    .child(
+                        div()
+                            .absolute()
+                            .top_0()
+                            .bottom_0()
+                            .left(GUIDE_OFFSET)
+                            .w(px(1.))
+                            .bg(colors.border_subtle),
+                    )
             }))
             .children(self.disclosure.map(|open| {
-                let arrow = div().id("disclosure").flex_none().w(SLOT).child(
+                let arrow = div().id("disclosure").flex_none().w(Self::SLOT).child(
                     Icon::new(if open {
                         IconName::ChevronDown
                     } else {
@@ -234,7 +224,7 @@ impl RenderOnce for ListRow {
                     .flex()
                     .flex_none()
                     .items_center()
-                    .w(SLOT)
+                    .w(Self::SLOT)
                     .child(leading)
             }))
             .child(
@@ -244,7 +234,7 @@ impl RenderOnce for ListRow {
                     .when(self.code, |label| {
                         label.font_family(theme.fonts.code.clone())
                     })
-                    .typeset(if self.small {
+                    .typeset(if self.compact {
                         density.small
                     } else {
                         density.body
@@ -275,7 +265,7 @@ impl RenderOnce for ListRow {
 pub(crate) fn mocks() -> Vec<mock::Mock> {
     use gpui::size;
 
-    use crate::{DiffStat, Fill, StatusRing, Tooltip, gallery::Panel};
+    use crate::{DiffStat, RingFill, StatusRing, Tooltip, gallery::Panel};
 
     vec![
         mock::Mock::component("list_row", "gallery", || {
@@ -289,14 +279,17 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
                 .section(
                     "States",
                     [
-                        ("Resting", column(vec![file("a", "palette.rs", Fill::Full)])),
+                        (
+                            "Resting",
+                            column(vec![file("a", "palette.rs", RingFill::Full)]),
+                        ),
                         (
                             "Hovered",
-                            column(vec![file("b", "palette.rs", Fill::Empty).hovered(true)]),
+                            column(vec![file("b", "palette.rs", RingFill::Empty).hovered(true)]),
                         ),
                         (
                             "Selected",
-                            column(vec![file("c", "palette.rs", Fill::Full).selected(true)]),
+                            column(vec![file("c", "palette.rs", RingFill::Full).selected(true)]),
                         ),
                     ],
                 )
@@ -310,8 +303,10 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
                                 .depth(1)
                                 .disclosure(true)
                                 .muted(),
-                            file("f", "fuzzy.rs", Fill::Empty).depth(2),
-                            file("g", "root.rs", Fill::Empty).depth(1).disclosure(true),
+                            file("f", "fuzzy.rs", RingFill::Empty).depth(2),
+                            file("g", "root.rs", RingFill::Empty)
+                                .depth(1)
+                                .disclosure(true),
                             ListRow::new("h", "Pensive::render")
                                 .depth(2)
                                 .compact()
@@ -328,7 +323,7 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
                         div()
                             .h(px(64.))
                             .child(column(vec![
-                                file("i", "row.rs", Fill::Full).hovered(true).below(
+                                file("i", "row.rs", RingFill::Full).hovered(true).below(
                                     Tooltip::new("crates/components/src/palette/row.rs")
                                         .shortcut("Copy", "Ctrl Shift C"),
                                 ),

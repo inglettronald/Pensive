@@ -1,6 +1,7 @@
 //! The view that fills each window: the title bar over the landing screen with no project open,
 //! otherwise over the project, with the command palette over both when Ctrl K opens it.
 
+use components::{TitleBar, TitleBarProject};
 use gpui::{
     App, Bounds, Context, Entity, FocusHandle, Focusable, Subscription, TitlebarOptions, Window,
     WindowBounds, WindowDecorations, WindowOptions, actions, div, hsla, prelude::*, px, size, svg,
@@ -12,8 +13,8 @@ use crate::{
     key_binding,
     palette::{Keyword, PaletteEvent, PaletteView, Tab},
     project::ProjectView,
-    title_bar::{self, Location, TitleBar},
-    window_frame::window_frame,
+    view_callback,
+    window_frame::{draws_window_controls, window_frame},
 };
 
 actions!(pensive, [OpenPalette, OpenActive]);
@@ -140,28 +141,25 @@ impl Pensive {
 
     fn title_bar(&self, window: &Window, cx: &mut Context<Self>) -> TitleBar {
         let projects = self.projects.read(cx);
-        let location = self.project.and_then(|id| {
+        let project = self.project.and_then(|id| {
             let project = projects.project(id)?;
-            Some(Location {
+            Some(TitleBarProject {
                 initial: project.initial(),
-                project: project.name.clone(),
+                name: project.name.clone(),
                 branch: projects.current_branch(id).cloned(),
             })
         });
-        let has_location = location.is_some();
-        let view = cx.entity().downgrade();
-        let open = move |keyword: Option<Keyword>| {
-            let view = view.clone();
-            move |window: &mut Window, cx: &mut App| {
-                view.update(cx, |this, cx| match keyword.clone() {
+        let has_project = project.is_some();
+        let open = |keyword: Option<Keyword>| {
+            view_callback(cx, move |this: &mut Self, window, cx| {
+                match keyword.clone() {
                     Some(keyword) => this.open_palette_scoped(keyword, window, cx),
                     None => this.open_palette(Tab::All, window, cx),
-                })
-                .ok();
-            }
+                }
+            })
         };
-        let title_bar = TitleBar::new(location).controls(title_bar::draws_window_controls(window));
-        if has_location {
+        let title_bar = TitleBar::new(project).controls(draws_window_controls(window));
+        if has_project {
             title_bar
                 .on_project(open(Some(Keyword::Project(None))))
                 .on_branch(open(Some(Keyword::Branch)))
@@ -215,7 +213,7 @@ pub fn open_window(
             titlebar: Some(TitlebarOptions {
                 title: Some("Pensive".into()),
                 appears_transparent: true,
-                traffic_light_position: Some(title_bar::TRAFFIC_LIGHTS),
+                traffic_light_position: Some(TitleBar::TRAFFIC_LIGHTS),
             }),
             window_decorations: Some(WindowDecorations::Client),
             app_id: Some("pensive".into()),
@@ -274,9 +272,6 @@ impl Render for Pensive {
 pub(crate) fn mocks() -> Vec<mock::Mock> {
     use mock::Mock;
     use model::fixtures::{self, HARBOR, PENSIVE};
-    use theme::DensityPreset;
-
-    use crate::{palette::Keyword, project::FilesView};
 
     /// A window on the sample projects, with the palette open on `tab` and set up by `setup`.
     fn window(
@@ -298,35 +293,10 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
     fn untouched(_: &mut PaletteView, _: &mut Context<PaletteView>) {}
 
     fn pensive(project: Option<ProjectId>, window: &mut Window, cx: &mut App) -> Entity<Pensive> {
-        pensive_with(fixtures::changes(), project, window, cx)
-    }
-
-    fn pensive_with(
-        changes: Changes,
-        project: Option<ProjectId>,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> Entity<Pensive> {
         let projects = cx.new(|_| fixtures::projects());
-        let changes = cx.new(|_| changes);
+        let changes = cx.new(|_| fixtures::changes());
         cx.new(|cx| Pensive::new(projects, changes, project, window, cx))
     }
-
-    /// The pensive project's window, with its view set up by `setup`.
-    fn project(
-        setup: fn(&mut ProjectView, &mut Context<ProjectView>),
-        window: &mut Window,
-        cx: &mut App,
-    ) -> gpui::AnyView {
-        let view = pensive(Some(PENSIVE), window, cx);
-        view.update(cx, |pensive, cx| {
-            if let Some(project) = &pensive.project_view {
-                project.update(cx, setup);
-            }
-        });
-        view.into()
-    }
-    fn some_staged(_: &mut ProjectView, _: &mut Context<ProjectView>) {}
 
     vec![
         Mock::new("root", "empty", |window, cx| {
@@ -347,41 +317,8 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
                 cx,
             )
         }),
-        Mock::new("root", "some_staged", |w, cx| project(some_staged, w, cx)),
-        Mock::new("root", "all_staged", |w, cx| {
-            project(|view, cx| view.set_all_staged(true, cx), w, cx)
-        }),
-        Mock::new("root", "nothing_staged", |w, cx| {
-            project(|view, cx| view.set_all_staged(false, cx), w, cx)
-        }),
-        Mock::new("root", "uncommitted_folded", |w, cx| {
-            project(|view, cx| view.set_uncommitted_open(false, cx), w, cx)
-        }),
-        Mock::new("root", "commit_open", |w, cx| {
-            project(|view, cx| view.toggle_commit("5e35ea9".into(), cx), w, cx)
-        }),
-        Mock::new("root", "hovering_a_file", |w, cx| {
-            project(|view, cx| view.show_path(1, cx), w, cx)
-        }),
-        Mock::new("root", "tree_view", |w, cx| {
-            project(|view, cx| view.set_view(FilesView::Tree, cx), w, cx)
-        }),
-        Mock::new("root", "symbol_view", |w, cx| {
-            project(
-                |view, cx| {
-                    view.set_view(FilesView::Symbols, cx);
-                    view.select_symbol(1, cx);
-                },
-                w,
-                cx,
-            )
-        }),
-        Mock::new("root", "no_changes", |w, cx| {
-            pensive_with(Changes::default(), Some(PENSIVE), w, cx).into()
-        }),
-        Mock::new("root", "some_staged_dense", |w, cx| {
-            cx.set_global(DensityPreset::Dense.density());
-            project(some_staged, w, cx)
+        Mock::new("root", "project", |w, cx| {
+            pensive(Some(PENSIVE), w, cx).into()
         }),
         Mock::new("root", "palette", |w, cx| {
             window(Some(PENSIVE), Some(Tab::All), untouched, w, cx)

@@ -68,7 +68,7 @@ pub fn changes() -> Changes {
                 .symbol(SymbolKind::Function, "Pensive::render", (9, 2))
                 .symbol(SymbolKind::Function, "mocks", (3, 1))
                 .hunk(hunk(
-                    "@@ -186,6 +186,8 @@ impl Render for Pensive",
+                    "@@ -186,3 +186,5 @@ impl Render for Pensive",
                     186,
                     &[
                         (' ', "        let theme = cx.theme();"),
@@ -83,7 +83,7 @@ pub fn changes() -> Changes {
                 .symbol(SymbolKind::Heading, "Navigation", (4, 0))
                 .symbol(SymbolKind::Heading, "Command palette", (2, 0))
                 .hunk(hunk(
-                    "@@ -59,3 +59,7 @@ ## Navigation",
+                    "@@ -59,1 +59,5 @@ ## Navigation",
                     59,
                     &[
                         (' ', "Breadcrumbs separate levels with a chevron, never a slash."),
@@ -111,7 +111,7 @@ pub fn changes() -> Changes {
                     file("crates/ui/src/lib.rs", FileStatus::Modified, (4, 0), true)
                         .symbol(SymbolKind::Function, "init", (4, 0))
                         .hunk(hunk(
-                            "@@ -8,4 +8,8 @@ pub fn init",
+                            "@@ -8,2 +8,6 @@ pub fn init",
                             8,
                             &[
                                 (' ', "pub fn init(cx: &mut App) {"),
@@ -137,7 +137,7 @@ pub fn changes() -> Changes {
                         .symbol(SymbolKind::Function, "Pensive::open_palette", (12, 0))
                         .symbol(SymbolKind::Function, "Pensive::render", (9, 2))
                         .hunk(hunk(
-                            "@@ -60,4 +60,9 @@ impl Pensive",
+                            "@@ -59,0 +60,4 @@ impl Pensive",
                             60,
                             &[
                                 ('+', "    pub fn open_palette(&mut self, tab: Tab, cx: &mut Context<Self>) {"),
@@ -213,18 +213,17 @@ fn hunk(header: &str, start: usize, lines: &[(char, &str)]) -> Hunk {
         lines: lines
             .iter()
             .map(|&(mark, text)| {
-                let change = match mark {
-                    '+' => LineChange::Added,
-                    '-' => LineChange::Removed,
-                    _ => LineChange::Context,
-                };
-                let line_number = (change != LineChange::Removed).then(|| {
+                let mut next = || {
                     number += 1;
                     number - 1
-                });
+                };
+                let change = match mark {
+                    '+' => LineChange::Added(next()),
+                    '-' => LineChange::Removed,
+                    _ => LineChange::Context(next()),
+                };
                 HunkLine {
                     change,
-                    number: line_number,
                     text: text.to_string().into(),
                     changed: Vec::new(),
                 }
@@ -246,7 +245,7 @@ fn removed(header: &str, lines: &[&str]) -> Hunk {
 /// The hunk the canvas draws in the main view.
 fn palette_row() -> Hunk {
     let mut hunk = hunk(
-        "@@ -12,14 +12,15 @@ pub struct PaletteRow",
+        "@@ -12,16 +12,19 @@ pub struct PaletteRow",
         12,
         &[
             (' ', "pub struct PaletteRow {"),
@@ -284,7 +283,7 @@ fn palette_row() -> Hunk {
 
 fn theme_colors() -> Hunk {
     let mut hunk = hunk(
-        "@@ -18,7 +18,7 @@ pub struct ThemeColors",
+        "@@ -18,4 +18,4 @@ pub struct ThemeColors",
         18,
         &[
             (' ', "    /// Window background and diff body."),

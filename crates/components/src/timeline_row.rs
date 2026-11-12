@@ -1,19 +1,20 @@
-//! The timeline's line beside one row: how the line runs above and below, and what sits on it.
+//! One row of a timeline: the line down its left edge, what sits on the line, then the row's
+//! content.
 
 use gpui::{
-    AnyElement, App, Bounds, Hsla, Pixels, Window, canvas, div, fill, linear_color_stop,
-    linear_gradient, point, prelude::*, px, relative, size,
+    AnyElement, App, Bounds, Div, Hsla, Pixels, StyleRefinement, Window, canvas, div, fill,
+    linear_color_stop, linear_gradient, point, prelude::*, px, relative, size,
 };
 use strum::{IntoStaticStr, VariantArray};
 use theme::ActiveTheme;
 
-/// The rail's width. Rows put their content after it.
-pub const RAIL_WIDTH: Pixels = px(24.);
+/// The width of the line's column. The content starts after it.
+const LINE_COLUMN: Pixels = px(24.);
 const LINE: Pixels = px(2.);
 const DASH: Pixels = px(3.);
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, VariantArray, IntoStaticStr)]
-pub enum Line {
+pub enum TimelineLine {
     #[default]
     None,
     Solid,
@@ -23,7 +24,7 @@ pub enum Line {
     Fade,
 }
 
-pub enum Node {
+pub enum TimelineNode {
     None,
     /// A commit, dimmer once it's pushed.
     Commit {
@@ -37,46 +38,51 @@ pub enum Node {
     Mark(AnyElement),
 }
 
+/// Lays its content out in a row after the line, and takes styles like a `div`.
 #[derive(IntoElement)]
-pub struct Rail {
-    above: Line,
-    below: Line,
-    node: Node,
+pub struct TimelineRow {
+    base: Div,
+    above: TimelineLine,
+    below: TimelineLine,
+    node: TimelineNode,
     node_y: Option<Pixels>,
+    children: Vec<AnyElement>,
 }
 
-impl Default for Rail {
+impl Default for TimelineRow {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl Rail {
+impl TimelineRow {
     pub fn new() -> Self {
         Self {
-            above: Line::None,
-            below: Line::None,
-            node: Node::None,
+            base: div(),
+            above: TimelineLine::None,
+            below: TimelineLine::None,
+            node: TimelineNode::None,
             node_y: None,
+            children: Vec::new(),
         }
     }
 
-    /// The same line above and below.
-    pub fn line(self, line: Line) -> Self {
+    /// The same line above and below the node.
+    pub fn line(self, line: TimelineLine) -> Self {
         self.above(line).below(line)
     }
 
-    pub fn above(mut self, line: Line) -> Self {
+    pub fn above(mut self, line: TimelineLine) -> Self {
         self.above = line;
         self
     }
 
-    pub fn below(mut self, line: Line) -> Self {
+    pub fn below(mut self, line: TimelineLine) -> Self {
         self.below = line;
         self
     }
 
-    pub fn node(mut self, node: Node) -> Self {
+    pub fn node(mut self, node: TimelineNode) -> Self {
         self.node = node;
         self
     }
@@ -88,21 +94,33 @@ impl Rail {
     }
 }
 
-impl RenderOnce for Rail {
+impl Styled for TimelineRow {
+    fn style(&mut self) -> &mut StyleRefinement {
+        self.base.style()
+    }
+}
+
+impl ParentElement for TimelineRow {
+    fn extend(&mut self, elements: impl IntoIterator<Item = AnyElement>) {
+        self.children.extend(elements);
+    }
+}
+
+impl RenderOnce for TimelineRow {
     fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
         let colors = &cx.theme().colors;
         let line_color = colors.border;
-        let segment = |line: Line| {
+        let segment = |line: TimelineLine| {
             let base = div().absolute().left(px(11.)).w(LINE);
             match line {
-                Line::None => None,
-                Line::Solid => Some(base.bg(line_color)),
-                Line::Fade => Some(base.bg(linear_gradient(
+                TimelineLine::None => None,
+                TimelineLine::Solid => Some(base.bg(line_color)),
+                TimelineLine::Fade => Some(base.bg(linear_gradient(
                     180.,
                     linear_color_stop(line_color, 0.),
                     linear_color_stop(line_color.opacity(0.), 1.),
                 ))),
-                Line::Dashed => Some(base.child(dashes(line_color))),
+                TimelineLine::Dashed => Some(base.child(dashes(line_color))),
             }
         };
         let above = segment(self.above).map(|line| match self.node_y {
@@ -115,8 +133,8 @@ impl RenderOnce for Rail {
         });
         let dot = |size: Pixels, color: Hsla| div().size(size).rounded_full().bg(color);
         let node = match self.node {
-            Node::None => None,
-            Node::Commit { pushed } => Some(
+            TimelineNode::None => None,
+            TimelineNode::Commit { pushed } => Some(
                 dot(
                     px(10.),
                     if pushed {
@@ -127,7 +145,7 @@ impl RenderOnce for Rail {
                 )
                 .into_any_element(),
             ),
-            Node::Open => Some(
+            TimelineNode::Open => Some(
                 div()
                     .flex()
                     .items_center()
@@ -140,21 +158,21 @@ impl RenderOnce for Rail {
                     .child(dot(px(12.), colors.text_strong))
                     .into_any_element(),
             ),
-            Node::Tick => Some(
+            TimelineNode::Tick => Some(
                 div()
                     .w(px(16.))
                     .h(LINE)
                     .bg(colors.text_muted)
                     .into_any_element(),
             ),
-            Node::Mark(mark) => Some(mark),
+            TimelineNode::Mark(mark) => Some(mark),
         };
 
-        div()
+        let column = div()
             .relative()
             .flex_none()
             .self_stretch()
-            .w(RAIL_WIDTH)
+            .w(LINE_COLUMN)
             .children(above)
             .children(below)
             .children(node.map(|node| {
@@ -172,7 +190,12 @@ impl RenderOnce for Rail {
                     .items_center()
                     .justify_center()
                     .child(node)
-            }))
+            }));
+        self.base
+            .flex()
+            .flex_none()
+            .child(column)
+            .children(self.children)
     }
 }
 
@@ -197,7 +220,7 @@ fn dashes(color: Hsla) -> impl IntoElement {
 
 #[cfg(feature = "mocks")]
 pub(crate) fn mocks() -> Vec<mock::Mock> {
-    use crate::{Fill, StatusRing, gallery::Panel};
+    use crate::{RingFill, StatusRing, gallery::Panel};
 
     #[derive(Clone, Copy, VariantArray, IntoStaticStr)]
     enum Shown {
@@ -210,32 +233,29 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
     }
 
     vec![
-        mock::Mock::component("rail", "gallery", || {
-            crate::Gallery::new("Rail")
+        mock::Mock::component("timeline_row", "gallery", || {
+            crate::Gallery::new("TimelineRow")
                 .matrix(
                     "Line and node",
-                    Line::VARIANTS,
+                    TimelineLine::VARIANTS,
                     Shown::VARIANTS,
                     |line, shown| {
                         let node = match shown {
-                            Shown::Nothing => Node::None,
-                            Shown::Commit => Node::Commit { pushed: false },
-                            Shown::Pushed => Node::Commit { pushed: true },
-                            Shown::Open => Node::Open,
-                            Shown::Tick => Node::Tick,
-                            Shown::Ring => Node::Mark(
-                                StatusRing::new("ring", Fill::Half)
+                            Shown::Nothing => TimelineNode::None,
+                            Shown::Commit => TimelineNode::Commit { pushed: false },
+                            Shown::Pushed => TimelineNode::Commit { pushed: true },
+                            Shown::Open => TimelineNode::Open,
+                            Shown::Tick => TimelineNode::Tick,
+                            Shown::Ring => TimelineNode::Mark(
+                                StatusRing::new("ring", RingFill::Half)
                                     .color(|colors| colors.diff_modified)
                                     .size(px(14.))
                                     .into_any_element(),
                             ),
                         };
                         Panel::new(
-                            RAIL_WIDTH + px(8.),
-                            [div()
-                                .flex()
-                                .h(px(40.))
-                                .child(Rail::new().line(line).node(node))],
+                            LINE_COLUMN + px(8.),
+                            [TimelineRow::new().h(px(40.)).line(line).node(node)],
                         )
                         .into_any_element()
                     },

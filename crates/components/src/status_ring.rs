@@ -1,15 +1,13 @@
 //! A ring in a status color that fills to show how much of something is staged.
 
-use std::rc::Rc;
-
 use gpui::{App, ElementId, Hsla, Pixels, Window, div, prelude::*, px};
 use strum::{IntoStaticStr, VariantArray};
 use theme::{ActiveTheme, ThemeColors};
 
-use crate::Callback;
+use crate::{Callback, callback};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, VariantArray, IntoStaticStr)]
-pub enum Fill {
+pub enum RingFill {
     Empty,
     /// Some of it, such as a few of the uncommitted files.
     Half,
@@ -19,7 +17,7 @@ pub enum Fill {
 #[derive(IntoElement)]
 pub struct StatusRing {
     id: ElementId,
-    fill: Fill,
+    fill: RingFill,
     color: fn(&ThemeColors) -> Hsla,
     size: Pixels,
     on_click: Option<Callback<()>>,
@@ -27,7 +25,7 @@ pub struct StatusRing {
 
 impl StatusRing {
     /// A 10 px ring with a 2 px stroke in `text_muted`.
-    pub fn new(id: impl Into<ElementId>, fill: Fill) -> Self {
+    pub fn new(id: impl Into<ElementId>, fill: RingFill) -> Self {
         Self {
             id: id.into(),
             fill,
@@ -49,7 +47,7 @@ impl StatusRing {
     }
 
     pub fn on_click(mut self, handler: impl Fn(&mut Window, &mut App) + 'static) -> Self {
-        self.on_click = Some(Rc::new(move |(), window, cx| handler(window, cx)));
+        self.on_click = Some(callback(handler));
         self
     }
 }
@@ -67,8 +65,8 @@ impl RenderOnce for StatusRing {
             .rounded_full()
             .border(stroke)
             .border_color(color)
-            .when(self.fill == Fill::Full, |ring| ring.bg(color))
-            .when(self.fill == Fill::Half, |ring| {
+            .when(self.fill == RingFill::Full, |ring| ring.bg(color))
+            .when(self.fill == RingFill::Half, |ring| {
                 ring.child(div().w(inner / 2.).h(inner).rounded_l(inner / 2.).bg(color))
             })
             .when_some(self.on_click, |ring, handler| {
@@ -101,7 +99,7 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
 
     vec![
         mock::Mock::component("status_ring", "gallery", || {
-            let ring = |status: Status, fill: Fill, size: f32| {
+            let ring = |status: Status, fill: RingFill, size: f32| {
                 StatusRing::new("ring", fill)
                     .color(status.color())
                     .size(px(size))
@@ -110,13 +108,13 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
             crate::Gallery::new("StatusRing")
                 .matrix(
                     "File, 10 px",
-                    Fill::VARIANTS,
+                    RingFill::VARIANTS,
                     Status::VARIANTS,
                     |fill, status| ring(status, fill, 10.),
                 )
                 .matrix(
                     "Node, 14 px",
-                    Fill::VARIANTS,
+                    RingFill::VARIANTS,
                     Status::VARIANTS,
                     |fill, status| ring(status, fill, 14.),
                 )

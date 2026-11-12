@@ -125,10 +125,10 @@ fn diff_lines(file: &FileChange) -> Vec<DiffLine> {
     for hunk in &file.hunks {
         lines.push(DiffLine::hunk(hunk.header.clone()));
         for line in &hunk.lines {
-            let diff_line = match (line.change, line.number) {
-                (LineChange::Added, Some(number)) => DiffLine::added(number, line.text.clone()),
-                (LineChange::Context, Some(number)) => DiffLine::context(number, line.text.clone()),
-                _ => DiffLine::removed(line.text.clone()),
+            let diff_line = match line.change {
+                LineChange::Added(number) => DiffLine::added(number, line.text.clone()),
+                LineChange::Context(number) => DiffLine::context(number, line.text.clone()),
+                LineChange::Removed => DiffLine::removed(line.text.clone()),
             };
             lines.push(
                 line.changed
