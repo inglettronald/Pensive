@@ -34,14 +34,14 @@ gpui_platform = { git = "https://github.com/zed-industries/zed", tag = "v1.27.0"
 gpui_wgpu = { git = "https://github.com/zed-industries/zed", tag = "v1.27.0" }
 refineable = { git = "https://github.com/zed-industries/zed", tag = "v1.27.0" }
 
-# Full debug info for dependencies nearly doubles target/. Line tables keep
-# file and line numbers in backtraces through gpui.
+# Line tables keep file and line numbers in backtraces through gpui, and
+# take far less disk than full debug info.
 [profile.dev.package."*"]
 debug = "line-tables-only"
 
-# For stepping into dependencies with a debugger: `--profile debug-deps`.
+# Opt-in full debug info for dependencies. See CONTRIBUTING.md.
 [profile.debug-deps]
 inherits = "dev"
 
 [profile.debug-deps.package."*"]
-debug = true
+debug = "full"
