@@ -1,15 +1,15 @@
 use std::process::ExitCode;
 
 use gpui::{App, AppContext};
-use model::Projects;
+use model::{Changes, Projects};
 
 fn main() -> ExitCode {
-    let projects = match std::env::args().nth(1).as_deref() {
-        // Empty until a backend fills it.
-        None => Projects::default(),
-        // The sample projects, for clicking around views before there's a backend.
+    let (projects, changes) = match std::env::args().nth(1).as_deref() {
+        // Empty until a backend fills them.
+        None => (Projects::default(), Changes::default()),
+        // The sample projects and changes, for clicking around views before there's a backend.
         #[cfg(debug_assertions)]
-        Some("mocked") => model::fixtures::projects(),
+        Some("mocked") => (model::fixtures::projects(), model::fixtures::changes()),
         Some(arg) => {
             eprintln!("unknown argument `{arg}`");
             return ExitCode::FAILURE;
@@ -30,7 +30,8 @@ fn main() -> ExitCode {
             .detach();
 
             let projects = cx.new(|_| projects);
-            ui::open_window(projects, None, cx);
+            let changes = cx.new(|_| changes);
+            ui::open_window(projects, changes, None, cx);
             cx.activate(true);
         });
     ExitCode::SUCCESS

@@ -1,8 +1,11 @@
 //! Views: the screens and panels that read models and own their view state.
 
 mod palette;
+mod project;
 mod root;
 mod text_input;
+mod title_bar;
+mod window_frame;
 
 use std::rc::Rc;
 
@@ -15,6 +18,7 @@ pub use root::{Pensive, open_window};
 pub fn init(cx: &mut App) {
     text_input::bind_keys(cx);
     palette::bind_keys(cx);
+    project::bind_keys(cx);
     root::bind_keys(cx);
 }
 
@@ -31,5 +35,8 @@ fn key_binding(keys: &str, action: impl Action, context: Option<&str>, cx: &App)
 /// Every view's mocks.
 #[cfg(feature = "mocks")]
 pub fn mocks() -> Vec<mock::Mock> {
-    root::mocks()
+    [root::mocks(), title_bar::mocks()]
+        .into_iter()
+        .flatten()
+        .collect()
 }

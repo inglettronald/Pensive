@@ -16,7 +16,7 @@ unicode-segmentation.workspace = true
 mock = { workspace = true, optional = true }
 
 [features]
-mocks = ["dep:mock", "model/fixtures"]
+mocks = ["dep:mock", "model/fixtures", "components/mocks"]
 
 [dev-dependencies]
 model = { workspace = true, features = ["fixtures"] }
