@@ -1,10 +1,15 @@
 //! One mock per board on the app shell canvas: the pensive project's window in each state,
 //! built from the sample changes.
 
+use std::sync::Arc;
+
 use components::{TitleBar, TitleBarProject};
 use gpui::{AnyView, App, Context, Entity, Window, div, prelude::*};
 use mock::Mock;
-use model::fixtures;
+use model::{
+    Projects,
+    fixtures::{self, FakeGit, PENSIVE},
+};
 use theme::{ActiveTheme, DensityPreset};
 
 use super::{FileLayout, ProjectView};
@@ -47,10 +52,8 @@ pub(crate) fn mocks() -> Vec<Mock> {
             )
         }),
         Mock::new("project", "no_changes", |_, cx| {
-            let view = cx.new(|cx| {
-                let changes = cx.new(|_| model::Changes::default());
-                ProjectView::new(changes, cx)
-            });
+            let projects = cx.new(|_| Projects::new(Arc::new(FakeGit::default())));
+            let view = cx.new(|cx| ProjectView::new(projects, PENSIVE, cx));
             cx.new(|_| Framed(view)).into()
         }),
         Mock::new("project", "some_staged_dense", |window, cx| {
@@ -68,8 +71,8 @@ fn framed(
     _window: &mut Window,
     cx: &mut App,
 ) -> AnyView {
-    let changes = cx.new(|_| fixtures::changes());
-    let view = cx.new(|cx| ProjectView::new(changes, cx));
+    let projects = cx.new(|_| fixtures::projects());
+    let view = cx.new(|cx| ProjectView::new(projects, PENSIVE, cx));
     view.update(cx, setup);
     cx.new(|_| Framed(view)).into()
 }

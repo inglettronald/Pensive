@@ -31,7 +31,7 @@ One blue for interface signals: info callouts, links and the accent button.
 
 ### Themes and overrides
 
-A user theme overrides individual roles and fonts in a TOML file, keyed by the role names in the `theme` crate. Where Pensive reads that file from isn't decided yet.
+A user theme overrides individual roles and fonts in a TOML file, keyed by the role names in the `theme` crate. [Settings storage](decisions/settings-storage.md) covers where theme files live and how one extends another.
 
 ## Type
 
@@ -84,7 +84,7 @@ A commit title fades out at the sidebar's edge instead of ending in an ellipsis.
 
 Files show as a list, a tree or by symbol, switched by an icon control on the Uncommitted node. The choice applies to an open commit too.
 
-A file's ring takes its status color and fills when it's staged. A commit's files are always filled, since they're all in it. Clicking a ring stages or unstages the file.
+A file's ring takes its status color and fills when it's staged, or half fills when only some of its hunks are. A commit's files are always filled. Clicking a ring stages the whole file, or unstages it once it's fully staged.
 
 Every file row shows its added and removed line counts. The folder isn't on the row. Hovering the file shows its full path in a tooltip, and Ctrl Shift C copies it while the tooltip is open, leaving plain Ctrl C alone.
 

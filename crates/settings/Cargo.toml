@@ -1,0 +1,13 @@
+[package]
+name = "settings"
+version = "0.1.0"
+description = "Declared settings, and the store that holds the settings file's text and the values in it."
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+gpui.workspace = true
+serde.workspace = true
+toml.workspace = true
+toml_edit.workspace = true

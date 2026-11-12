@@ -26,7 +26,7 @@ pub(crate) fn mocks() -> Vec<Mock> {
     vec![
         Mock::component("theme", "gallery", || ThemeGallery.into_any_element()).size(size),
         Mock::new("theme", "override", |_, cx| {
-            let theme_override =
+            let (theme_override, _) =
                 ThemeOverride::from_toml(SAMPLE_OVERRIDE).expect("the sample override is valid");
             let theme = cx.theme().with_override(&theme_override);
             cx.set_global(theme);

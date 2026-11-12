@@ -6,7 +6,7 @@ use components::{
     StatusRing, TimelineLine, TimelineNode, TimelineRow,
 };
 use gpui::{AnyElement, Context, SharedString, Window, div, prelude::*, px};
-use model::{Changes, Commit};
+use model::{Changes, Commit, Staging};
 use strum::VariantArray;
 use theme::{ActiveTheme, Typeset};
 
@@ -59,9 +59,10 @@ impl ProjectView {
     fn header(&self, changes: &Changes, cx: &mut Context<Self>) -> impl IntoElement {
         let colors = &cx.theme().colors;
         let density = cx.density();
-        let upstream = changes.upstream.as_ref();
-        let behind = upstream.map_or(0, |upstream| upstream.behind);
-        let ahead = upstream.map_or(0, |upstream| upstream.ahead);
+        let (behind, ahead) = match &changes.upstream {
+            Some(upstream) => (upstream.behind, changes.ahead_of_upstream()),
+            None => (0, 0),
+        };
         div()
             .flex()
             .flex_none()
@@ -86,12 +87,9 @@ impl ProjectView {
                     .whitespace_nowrap()
                     .typeset(density.small)
                     .text_color(colors.text_faint)
-                    .children(
-                        changes
-                            .base
-                            .as_ref()
-                            .map(|(base, ahead)| format!("{ahead} ahead of {base}")),
-                    ),
+                    .children(changes.base.as_ref().map(|base| {
+                        format!("{} ahead of {}", changes.ahead_of_base(), base.branch)
+                    })),
             )
             // Fetch, pull and push wait on a Git backend.
             .child(IconButton::new("fetch", IconName::RefreshCw))
@@ -116,11 +114,10 @@ impl ProjectView {
         let colors = &cx.theme().colors;
         let density = cx.density();
         let total = changes.uncommitted.len();
-        let staged = changes.staged_count();
-        let fill = match staged {
-            0 => RingFill::Empty,
-            staged if staged == total => RingFill::Full,
-            _ => RingFill::Half,
+        let fill = match changes.staging() {
+            Staging::Unstaged => RingFill::Empty,
+            Staging::Partly => RingFill::Half,
+            Staging::Staged => RingFill::Full,
         };
         let ring = StatusRing::new("stage-all", fill)
             .color(|colors| colors.diff_modified)

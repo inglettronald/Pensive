@@ -56,7 +56,10 @@ impl RenderOnce for Toggle {
             .bg(track)
             .child(div().size(px(12.)).rounded_full().bg(knob))
             .when_some(self.on_change, |track, handler| {
-                track.on_click(move |_: &ClickEvent, window, cx| handler(!on, window, cx))
+                track.on_click(move |_: &ClickEvent, window, cx| {
+                    cx.stop_propagation();
+                    handler(!on, window, cx)
+                })
             })
     }
 }
@@ -77,4 +80,47 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
         })
         .size(size(px(480.), px(200.))),
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{cell::Cell, rc::Rc};
+
+    use gpui::{Context, Modifiers, TestAppContext, point};
+
+    use super::*;
+
+    /// A clickable row with a toggle in its top-left corner, like a setting in the palette.
+    struct Row {
+        row_clicks: Rc<Cell<usize>>,
+        toggled: Rc<Cell<Option<bool>>>,
+    }
+
+    impl Render for Row {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            let row_clicks = self.row_clicks.clone();
+            let toggled = self.toggled.clone();
+            div()
+                .id("row")
+                .size_full()
+                .on_click(move |_, _, _| row_clicks.set(row_clicks.get() + 1))
+                .child(
+                    Toggle::new("toggle", false).on_change(move |on, _, _| toggled.set(Some(on))),
+                )
+        }
+    }
+
+    #[gpui::test]
+    fn clicking_the_toggle_doesnt_also_click_its_row(cx: &mut TestAppContext) {
+        cx.update(theme::init);
+        let row_clicks = Rc::new(Cell::new(0));
+        let toggled = Rc::new(Cell::new(None));
+        let (_, cx) = cx.add_window_view(|_, _| Row {
+            row_clicks: row_clicks.clone(),
+            toggled: toggled.clone(),
+        });
+        cx.simulate_click(point(px(6.), px(6.)), Modifiers::none());
+        assert_eq!(toggled.get(), Some(true));
+        assert_eq!(row_clicks.get(), 0);
+    }
 }

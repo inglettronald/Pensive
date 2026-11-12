@@ -2,7 +2,7 @@
 
 use components::{DiffStat, Icon, IconName, ListRow, RingFill, StatusRing, Tooltip};
 use gpui::{AnyElement, App, Context, ElementId, Hsla, Window, div, prelude::*, px};
-use model::{FileChange, FileStatus, SymbolKind};
+use model::{FileChange, FileStatus, Staging, SymbolKind};
 use theme::{ActiveTheme, ThemeColors};
 
 use crate::{view_callback, view_callback_with};
@@ -19,15 +19,14 @@ impl ProjectView {
         files: &[FileChange],
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
-        let key = |index| FileKey {
+        let key = |file: &FileChange| FileKey {
             source: source.clone(),
-            index,
+            path: file.path.clone(),
         };
         match self.layout {
             FileLayout::List => files
                 .iter()
-                .enumerate()
-                .map(|(index, file)| self.file_row(key(index), file, 0, cx).into_any_element())
+                .map(|file| self.file_row(key(file), file, 0, cx).into_any_element())
                 .collect(),
             FileLayout::Tree => tree(files.iter().map(|file| file.path.as_path()))
                 .into_iter()
@@ -39,14 +38,14 @@ impl ProjectView {
                         .muted()
                         .into_any_element(),
                     TreeRow::File { depth, index } => self
-                        .file_row(key(index), &files[index], depth, cx)
+                        .file_row(key(&files[index]), &files[index], depth, cx)
                         .into_any_element(),
                 })
                 .collect(),
             FileLayout::Symbols => {
                 let mut rows = Vec::new();
-                for (index, file) in files.iter().enumerate() {
-                    let key = key(index);
+                for file in files {
+                    let key = key(file);
                     let open = !self.folded.contains(&key);
                     let toggle = view_callback(cx, {
                         let key = key.clone();
@@ -78,20 +77,17 @@ impl ProjectView {
         depth: usize,
         cx: &mut Context<Self>,
     ) -> ListRow {
-        let uncommitted = key.source == Source::Uncommitted;
-        let index = key.index;
-        let ring = StatusRing::new(
-            ("ring", index),
-            if file.staged {
-                RingFill::Full
-            } else {
-                RingFill::Empty
-            },
-        )
-        .color(status_color(file.status));
-        let ring = if uncommitted {
+        let fill = match file.staging() {
+            Staging::Unstaged => RingFill::Empty,
+            Staging::Partly => RingFill::Half,
+            Staging::Staged => RingFill::Full,
+        };
+        let ring =
+            StatusRing::new(element_id("ring", &key), fill).color(status_color(file.status()));
+        let ring = if key.source == Source::Uncommitted {
+            let path = key.path.clone();
             ring.on_click(view_callback(cx, move |this: &mut Self, _, cx| {
-                this.toggle_staged(index, cx)
+                this.toggle_staged(&path, cx)
             }))
         } else {
             ring
@@ -163,11 +159,12 @@ impl ProjectView {
     }
 }
 
-pub(super) fn status_color(status: FileStatus) -> fn(&ThemeColors) -> Hsla {
+/// New files are green, changed or moved ones amber, and deleted or conflicted ones red.
+fn status_color(status: FileStatus) -> fn(&ThemeColors) -> Hsla {
     match status {
-        FileStatus::Added => |colors| colors.diff_added,
-        FileStatus::Modified => |colors| colors.diff_modified,
-        FileStatus::Deleted => |colors| colors.diff_removed,
+        FileStatus::Added | FileStatus::Untracked => |colors| colors.diff_added,
+        FileStatus::Modified | FileStatus::Renamed => |colors| colors.diff_modified,
+        FileStatus::Deleted | FileStatus::Conflicted => |colors| colors.diff_removed,
     }
 }
 
@@ -193,9 +190,10 @@ fn path_label(file: &FileChange, cx: &App) -> impl IntoElement {
 }
 
 fn element_name(key: &FileKey) -> String {
+    let path = key.path.display();
     match &key.source {
-        Source::Uncommitted => format!("uncommitted-{}", key.index),
-        Source::Commit(sha) => format!("{sha}-{}", key.index),
+        Source::Uncommitted => format!("uncommitted-{path}"),
+        Source::Commit(sha) => format!("{sha}-{path}"),
     }
 }
 

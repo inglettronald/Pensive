@@ -5,19 +5,22 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use components::{IconName, KeyHint, Leading, PaletteEntry, TrailingText};
-use gpui::SharedString;
+use components::{
+    IconName, KeyHint, Leading, PaletteEntry, SegmentedControl, Select, Toggle, TrailingText,
+};
+use gpui::{IntoElement, SharedString};
 use model::{Project, ProjectId, Projects, Work, WorkKind};
+use settings::{AnySetting, ControlState};
 
 use super::{
     Action, Keyword, Tab,
     commands::{Command, Listed, commands},
     fuzzy::Fuzzy,
+    options::days_label,
 };
 
-/// How far back the Active tab looks. Becomes a setting once settings exist.
-const ACTIVE_WINDOW: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 const BEST_MATCHES: usize = 6;
+const DAY: Duration = Duration::from_secs(24 * 60 * 60);
 
 /// Everything the results depend on.
 pub(crate) struct Query<'a> {
@@ -27,6 +30,16 @@ pub(crate) struct Query<'a> {
     pub tab: Tab,
     pub keyword: Option<&'a Keyword>,
     pub text: &'a str,
+    pub settings: &'a [SettingRow],
+    /// How far back the Active tab looks.
+    pub active_days: u32,
+}
+
+/// A setting, the section it's listed under, and what its control shows now.
+pub(crate) struct SettingRow {
+    pub section: &'static str,
+    pub setting: &'static dyn AnySetting,
+    pub state: ControlState,
 }
 
 pub(crate) struct Item {
@@ -66,6 +79,7 @@ pub(crate) fn results(query: &Query) -> Results {
                 query.projects.recent().into_iter().map(Candidate::Project),
             ),
         ),
+        (Some(Keyword::Setting), _) => setting_results(query),
         (Some(Keyword::Branch), _) => one_section(
             "Branches and worktrees",
             rank(
@@ -156,7 +170,8 @@ fn all_search(query: &Query) -> Results {
             available_commands(query)
                 .into_iter()
                 .map(|(_, command)| Candidate::Command(command)),
-        );
+        )
+        .chain(query.settings.iter().map(Candidate::Setting));
     let mut best = rank(query, candidates);
     best.truncate(BEST_MATCHES);
     let narrow = |keyword: Keyword, name: &str, detail: &str| Item {
@@ -171,12 +186,13 @@ fn all_search(query: &Query) -> Results {
     let narrow_to = vec![
         narrow(Keyword::Branch, "branch:", "Branches and worktrees"),
         narrow(Keyword::Project(None), "project:", "Projects"),
+        narrow(Keyword::Setting, "setting:", "Settings"),
     ];
     Results {
         empty: best.is_empty().then(|| {
             (
                 format!("Nothing matches \"{}\"", query.text).into(),
-                "Searched projects, branches, worktrees and commands".into(),
+                "Searched projects, branches, worktrees, commands and settings".into(),
             )
         }),
         sections: [
@@ -245,8 +261,42 @@ fn in_project(query: &Query, id: ProjectId) -> Results {
     }
 }
 
+fn setting_results(query: &Query) -> Results {
+    let mut sections: Vec<(&str, Vec<Candidate>)> = Vec::new();
+    for row in query.settings {
+        let section = row.section;
+        match sections.iter_mut().find(|(label, _)| *label == section) {
+            Some((_, rows)) => rows.push(Candidate::Setting(row)),
+            None => sections.push((section, vec![Candidate::Setting(row)])),
+        }
+    }
+    let sections: Vec<Section> = sections
+        .into_iter()
+        .filter_map(|(label, rows)| section(label, rank(query, rows)))
+        .collect();
+    Results {
+        empty: sections.is_empty().then(|| {
+            (
+                format!("No setting matches \"{}\"", query.text).into(),
+                "Searched every setting".into(),
+            )
+        }),
+        sections,
+    }
+}
+
+/// "this week" for the default of 7 days.
+fn within(days: u32) -> String {
+    match days {
+        1 => "today".into(),
+        7 => "this week".into(),
+        days => format!("in the last {}", days_label(days)),
+    }
+}
+
 fn active(query: &Query) -> Results {
-    let work = query.projects.active(ACTIVE_WINDOW);
+    let days = query.active_days;
+    let work = query.projects.active(DAY * days);
     let total = work.len();
     let projects = {
         let mut ids: Vec<_> = work.iter().map(|work| work.project).collect();
@@ -261,12 +311,14 @@ fn active(query: &Query) -> Results {
             .and_then(|as_of| as_of.duration_since(work.last_change).ok())
             .unwrap_or_default()
     };
-    let group = |work: &Work| match age(work).as_secs() {
-        age if age < 60 * 60 => 0,
-        age if age < 24 * 60 * 60 => 1,
-        _ => 2,
+    // Active keeps work up to `days` old, so Earlier only shows when that's longer than a week.
+    let group = |work: &Work| match age(work) {
+        age if age < Duration::from_secs(60 * 60) => 0,
+        age if age < DAY => 1,
+        age if age < DAY * 7 || days <= 7 => 2,
+        _ => 3,
     };
-    let mut sections: Vec<Section> = ["Last hour", "Today", "This week"]
+    let mut sections: Vec<Section> = ["Last hour", "Today", "This week", "Earlier"]
         .into_iter()
         .enumerate()
         .filter_map(|(index, label)| {
@@ -285,13 +337,13 @@ fn active(query: &Query) -> Results {
         empty: sections.is_empty().then(|| {
             if query.text.is_empty() {
                 (
-                    "Nothing changed this week".into(),
+                    format!("Nothing changed {}", within(days)).into(),
                     "Worktrees and branches show here when they change".into(),
                 )
             } else {
                 (
                     format!("No recent work matches \"{}\"", query.text).into(),
-                    "Searched work from the last 7 days".into(),
+                    format!("Searched work from the last {}", days_label(days)).into(),
                 )
             }
         }),
@@ -367,6 +419,7 @@ enum Candidate<'a> {
     /// Work, with its worktree path as the detail.
     WorkAtPath(Work),
     Command(Command),
+    Setting(&'a SettingRow),
 }
 
 impl Candidate<'_> {
@@ -375,6 +428,7 @@ impl Candidate<'_> {
             Self::Project(project) => &project.name,
             Self::WorkInProject(work) | Self::WorkAtPath(work) => &work.name,
             Self::Command(command) => &command.name,
+            Self::Setting(row) => row.setting.name(),
         }
     }
 
@@ -409,6 +463,7 @@ impl Candidate<'_> {
                     narrow: None,
                 }
             }
+            Self::Setting(row) => setting_item(row, matches),
         }
     }
 }
@@ -452,7 +507,7 @@ fn project_item(query: &Query, project: &Project, matches: Vec<Range<usize>>) ->
     let mut entry = PaletteEntry::new(project.name.clone())
         .leading(Leading::Tile(project.initial()))
         .matches(matches)
-        .detail(project.root.display().to_string())
+        .detail(project.repository.root.display().to_string())
         .when(when)
         .hints(open_hints("Open"));
     if let Some(branch) = query.projects.current_branch(project.id) {
@@ -473,6 +528,43 @@ fn project_item(query: &Query, project: &Project, matches: Vec<Range<usize>>) ->
             new_window: true,
         },
         narrow: Some(Keyword::Project(Some(project.id))),
+    }
+}
+
+/// A setting with its control. Clicking the control changes the setting too.
+fn setting_item(row: &SettingRow, matches: Vec<Range<usize>>) -> Item {
+    let setting = row.setting;
+    let id = setting.key();
+    let change = KeyHint::new("←→", "Change");
+    let (control, hint) = match &row.state {
+        ControlState::Toggle(on) => (
+            Toggle::new(id, *on)
+                .on_change(move |_, _, cx| setting.step(1, cx))
+                .into_any_element(),
+            KeyHint::new("Enter", "Toggle"),
+        ),
+        ControlState::Segmented { labels, selected } => (
+            SegmentedControl::new(id, labels.clone(), *selected)
+                .on_select(move |index, _, cx| setting.choose(index, cx))
+                .into_any_element(),
+            change,
+        ),
+        ControlState::Select { label } => (
+            Select::new(id, label.clone())
+                .on_click(move |_, cx| setting.step(1, cx))
+                .into_any_element(),
+            change,
+        ),
+    };
+    Item {
+        entry: PaletteEntry::new(setting.name())
+            .description(setting.description())
+            .matches(matches)
+            .control(control)
+            .hints([hint]),
+        action: Action::Step(id),
+        secondary: Action::None,
+        narrow: None,
     }
 }
 
@@ -564,6 +656,7 @@ mod tests {
     use model::fixtures::{self, HARBOR, PENSIVE};
 
     use super::*;
+    use crate::palette::options::{ACTIVE_DAYS, SCRIM, SHOW_TABS};
 
     fn labels(results: Results) -> Vec<String> {
         results
@@ -585,6 +678,8 @@ mod tests {
             tab,
             keyword,
             text,
+            settings: &[],
+            active_days: 7,
         }
     }
 
@@ -599,6 +694,41 @@ mod tests {
         assert_eq!(
             labels(results),
             ["Last hour (4)", "Today (4)", "This week (5)"]
+        );
+    }
+
+    #[test]
+    fn the_setting_keyword_lists_settings_under_their_sections() {
+        let projects = fixtures::projects();
+        let rows: Vec<SettingRow> = [&SHOW_TABS as &dyn AnySetting, &SCRIM, &ACTIVE_DAYS]
+            .into_iter()
+            .map(|setting| SettingRow {
+                section: "Palette",
+                setting,
+                state: ControlState::Toggle(true),
+            })
+            .collect();
+        let keyword = Keyword::Setting;
+        let search = |text| Query {
+            settings: &rows,
+            ..query(&projects, Tab::All, Some(&keyword), text)
+        };
+        assert_eq!(labels(results(&search(""))), ["Palette (3)"]);
+        assert_eq!(labels(results(&search("scrim"))), ["Palette (1)"]);
+        let first = results(&search("scrim")).into_items().next().unwrap();
+        assert_eq!(first.action, Action::Step("palette.scrim"));
+    }
+
+    #[test]
+    fn active_only_looks_back_as_far_as_the_setting_says() {
+        let projects = fixtures::projects();
+        let three_days = Query {
+            active_days: 3,
+            ..query(&projects, Tab::Active, None, "")
+        };
+        assert_eq!(
+            labels(results(&three_days)),
+            ["Last hour (4)", "Today (4)", "This week (4)"]
         );
     }
 

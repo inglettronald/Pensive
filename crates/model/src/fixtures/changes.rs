@@ -5,25 +5,27 @@
 use gpui::SharedString;
 
 use crate::{
-    Changes, Commit, FileChange, FileStatus, Hunk, HunkLine, LineChange, Symbol, SymbolKind,
-    Upstream,
+    Base, Changes, Commit, FileChange, FileStatus, Hunk, HunkLine, LineChange, Staging, Symbol,
+    SymbolKind, Upstream,
 };
 
-/// Seven uncommitted files with three staged, two unpushed commits and one pushed.
+/// Seven uncommitted files, two staged and one partly staged, then two unpushed commits and one
+/// pushed.
 pub fn changes() -> Changes {
     Changes {
-        base: Some(("master".into(), 3)),
+        base: Some(Base {
+            branch: "master".into(),
+        }),
         upstream: Some(Upstream {
             remote: "origin".into(),
-            ahead: 2,
             behind: 1,
         }),
         uncommitted: vec![
-            file("crates/components/src/palette.rs", FileStatus::Modified, (4, 1), true)
+            file("crates/components/src/palette.rs", FileStatus::Modified, (4, 1), Staging::Partly)
                 .symbol(SymbolKind::Type, "PaletteRow", (2, 0))
                 .symbol(SymbolKind::Function, "PaletteRow::render", (2, 1))
                 .hunk(palette_row()),
-            file("crates/components/src/palette/row.rs", FileStatus::Added, (38, 0), true)
+            file("crates/components/src/palette/row.rs", FileStatus::Added, (38, 0), Staging::Staged)
                 .symbol(SymbolKind::Type, "Row", (24, 0))
                 .symbol(SymbolKind::Function, "Row::render", (14, 0))
                 .hunk(added(
@@ -37,7 +39,7 @@ pub fn changes() -> Changes {
                         "}",
                     ],
                 )),
-            file("crates/components/src/palette/scope.rs", FileStatus::Added, (52, 0), true)
+            file("crates/components/src/palette/scope.rs", FileStatus::Added, (52, 0), Staging::Staged)
                 .symbol(SymbolKind::Type, "Scope", (18, 0))
                 .symbol(SymbolKind::Function, "Scope::parse", (34, 0))
                 .hunk(added(
@@ -51,10 +53,10 @@ pub fn changes() -> Changes {
                         "}",
                     ],
                 )),
-            file("crates/theme/src/colors.rs", FileStatus::Modified, (1, 1), false)
+            file("crates/theme/src/colors.rs", FileStatus::Modified, (1, 1), Staging::Unstaged)
                 .symbol(SymbolKind::Type, "ThemeColors", (1, 1))
                 .hunk(theme_colors()),
-            file("crates/ui/src/palette/fuzzy.rs", FileStatus::Deleted, (0, 64), false).hunk(
+            file("crates/ui/src/palette/fuzzy.rs", FileStatus::Deleted, (0, 64), Staging::Unstaged).hunk(
                 removed(
                     "@@ -1,64 +0,0 @@",
                     &[
@@ -64,7 +66,7 @@ pub fn changes() -> Changes {
                     ],
                 ),
             ),
-            file("crates/ui/src/root.rs", FileStatus::Modified, (12, 3), false)
+            file("crates/ui/src/root.rs", FileStatus::Modified, (12, 3), Staging::Unstaged)
                 .symbol(SymbolKind::Function, "Pensive::render", (9, 2))
                 .symbol(SymbolKind::Function, "mocks", (3, 1))
                 .hunk(hunk(
@@ -79,7 +81,7 @@ pub fn changes() -> Changes {
                         ('+', "            .flex_col()"),
                     ],
                 )),
-            file("docs/design.md", FileStatus::Modified, (6, 0), false)
+            file("docs/design.md", FileStatus::Modified, (6, 0), Staging::Unstaged)
                 .symbol(SymbolKind::Heading, "Navigation", (4, 0))
                 .symbol(SymbolKind::Heading, "Command palette", (2, 0))
                 .hunk(hunk(
@@ -105,10 +107,10 @@ pub fn changes() -> Changes {
                 ),
                 pushed: false,
                 files: vec![
-                    file("crates/components/src/palette.rs", FileStatus::Modified, (2, 1), true)
+                    file("crates/components/src/palette.rs", FileStatus::Modified, (2, 1), Staging::Staged)
                         .symbol(SymbolKind::Function, "PaletteRow::render", (2, 1))
                         .hunk(palette_row()),
-                    file("crates/ui/src/lib.rs", FileStatus::Modified, (4, 0), true)
+                    file("crates/ui/src/lib.rs", FileStatus::Modified, (4, 0), Staging::Staged)
                         .symbol(SymbolKind::Function, "init", (4, 0))
                         .hunk(hunk(
                             "@@ -8,2 +8,6 @@ pub fn init",
@@ -122,7 +124,7 @@ pub fn changes() -> Changes {
                                 (' ', "}"),
                             ],
                         )),
-                    file("crates/ui/src/palette/mod.rs", FileStatus::Added, (79, 0), true)
+                    file("crates/ui/src/palette/mod.rs", FileStatus::Added, (79, 0), Staging::Staged)
                         .symbol(SymbolKind::Type, "PaletteView", (61, 0))
                         .symbol(SymbolKind::Function, "PaletteView::reset", (18, 0))
                         .hunk(added(
@@ -133,7 +135,7 @@ pub fn changes() -> Changes {
                                 "pub struct PaletteView {",
                             ],
                         )),
-                    file("crates/ui/src/root.rs", FileStatus::Modified, (21, 2), true)
+                    file("crates/ui/src/root.rs", FileStatus::Modified, (21, 2), Staging::Staged)
                         .symbol(SymbolKind::Function, "Pensive::open_palette", (12, 0))
                         .symbol(SymbolKind::Function, "Pensive::render", (9, 2))
                         .hunk(hunk(
@@ -166,18 +168,29 @@ pub fn changes() -> Changes {
     }
 }
 
+/// A file whose change is staged, unstaged or both. Unstaged, a new file is untracked.
 fn file(
     path: &str,
     status: FileStatus,
     (added, removed): (usize, usize),
-    staged: bool,
+    staging: Staging,
 ) -> FileChange {
+    let unstaged = match status {
+        FileStatus::Added => FileStatus::Untracked,
+        status => status,
+    };
+    let (index, worktree) = match staging {
+        Staging::Staged => (Some(status), None),
+        Staging::Partly => (Some(status), Some(unstaged)),
+        Staging::Unstaged => (None, Some(unstaged)),
+    };
     FileChange {
         path: path.into(),
-        status,
+        renamed_from: None,
+        index,
+        worktree,
         added,
         removed,
-        staged,
         symbols: Vec::new(),
         hunks: Vec::new(),
     }

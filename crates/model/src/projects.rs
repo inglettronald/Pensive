@@ -1,22 +1,28 @@
 //! The projects Pensive knows about, with their worktrees and branches.
 
 use std::{
-    path::PathBuf,
+    collections::HashMap,
+    path::{Path, PathBuf},
+    sync::Arc,
     time::{Duration, SystemTime},
 };
 
-use gpui::SharedString;
+use anyhow::Result;
+use gpui::{Context, SharedString, Task};
+
+use crate::{Changes, GitBackend, Repository};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ProjectId(pub usize);
 
+/// A repository Pensive has opened.
 #[derive(Clone, Debug)]
 pub struct Project {
     pub id: ProjectId,
     pub name: SharedString,
-    pub root: PathBuf,
     /// When Pensive last opened it.
     pub last_opened: SystemTime,
+    pub repository: Repository,
 }
 
 impl Project {
@@ -30,10 +36,9 @@ impl Project {
     }
 }
 
-/// A checkout of a project. The project's own root is its main worktree.
+/// A checkout of a repository.
 #[derive(Clone, Debug)]
 pub struct Worktree {
-    pub project: ProjectId,
     pub path: PathBuf,
     /// The checked-out branch, or `None` when the head is detached.
     pub branch: Option<SharedString>,
@@ -43,7 +48,6 @@ pub struct Worktree {
 
 #[derive(Clone, Debug)]
 pub struct Branch {
-    pub project: ProjectId,
     pub name: SharedString,
     pub last_commit: SystemTime,
 }
@@ -69,16 +73,127 @@ pub enum WorkKind {
 }
 
 /// Every known project, cached so that reading it never runs Git.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct Projects {
     pub projects: Vec<Project>,
-    pub worktrees: Vec<Worktree>,
-    pub branches: Vec<Branch>,
     /// When this was last refreshed. Ages are measured from here, so views never read the clock.
     pub as_of: Option<SystemTime>,
+    /// Each worktree's changes, by its path, once they've been read.
+    changes: HashMap<PathBuf, Changes>,
+    git: Arc<dyn GitBackend>,
 }
 
 impl Projects {
+    /// No projects yet, reading Git through `git`.
+    pub fn new(git: Arc<dyn GitBackend>) -> Self {
+        Self {
+            projects: Vec::new(),
+            as_of: None,
+            changes: HashMap::new(),
+            git,
+        }
+    }
+
+    /// Adds the repository that contains `path`, reading it off the UI thread. Opening one that's
+    /// already here reads it again.
+    pub fn open(&mut self, path: PathBuf, cx: &mut Context<Self>) -> Task<Result<ProjectId>> {
+        let git = self.git.clone();
+        cx.spawn(async move |this, cx| {
+            let repository = cx
+                .background_executor()
+                .spawn(async move { git.repository(&path) })
+                .await?;
+            this.update(cx, |this, cx| {
+                let id = this.add(repository, SystemTime::now());
+                cx.notify();
+                id
+            })
+        })
+    }
+
+    /// Adds `repository` as opened at `opened`, or updates the project already at its root.
+    pub(crate) fn add(&mut self, repository: Repository, opened: SystemTime) -> ProjectId {
+        self.as_of = Some(opened);
+        let root = &repository.root;
+        if let Some(known) = self
+            .projects
+            .iter_mut()
+            .find(|known| &known.repository.root == root)
+        {
+            known.repository = repository;
+            known.last_opened = opened;
+            return known.id;
+        }
+        let id = ProjectId(
+            self.projects
+                .iter()
+                .map(|project| project.id.0 + 1)
+                .max()
+                .unwrap_or(0),
+        );
+        let name = root
+            .file_name()
+            .unwrap_or(root.as_os_str())
+            .to_string_lossy()
+            .into_owned();
+        self.projects.push(Project {
+            id,
+            name: name.into(),
+            last_opened: opened,
+            repository,
+        });
+        id
+    }
+
+    /// The changes in the worktree at `worktree`, once read.
+    pub fn changes(&self, worktree: &Path) -> Option<&Changes> {
+        self.changes.get(worktree)
+    }
+
+    /// Reads the changes in the worktree at `worktree` off the UI thread, replacing what's
+    /// cached.
+    pub fn read_changes(&mut self, worktree: PathBuf, cx: &mut Context<Self>) -> Task<Result<()>> {
+        let git = self.git.clone();
+        cx.spawn(async move |this, cx| {
+            let read = worktree.clone();
+            let changes = cx
+                .background_executor()
+                .spawn(async move { git.changes(&read) })
+                .await?;
+            this.update(cx, |this, cx| {
+                this.insert_changes(worktree, changes);
+                cx.notify();
+            })
+        })
+    }
+
+    pub(crate) fn insert_changes(&mut self, worktree: PathBuf, changes: Changes) {
+        self.changes.insert(worktree, changes);
+    }
+
+    /// Stages or unstages one file in the cached changes. Git's index follows once a backend
+    /// writes it.
+    pub fn set_staged(
+        &mut self,
+        worktree: &Path,
+        path: &Path,
+        staged: bool,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(changes) = self.changes.get_mut(worktree) {
+            changes.set_staged(path, staged);
+            cx.notify();
+        }
+    }
+
+    /// [`Self::set_staged`] for every file.
+    pub fn set_all_staged(&mut self, worktree: &Path, staged: bool, cx: &mut Context<Self>) {
+        if let Some(changes) = self.changes.get_mut(worktree) {
+            changes.set_all_staged(staged);
+            cx.notify();
+        }
+    }
+
     pub fn project(&self, id: ProjectId) -> Option<&Project> {
         self.projects.iter().find(|project| project.id == id)
     }
@@ -92,51 +207,51 @@ impl Projects {
 
     /// The branch checked out in the project's root.
     pub fn current_branch(&self, id: ProjectId) -> Option<&SharedString> {
-        let root = &self.project(id)?.root;
-        self.worktrees
+        let repository = &self.project(id)?.repository;
+        repository
+            .worktrees
             .iter()
-            .find(|worktree| worktree.project == id && &worktree.path == root)?
+            .find(|worktree| worktree.path == repository.root)?
             .branch
             .as_ref()
     }
 
     /// Every worktree and branch, newest change first.
     pub fn work(&self) -> Vec<Work> {
-        let mut work: Vec<Work> = self
-            .worktrees
-            .iter()
-            .map(|worktree| {
-                let main = self
-                    .project(worktree.project)
-                    .is_some_and(|project| project.root == worktree.path);
-                Work {
-                    project: worktree.project,
-                    name: worktree.branch.clone().unwrap_or_else(|| "detached".into()),
-                    kind: if main {
-                        WorkKind::Main
-                    } else {
-                        WorkKind::Linked(worktree.path.clone())
-                    },
-                    last_change: worktree.last_change,
-                }
-            })
-            .collect();
-        let checked_out = |branch: &Branch| {
-            self.worktrees.iter().any(|worktree| {
-                worktree.project == branch.project && worktree.branch.as_ref() == Some(&branch.name)
-            })
-        };
-        work.extend(
-            self.branches
-                .iter()
-                .filter(|branch| !checked_out(branch))
-                .map(|branch| Work {
-                    project: branch.project,
-                    name: branch.name.clone(),
-                    kind: WorkKind::Branch,
-                    last_change: branch.last_commit,
-                }),
-        );
+        let mut work = Vec::new();
+        for project in &self.projects {
+            let Repository {
+                root,
+                worktrees,
+                branches,
+            } = &project.repository;
+            work.extend(worktrees.iter().map(|worktree| Work {
+                project: project.id,
+                name: worktree.branch.clone().unwrap_or_else(|| "detached".into()),
+                kind: if &worktree.path == root {
+                    WorkKind::Main
+                } else {
+                    WorkKind::Linked(worktree.path.clone())
+                },
+                last_change: worktree.last_change,
+            }));
+            let checked_out = |branch: &Branch| {
+                worktrees
+                    .iter()
+                    .any(|worktree| worktree.branch.as_ref() == Some(&branch.name))
+            };
+            work.extend(
+                branches
+                    .iter()
+                    .filter(|branch| !checked_out(branch))
+                    .map(|branch| Work {
+                        project: project.id,
+                        name: branch.name.clone(),
+                        kind: WorkKind::Branch,
+                        last_change: branch.last_commit,
+                    }),
+            );
+        }
         work.sort_by_key(|work| std::cmp::Reverse(work.last_change));
         work
     }
@@ -159,8 +274,12 @@ impl Projects {
 
 #[cfg(all(test, feature = "fixtures"))]
 mod tests {
+    use std::path::Path;
+
+    use gpui::{AppContext as _, TestAppContext};
+
     use super::*;
-    use crate::fixtures;
+    use crate::fixtures::{self, FakeGit, HARBOR};
 
     #[test]
     fn a_checked_out_branch_shows_once_as_its_worktree() {
@@ -181,5 +300,76 @@ mod tests {
         let active = projects.active(week);
         assert!(active.iter().all(|work| work.name != "hotfix/1.8.2"));
         assert!(active.iter().any(|work| work.name == "feat/palette-scopes"));
+    }
+
+    #[test]
+    fn opening_a_linked_worktree_adds_its_whole_project() {
+        let mut projects = Projects::new(Arc::new(FakeGit::default()));
+        let repository = FakeGit::default()
+            .repository(Path::new("~/Projects/pensive-wt/palette-scopes"))
+            .unwrap();
+        let id = projects.add(repository, SystemTime::now());
+        let project = projects.project(id).unwrap();
+        assert_eq!(project.repository.root, Path::new("~/Projects/pensive"));
+        assert_eq!(project.repository.worktrees.len(), 4);
+    }
+
+    #[test]
+    fn a_new_project_takes_an_unused_id() {
+        let mut projects = fixtures::projects();
+        let repository = Repository {
+            root: "~/code/new".into(),
+            worktrees: Vec::new(),
+            branches: Vec::new(),
+        };
+        let id = projects.add(repository, SystemTime::now());
+        assert_eq!(projects.projects.len(), 7);
+        assert_eq!(projects.project(id).unwrap().name, "new");
+    }
+
+    #[gpui::test]
+    async fn open_reads_the_repository_and_keeps_one_project_per_root(cx: &mut TestAppContext) {
+        let projects = cx.new(|_| Projects::new(Arc::new(FakeGit::default())));
+        let mut opened = Vec::new();
+        for path in ["~/code/harbor", "~/code/harbor-wt/tooltip-clip"] {
+            let open = projects.update(cx, |projects, cx| projects.open(path.into(), cx));
+            opened.push(open.await.unwrap());
+        }
+        assert_eq!(opened, [ProjectId(0), ProjectId(0)]);
+        projects.read_with(cx, |projects, _| {
+            assert_eq!(projects.projects.len(), 1);
+            assert_eq!(
+                projects.current_branch(ProjectId(0)).unwrap(),
+                "morgan/ui-scaling"
+            );
+        });
+    }
+
+    #[gpui::test]
+    async fn open_fails_outside_any_repository(cx: &mut TestAppContext) {
+        let projects = cx.new(|_| Projects::new(Arc::new(FakeGit::default())));
+        let open = projects.update(cx, |projects, cx| projects.open("~/nowhere".into(), cx));
+        assert!(open.await.is_err());
+        projects.read_with(cx, |projects, _| assert!(projects.projects.is_empty()));
+    }
+
+    #[gpui::test]
+    async fn read_changes_caches_them_by_worktree(cx: &mut TestAppContext) {
+        let projects = cx.new(|_| Projects::new(Arc::new(FakeGit::default())));
+        let read = projects.update(cx, |projects, cx| {
+            projects.read_changes(fixtures::PENSIVE_ROOT.into(), cx)
+        });
+        read.await.unwrap();
+        projects.read_with(cx, |projects, _| {
+            let changes = projects.changes(Path::new(fixtures::PENSIVE_ROOT)).unwrap();
+            assert_eq!(changes.uncommitted.len(), 7);
+            assert!(projects.changes(Path::new("~/code/harbor")).is_none());
+        });
+    }
+
+    #[test]
+    fn sample_ids_match_their_names() {
+        let projects = fixtures::projects();
+        assert_eq!(projects.project(HARBOR).unwrap().name, "harbor");
     }
 }

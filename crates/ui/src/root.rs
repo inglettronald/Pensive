@@ -4,14 +4,14 @@
 use components::{TitleBar, TitleBarProject};
 use gpui::{
     App, Bounds, Context, Entity, FocusHandle, Focusable, Subscription, TitlebarOptions, Window,
-    WindowBounds, WindowDecorations, WindowOptions, actions, div, hsla, prelude::*, px, size, svg,
+    WindowBounds, WindowDecorations, WindowOptions, actions, div, prelude::*, px, size, svg,
 };
-use model::{Changes, ProjectId, Projects};
+use model::{ProjectId, Projects};
 use theme::{ActiveTheme, Typeset};
 
 use crate::{
     key_binding,
-    palette::{Keyword, PaletteEvent, PaletteView, Tab},
+    palette::{Keyword, OPEN_ON, PaletteEvent, PaletteView, Tab, scrim},
     project::ProjectView,
     view_callback,
     window_frame::{draws_window_controls, window_frame},
@@ -28,9 +28,8 @@ pub(crate) fn bind_keys(cx: &mut App) {
 
 pub struct Pensive {
     projects: Entity<Projects>,
-    changes: Entity<Changes>,
-    project: Option<ProjectId>,
-    project_view: Option<Entity<ProjectView>>,
+    /// The project shown, with its view.
+    project: Option<(ProjectId, Entity<ProjectView>)>,
     palette: Entity<PaletteView>,
     palette_open: bool,
     focus_handle: FocusHandle,
@@ -38,11 +37,9 @@ pub struct Pensive {
 }
 
 impl Pensive {
-    /// A window on `project`, or the landing screen when it's `None`. Until a Git backend reads
-    /// each project's own changes, every project shows `changes`.
+    /// A window on `project`, or the landing screen when it's `None`.
     pub fn new(
         projects: Entity<Projects>,
-        changes: Entity<Changes>,
         project: Option<ProjectId>,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -51,24 +48,28 @@ impl Pensive {
         let subscription = cx.subscribe_in(&palette, window, Self::on_palette_event);
         let mut pensive = Self {
             projects,
-            changes,
             project: None,
-            project_view: None,
             palette,
             palette_open: false,
             focus_handle: cx.focus_handle(),
             _subscription: subscription,
         };
         match project {
-            None => pensive.open_palette(Tab::All, window, cx),
+            None => pensive.open_palette(None, window, cx),
             Some(project) => pensive.show_project(project, window, cx),
         }
         pensive
     }
 
-    /// Opens the palette on `tab`. On the landing screen it's already open, so this starts over.
-    pub fn open_palette(&mut self, tab: Tab, window: &mut Window, cx: &mut Context<Self>) {
-        let (project, overlay) = (self.project, self.project.is_some());
+    fn project_id(&self) -> Option<ProjectId> {
+        self.project.as_ref().map(|(id, _)| *id)
+    }
+
+    /// Opens the palette on `tab`, or on the tab the `palette.open_on` setting names. On the
+    /// landing screen it's already open, so this starts over.
+    pub fn open_palette(&mut self, tab: Option<Tab>, window: &mut Window, cx: &mut Context<Self>) {
+        let tab = tab.unwrap_or_else(|| OPEN_ON.get(cx));
+        let (project, overlay) = (self.project_id(), self.project.is_some());
         self.palette
             .update(cx, |palette, cx| palette.reset(project, tab, overlay, cx));
         self.palette_open = true;
@@ -83,31 +84,30 @@ impl Pensive {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.open_palette(Tab::All, window, cx);
+        self.open_palette(None, window, cx);
         self.palette
             .update(cx, |palette, cx| palette.set_keyword(Some(keyword), cx));
     }
 
+    /// Shows `project`, with a fresh view unless it's the one already shown.
     fn show_project(&mut self, project: ProjectId, window: &mut Window, cx: &mut Context<Self>) {
-        self.project = Some(project);
-        let changes = self.changes.clone();
-        let view = self
-            .project_view
-            .get_or_insert_with(|| cx.new(|cx| ProjectView::new(changes, cx)))
-            .clone();
-        window.focus(&view.focus_handle(cx), cx);
+        if self.project_id() != Some(project) {
+            let projects = self.projects.clone();
+            let view = cx.new(|cx| ProjectView::new(projects, project, cx));
+            self.project = Some((project, view));
+        }
+        if let Some((_, view)) = &self.project {
+            window.focus(&view.focus_handle(cx), cx);
+        }
         cx.notify();
     }
 
     fn close_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.project.is_none() {
+        let Some((_, view)) = &self.project else {
             return;
-        }
+        };
         self.palette_open = false;
-        match &self.project_view {
-            Some(view) => window.focus(&view.focus_handle(cx), cx),
-            None => window.focus(&self.focus_handle, cx),
-        }
+        window.focus(&view.focus_handle(cx), cx);
         cx.notify();
     }
 
@@ -123,12 +123,7 @@ impl Pensive {
                 project,
                 new_window: true,
             } => {
-                open_window(
-                    self.projects.clone(),
-                    self.changes.clone(),
-                    Some(project),
-                    cx,
-                );
+                open_window(self.projects.clone(), Some(project), cx);
                 self.close_palette(window, cx);
             }
             PaletteEvent::Open { project, .. } => {
@@ -141,7 +136,7 @@ impl Pensive {
 
     fn title_bar(&self, window: &Window, cx: &mut Context<Self>) -> TitleBar {
         let projects = self.projects.read(cx);
-        let project = self.project.and_then(|id| {
+        let project = self.project_id().and_then(|id| {
             let project = projects.project(id)?;
             Some(TitleBarProject {
                 initial: project.initial(),
@@ -154,7 +149,7 @@ impl Pensive {
             view_callback(cx, move |this: &mut Self, window, cx| {
                 match keyword.clone() {
                     Some(keyword) => this.open_palette_scoped(keyword, window, cx),
-                    None => this.open_palette(Tab::All, window, cx),
+                    None => this.open_palette(None, window, cx),
                 }
             })
         };
@@ -200,12 +195,7 @@ impl Pensive {
 }
 
 /// Opens a window on `project`, or on the landing screen.
-pub fn open_window(
-    projects: Entity<Projects>,
-    changes: Entity<Changes>,
-    project: Option<ProjectId>,
-    cx: &mut App,
-) {
+pub fn open_window(projects: Entity<Projects>, project: Option<ProjectId>, cx: &mut App) {
     let bounds = Bounds::centered(None, size(px(960.), px(640.)), cx);
     cx.open_window(
         WindowOptions {
@@ -219,7 +209,7 @@ pub fn open_window(
             app_id: Some("pensive".into()),
             ..Default::default()
         },
-        |window, cx| cx.new(|cx| Pensive::new(projects, changes, project, window, cx)),
+        |window, cx| cx.new(|cx| Pensive::new(projects, project, window, cx)),
     )
     .expect("failed to open a window");
 }
@@ -227,9 +217,9 @@ pub fn open_window(
 impl Render for Pensive {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let title_bar = self.title_bar(window, cx);
-        let content = match &self.project_view {
-            Some(view) if self.project.is_some() => view.clone().into_any_element(),
-            _ => self.landing(cx).into_any_element(),
+        let content = match &self.project {
+            Some((_, view)) => view.clone().into_any_element(),
+            None => self.landing(cx).into_any_element(),
         };
         let theme = cx.theme();
         let root = div()
@@ -243,10 +233,10 @@ impl Render for Pensive {
             .text_color(theme.colors.text)
             .font_family(theme.fonts.ui.clone())
             .on_action(cx.listener(|pensive, _: &OpenPalette, window, cx| {
-                pensive.open_palette(Tab::All, window, cx)
+                pensive.open_palette(None, window, cx)
             }))
             .on_action(cx.listener(|pensive, _: &OpenActive, window, cx| {
-                pensive.open_palette(Tab::Active, window, cx)
+                pensive.open_palette(Some(Tab::Active), window, cx)
             }))
             .child(title_bar)
             .child(div().flex().flex_col().flex_1().min_h_0().child(content))
@@ -260,7 +250,7 @@ impl Render for Pensive {
                         .items_center()
                         .pt_16()
                         .pb_16()
-                        .bg(hsla(0., 0., 0., 0.5))
+                        .bg(scrim(cx))
                         .child(self.palette.clone()),
                 )
             });
@@ -270,8 +260,13 @@ impl Render for Pensive {
 
 #[cfg(feature = "mocks")]
 pub(crate) fn mocks() -> Vec<mock::Mock> {
+    use std::sync::Arc;
+
+    use gpui::AnyView;
     use mock::Mock;
-    use model::fixtures::{self, HARBOR, PENSIVE};
+    use model::fixtures::{self, FakeGit, HARBOR, PENSIVE};
+
+    use crate::palette::declare_settings;
 
     /// A window on the sample projects, with the palette open on `tab` and set up by `setup`.
     fn window(
@@ -280,11 +275,13 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
         setup: fn(&mut PaletteView, &mut Context<PaletteView>),
         window: &mut Window,
         cx: &mut App,
-    ) -> gpui::AnyView {
-        let view = pensive(project, window, cx);
+    ) -> AnyView {
+        declare_settings(cx);
+        let projects = cx.new(|_| fixtures::projects());
+        let view = cx.new(|cx| Pensive::new(projects, project, window, cx));
         view.update(cx, |pensive, cx| {
             if let Some(tab) = tab {
-                pensive.open_palette(tab, window, cx);
+                pensive.open_palette(Some(tab), window, cx);
             }
             pensive.palette.update(cx, setup);
         });
@@ -292,18 +289,11 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
     }
     fn untouched(_: &mut PaletteView, _: &mut Context<PaletteView>) {}
 
-    fn pensive(project: Option<ProjectId>, window: &mut Window, cx: &mut App) -> Entity<Pensive> {
-        let projects = cx.new(|_| fixtures::projects());
-        let changes = cx.new(|_| fixtures::changes());
-        cx.new(|cx| Pensive::new(projects, changes, project, window, cx))
-    }
-
     vec![
         Mock::new("root", "empty", |window, cx| {
-            let projects = cx.new(|_| Projects::default());
-            let changes = cx.new(|_| Changes::default());
-            cx.new(|cx| Pensive::new(projects, changes, None, window, cx))
-                .into()
+            declare_settings(cx);
+            let projects = cx.new(|_| Projects::new(Arc::new(FakeGit::default())));
+            cx.new(|cx| Pensive::new(projects, None, window, cx)).into()
         }),
         Mock::new("root", "landing", |w, cx| {
             window(None, None, untouched, w, cx)
@@ -318,7 +308,7 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
             )
         }),
         Mock::new("root", "project", |w, cx| {
-            pensive(Some(PENSIVE), w, cx).into()
+            window(Some(PENSIVE), None, untouched, w, cx)
         }),
         Mock::new("root", "palette", |w, cx| {
             window(Some(PENSIVE), Some(Tab::All), untouched, w, cx)
@@ -358,6 +348,15 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
                 Some(PENSIVE),
                 Some(Tab::All),
                 |palette, cx| palette.set_query("https://github.com/zed-industries/zed.git", cx),
+                w,
+                cx,
+            )
+        }),
+        Mock::new("root", "settings", |w, cx| {
+            window(
+                Some(PENSIVE),
+                Some(Tab::All),
+                |palette, cx| palette.set_keyword(Some(Keyword::Setting), cx),
                 w,
                 cx,
             )

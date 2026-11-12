@@ -105,7 +105,10 @@ impl RenderOnce for SegmentedControl {
                         })),
                 }
                 .when_some(on_select.clone(), |option, handler| {
-                    option.on_click(move |_, window, cx| handler(index, window, cx))
+                    option.on_click(move |_, window, cx| {
+                        cx.stop_propagation();
+                        handler(index, window, cx)
+                    })
                 })
             }))
     }

@@ -7,14 +7,17 @@ mod mocks;
 mod sidebar;
 mod tree;
 
-use std::time::Duration;
+use std::{
+    path::{Path, PathBuf},
+    time::Duration,
+};
 
 use components::IconName;
 use gpui::{
     App, ClipboardItem, Context, Entity, FocusHandle, Focusable, SharedString, Subscription, Task,
     Window, actions, div, prelude::*,
 };
-use model::{Changes, FileChange};
+use model::{Changes, FileChange, ProjectId, Projects, Staging};
 use strum::VariantArray;
 
 use crate::{key_binding, text_input::TextInput};
@@ -62,15 +65,17 @@ pub(crate) enum Source {
     Commit(SharedString),
 }
 
-/// A file in one of the sidebar's lists.
+/// A file in one of the sidebar's lists, by its path.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct FileKey {
     source: Source,
-    index: usize,
+    path: PathBuf,
 }
 
 pub struct ProjectView {
-    changes: Entity<Changes>,
+    projects: Entity<Projects>,
+    /// The worktree shown: for now, always the project's main one.
+    worktree: PathBuf,
     layout: FileLayout,
     uncommitted_open: bool,
     open_commit: Option<SharedString>,
@@ -89,23 +94,34 @@ pub struct ProjectView {
 }
 
 impl ProjectView {
-    pub fn new(changes: Entity<Changes>, cx: &mut Context<Self>) -> Self {
+    /// The view on `project`'s main worktree. Its changes are read the first time it's shown.
+    pub fn new(projects: Entity<Projects>, project: ProjectId, cx: &mut Context<Self>) -> Self {
         let message = cx.new(|cx| {
             let mut input = TextInput::new(cx);
             input.set_placeholder("Commit message", cx);
             input
         });
-        let selected = (!changes.read(cx).uncommitted.is_empty()).then_some(FileKey {
-            source: Source::Uncommitted,
-            index: 0,
-        });
-        let subscription = cx.observe(&changes, |_, _, cx| cx.notify());
-        Self {
-            changes,
+        let worktree = projects
+            .read(cx)
+            .project(project)
+            .map(|project| project.repository.root.clone())
+            .unwrap_or_default();
+        if projects.read(cx).changes(&worktree).is_none() {
+            // A backend that can't read changes yet leaves the timeline empty.
+            projects
+                .update(cx, |projects, cx| {
+                    projects.read_changes(worktree.clone(), cx)
+                })
+                .detach();
+        }
+        let subscription = cx.observe(&projects, |_, _, cx| cx.notify());
+        let mut view = Self {
+            projects,
+            worktree,
             layout: FileLayout::List,
             uncommitted_open: true,
             open_commit: None,
-            selected,
+            selected: None,
             selected_symbol: None,
             folded: Vec::new(),
             hovered: None,
@@ -115,7 +131,21 @@ impl ProjectView {
             message,
             focus_handle: cx.focus_handle(),
             _subscription: subscription,
-        }
+        };
+        view.selected = view.changes(cx).uncommitted.first().map(|file| FileKey {
+            source: Source::Uncommitted,
+            path: file.path.clone(),
+        });
+        view
+    }
+
+    /// The worktree's changes as cached, or none until they've been read.
+    fn changes(&self, cx: &App) -> Changes {
+        self.projects
+            .read(cx)
+            .changes(&self.worktree)
+            .cloned()
+            .unwrap_or_default()
     }
 
     pub fn set_layout(&mut self, layout: FileLayout, cx: &mut Context<Self>) {
@@ -135,17 +165,16 @@ impl ProjectView {
         if self.open_commit.as_ref() == Some(&sha) {
             self.open_commit = None;
         } else {
-            let has_files = self
-                .changes
-                .read(cx)
+            let first = self
+                .changes(cx)
                 .commit(&sha)
-                .is_some_and(|commit| !commit.files.is_empty());
+                .and_then(|commit| commit.files.first().map(|file| file.path.clone()));
             self.uncommitted_open = false;
-            if has_files {
+            if let Some(path) = first {
                 self.select(
                     FileKey {
                         source: Source::Commit(sha.clone()),
-                        index: 0,
+                        path,
                     },
                     None,
                     cx,
@@ -157,9 +186,9 @@ impl ProjectView {
     }
 
     pub fn set_all_staged(&mut self, staged: bool, cx: &mut Context<Self>) {
-        self.changes.update(cx, |changes, cx| {
-            changes.set_all_staged(staged);
-            cx.notify();
+        let worktree = self.worktree.clone();
+        self.projects.update(cx, |projects, cx| {
+            projects.set_all_staged(&worktree, staged, cx)
         });
     }
 
@@ -167,9 +196,12 @@ impl ProjectView {
     /// on it.
     #[cfg(feature = "mocks")]
     pub fn show_path(&mut self, index: usize, cx: &mut Context<Self>) {
+        let Some(file) = self.changes(cx).uncommitted.get(index).cloned() else {
+            return;
+        };
         let key = FileKey {
             source: Source::Uncommitted,
-            index,
+            path: file.path,
         };
         self.hovered = Some(key.clone());
         self.tooltip = Some(key);
@@ -200,21 +232,20 @@ impl ProjectView {
         cx.notify();
     }
 
-    fn toggle_staged(&mut self, index: usize, cx: &mut Context<Self>) {
-        self.changes.update(cx, |changes, cx| {
-            if let Some(file) = changes.uncommitted.get(index) {
-                let path = file.path.clone();
-                let staged = !file.staged;
-                changes.set_staged(&path, staged);
-                cx.notify();
-            }
+    /// Stages all of the file at `path`, or unstages it once it's fully staged.
+    fn toggle_staged(&mut self, path: &Path, cx: &mut Context<Self>) {
+        let Some(staging) = self.changes(cx).file(path).map(FileChange::staging) else {
+            return;
+        };
+        let worktree = self.worktree.clone();
+        self.projects.update(cx, |projects, cx| {
+            projects.set_staged(&worktree, path, staging != Staging::Staged, cx)
         });
     }
 
     /// Stages everything, or unstages everything once all of it is staged.
     fn toggle_all_staged(&mut self, cx: &mut Context<Self>) {
-        let changes = self.changes.read(cx);
-        let all = changes.staged_count() == changes.uncommitted.len();
+        let all = self.changes(cx).staging() == Staging::Staged;
         self.set_all_staged(!all, cx);
     }
 
@@ -259,12 +290,12 @@ impl ProjectView {
     }
 
     fn file(&self, key: &FileKey, cx: &App) -> Option<FileChange> {
-        let changes = self.changes.read(cx);
+        let changes = self.changes(cx);
         let files = match &key.source {
             Source::Uncommitted => &changes.uncommitted,
             Source::Commit(sha) => &changes.commit(sha)?.files,
         };
-        files.get(key.index).cloned()
+        files.iter().find(|file| file.path == key.path).cloned()
     }
 
     fn copy_path(&mut self, _: &CopyPath, _window: &mut Window, cx: &mut Context<Self>) {
@@ -287,7 +318,7 @@ impl Focusable for ProjectView {
 
 impl Render for ProjectView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let changes = self.changes.read(cx).clone();
+        let changes = self.changes(cx);
         div()
             .id("project")
             .key_context(CONTEXT)
