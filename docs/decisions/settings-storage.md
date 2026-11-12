@@ -29,11 +29,11 @@ macOS breaks Apple's convention of `~/Library/Application Support`. That's delib
 
 On Windows, settings go in Roaming AppData so they follow a domain profile, and state goes in Local AppData because its paths only make sense on one machine.
 
-The [`etcetera`](https://docs.rs/etcetera) crate (0.11) encodes this policy directly. Its `choose_base_strategy` picks XDG on Linux and macOS and the Windows folders on Windows, and it honors `XDG_CONFIG_HOME` and `XDG_STATE_HOME`. Its Windows strategy has no state folder, so state uses its cache folder there, which is `%LOCALAPPDATA%`. The alternative, [`dirs`](https://docs.rs/dirs) (7.0), returns `~/Library/Application Support` on macOS, so we'd have to special-case macOS the way Zed does.
+The [`etcetera`](https://docs.rs/etcetera) crate (0.11) encodes this policy. Its `choose_base_strategy` picks XDG on Linux and macOS and the Windows folders on Windows, and it honors `XDG_CONFIG_HOME` and `XDG_STATE_HOME`. Its Windows strategy has no state folder, so state uses its cache folder there, which is `%LOCALAPPDATA%`. The alternative, [`dirs`](https://docs.rs/dirs) (7.0), returns `~/Library/Application Support` on macOS, so we'd have to special-case macOS the way Zed does.
 
 ## Format
 
-All four files are TOML. The theme crate already parses overrides from TOML (PEN-16), `toml` 1.2 is already a dependency, and TOML allows comments, which a hand-edited file needs. Zed uses JSON with comments. That buys it a JSON Schema for autocomplete in editors, but TOML editors read schemas too (Taplo and Tombi both do), so we can add one later if people ask.
+All four files are TOML. The theme crate already parses overrides from TOML (PEN-16), and TOML allows comments, which a hand-edited file needs. Zed uses JSON with comments. That buys it a JSON Schema for autocomplete in editors, but TOML editors read schemas too (Taplo and Tombi both do), so we can add one later if people ask.
 
 Settings files are sparse. Defaults live in code, and the file only holds what the user changed. An empty or missing file means every default.
 
@@ -58,8 +58,8 @@ code = "Geist Mono"
 show_tabs = false
 open_on = "active"
 active_days = 14
-opacity = 0.9
-scrim = "light"
+opacity = 90
+scrim = 25
 ```
 
 Keys are snake_case and grouped by feature. A setting's full key is its dotted path, like `palette.show_tabs`.
@@ -72,9 +72,9 @@ The palette's `setting:` keyword and the settings window (PEN-11) both list sett
 - **A derive macro on the struct.** The macro reads doc comments and attributes into metadata. One place per setting, but it needs a proc-macro crate, and the struct grows an attribute language.
 - **Each setting is a declared value.** A setting is a value with its key, name, description, control and default, typed by what it holds. The store keeps the parsed file as a table, and code reads a setting through its declaration, which returns the typed value or the default. The registry is the list of declarations, so the palette and settings window list exactly what exists.
 
-We use declared values. Each crate declares the settings it reads, next to the code that reads them: the palette's in `ui`, density and fonts in `theme`. Nothing has to be kept in sync, and an unknown key is simply one with no declaration.
+We use declared values. Each crate declares the settings it reads, next to the code that reads them: the palette's in `ui`, density and fonts in `theme`. Nothing has to be kept in sync, and an unknown key is one with no declaration.
 
-The control follows from the value's type:
+Each declaration names its control, so two settings that hold the same type can use different ones. Opacity and scrim are both percentages, but opacity is a select and scrim is segmented.
 
 | Control | For | Examples |
 |---|---|---|
@@ -82,7 +82,7 @@ The control follows from the value's type:
 | Segmented | A choice from two to four short options | `density`, `palette.open_on`, `palette.scrim` |
 | Select | A longer list, or one known only at runtime | `theme`, `fonts.code`, `palette.active_days`, `palette.opacity` |
 
-A select's options can come from a function, so `theme` lists the themes on disk and the fonts list what's bundled. Opacity and the Active window are numbers, but they get a select over fixed steps, such as 90, 95 and 100 percent, or 1, 3, 7, 14 and 30 days. If the settings window wants a slider or free number entry later, that's a fourth control.
+A select's options can come from a function, so `theme` lists the themes on disk and the fonts list what's bundled. Opacity and the Active window are numbers, but they get a select over fixed steps: 70, 80, 90 and 100 percent, or 1, 3, 7, 14 and 30 days. If the settings window wants a slider or free number entry later, that's a fourth control.
 
 ### Palette settings
 
@@ -115,7 +115,7 @@ ui = "Geist"
 
 The `[colors]` and `[fonts]` tables are today's `ThemeOverride`, keyed by the role names in `crates/theme`. Colors take any hex form GPUI parses: `#rgb`, `#rgba`, `#rrggbb` or `#rrggbbaa`.
 
-`extends` is optional and defaults to `pensive-dark`. It can name another user theme, so someone can tweak a shared theme in a few lines without copying it. Helix themes work the same way, with `inherits`. A loop of themes extending each other is an error, and Pensive falls back to the base. Naming the base in the file costs one line, and it keeps theme files valid if Pensive ever ships a second base.
+`extends` is optional and defaults to `pensive-dark`. It can name another user theme, so someone can tweak a shared theme in a few lines without copying it. Helix themes work the same way, with `inherits`. A loop of themes extending each other, or an `extends` that names a missing theme, is reported. The chain stops there, and the themes before that point still apply over the base. Naming the base in the file costs one line, and it keeps theme files valid if Pensive ever ships a second base.
 
 The theme in use is built in this order, each layer overriding only the roles it names:
 
