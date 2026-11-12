@@ -26,6 +26,7 @@ Every crate except `git` and `config` also depends on `gpui`.
 - Components never see models. They render from the props they're given.
 - Backends implement traits defined in `model`. `ui` never depends on a backend crate, so only `pensive` sees both sides.
 - Backend calls block, so models run them on GPUI's background executor.
+- A model reports every backend call that fails to the notices itself, so no caller can drop the error. It still returns the error, for a view that also shows it on the control that started the call.
 - A new component ships with its gallery. A new view ships with mocks for the states that change the screen, usually empty, loading, error and a typical case.
 - Every visual state of a component can be set through its props, so a mock can show it without input.
 

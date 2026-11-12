@@ -8,9 +8,9 @@ use std::{
 };
 
 use anyhow::Result;
-use gpui::{Context, SharedString, Task};
+use gpui::{AsyncApp, Context, SharedString, Task};
 
-use crate::{Changes, GitBackend, Repository};
+use crate::{Changes, GitBackend, Notice, Notices, Origin, Repository};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ProjectId(pub usize);
@@ -99,15 +99,20 @@ impl Projects {
     pub fn open(&mut self, path: PathBuf, cx: &mut Context<Self>) -> Task<Result<ProjectId>> {
         let git = self.git.clone();
         cx.spawn(async move |this, cx| {
-            let repository = cx
-                .background_executor()
-                .spawn(async move { git.repository(&path) })
-                .await?;
-            this.update(cx, |this, cx| {
-                let id = this.add(repository, SystemTime::now());
-                cx.notify();
-                id
-            })
+            let title = format!("Couldn't open {}", path.display());
+            let opened = async {
+                let repository = cx
+                    .background_executor()
+                    .spawn(async move { git.repository(&path) })
+                    .await?;
+                this.update(cx, |this, cx| {
+                    let id = this.add(repository, SystemTime::now());
+                    cx.notify();
+                    id
+                })
+            }
+            .await;
+            reported(title, opened, cx)
         })
     }
 
@@ -155,15 +160,19 @@ impl Projects {
     pub fn read_changes(&mut self, worktree: PathBuf, cx: &mut Context<Self>) -> Task<Result<()>> {
         let git = self.git.clone();
         cx.spawn(async move |this, cx| {
-            let read = worktree.clone();
-            let changes = cx
-                .background_executor()
-                .spawn(async move { git.changes(&read) })
-                .await?;
-            this.update(cx, |this, cx| {
-                this.insert_changes(worktree, changes);
-                cx.notify();
-            })
+            let read = async {
+                let path = worktree.clone();
+                let changes = cx
+                    .background_executor()
+                    .spawn(async move { git.changes(&path) })
+                    .await?;
+                this.update(cx, |this, cx| {
+                    this.insert_changes(worktree, changes);
+                    cx.notify();
+                })
+            }
+            .await;
+            reported("Couldn't read changes", read, cx)
         })
     }
 
@@ -272,6 +281,17 @@ impl Projects {
     }
 }
 
+/// Reports a failed backend call to the notices under `title` and passes the result on. Every
+/// backend call goes through it, so no caller can drop the error, and a caller that started it
+/// from a control can still show the error there.
+fn reported<T>(title: impl Into<SharedString>, result: Result<T>, cx: &mut AsyncApp) -> Result<T> {
+    if let Err(error) = &result {
+        let notice = Notice::failed(title, Origin::Git, error);
+        cx.update(|cx| Notices::global(cx).update(cx, |notices, cx| notices.report(notice, cx)));
+    }
+    result
+}
+
 #[cfg(all(test, feature = "fixtures"))]
 mod tests {
     use std::path::Path;
@@ -346,11 +366,18 @@ mod tests {
     }
 
     #[gpui::test]
-    async fn open_fails_outside_any_repository(cx: &mut TestAppContext) {
+    async fn open_fails_outside_any_repository_and_reports_it(cx: &mut TestAppContext) {
         let projects = cx.new(|_| Projects::new(Arc::new(FakeGit::default())));
         let open = projects.update(cx, |projects, cx| projects.open("~/nowhere".into(), cx));
         assert!(open.await.is_err());
         projects.read_with(cx, |projects, _| assert!(projects.projects.is_empty()));
+        let notices = cx.update(Notices::global);
+        notices.read_with(cx, |notices, _| {
+            let held = notices.held();
+            assert_eq!(held[0].notice.title, "Couldn't open ~/nowhere");
+            // FakeGit has no such repository, which is a gap in the samples, not a Git failure.
+            assert_eq!(held[0].notice.origin, Origin::Fixture);
+        });
     }
 
     #[gpui::test]

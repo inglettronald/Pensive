@@ -4,7 +4,6 @@ mod config_sync;
 mod mock_thumbnails;
 
 use gpui::{App, AppContext};
-use model::{Notice, Notices, Origin};
 
 fn main() {
     #[cfg(target_family = "wasm")]
@@ -39,17 +38,10 @@ fn main() {
 
             let projects = cx.new(|_| projects);
             for path in paths {
-                let opened = projects.update(cx, |projects, cx| projects.open(path.clone(), cx));
-                cx.spawn(async move |cx| {
-                    if let Err(error) = opened.await {
-                        let title = format!("Couldn't open {}", path.display());
-                        let notice = Notice::failed(title, Origin::Git, &error);
-                        cx.update(|cx| {
-                            Notices::global(cx).update(cx, |notices, cx| notices.report(notice, cx))
-                        });
-                    }
-                })
-                .detach();
+                // Projects reports a repository that won't open.
+                projects
+                    .update(cx, |projects, cx| projects.open(path, cx))
+                    .detach();
             }
             ui::open_window(projects, None, cx);
             cx.activate(true);
