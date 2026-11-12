@@ -90,7 +90,6 @@ fn newest_change(path: &Path) -> Result<Option<SystemTime>> {
 #[cfg(test)]
 mod tests {
     use std::{
-        ffi::OsStr,
         path::PathBuf,
         process::Command,
         time::{Duration, UNIX_EPOCH},
@@ -215,7 +214,7 @@ mod tests {
     #[cfg(target_os = "linux")]
     #[test]
     fn reads_a_worktree_path_that_isnt_utf8() {
-        use std::os::unix::ffi::OsStrExt as _;
+        use std::{ffi::OsStr, os::unix::ffi::OsStrExt as _};
 
         let repo = Repo::new();
         repo.commit(1_000_000_000);
