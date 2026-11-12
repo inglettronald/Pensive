@@ -1,7 +1,9 @@
 //! Sample projects for mocks and tests: the ones drawn on the command palette's design canvas.
 
+mod fake_config;
 mod fake_git;
 
+pub use fake_config::FakeConfig;
 pub use fake_git::FakeGit;
 
 use std::{

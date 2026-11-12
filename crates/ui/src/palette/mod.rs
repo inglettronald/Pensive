@@ -2,6 +2,7 @@
 
 mod commands;
 mod fuzzy;
+mod options;
 mod results;
 
 use components::{CommandPalette, PaletteChip, PaletteSection};
@@ -10,12 +11,15 @@ use gpui::{
     actions, div, prelude::*,
 };
 use model::{ProjectId, Projects};
+use serde::{Deserialize, Serialize};
+use settings::{AnySetting, ControlState, Settings};
 
 use crate::{
     key_binding,
     text_input::{self, Changed, TextInput},
 };
-use results::{Query, Results, results};
+pub(crate) use options::{OPEN_ON, declare as declare_settings, scrim};
+use results::{Query, Results, SettingRow, results};
 
 actions!(
     command_palette,
@@ -45,7 +49,8 @@ pub(crate) fn bind_keys(cx: &mut App) {
 }
 
 /// The three fixed tabs. Plugins add keywords, not tabs.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Tab {
     All,
     Active,
@@ -76,6 +81,8 @@ pub enum Keyword {
     Project(Option<ProjectId>),
     /// Branches and worktrees in every project.
     Branch,
+    /// Every setting, each with its control.
+    Setting,
 }
 
 /// A keyword typed at the start of the query, which becomes a chip or switches tab.
@@ -91,6 +98,7 @@ impl Typed {
         [
             ("project:", Typed::Keyword(Keyword::Project(None))),
             ("branch:", Typed::Keyword(Keyword::Branch)),
+            ("setting:", Typed::Keyword(Keyword::Setting)),
             ("active:", Typed::Tab(Tab::Active)),
             (">", Typed::Tab(Tab::Commands)),
         ]
@@ -109,6 +117,8 @@ pub(crate) enum Action {
     Narrow(Keyword),
     /// Drops the keyword and keeps the query, to search everywhere.
     ClearKeyword,
+    /// Flips the setting with this key, or moves it to its next choice.
+    Step(&'static str),
     /// Not wired up yet.
     None,
 }
@@ -214,6 +224,7 @@ impl PaletteView {
             Some(Keyword::Project(Some(_))) => "Filter branches and worktrees",
             Some(Keyword::Project(None)) => "Search projects",
             Some(Keyword::Branch) => "Search branches and worktrees",
+            Some(Keyword::Setting) => "Search settings",
             None => self.tab.placeholder(),
         };
         self.input
@@ -222,12 +233,24 @@ impl PaletteView {
 
     fn results(&self, cx: &App) -> Results {
         let text = self.input.read(cx).text();
+        let setting_rows: Vec<SettingRow> = cx
+            .try_global::<Settings>()
+            .into_iter()
+            .flat_map(Settings::declared)
+            .map(|(section, setting)| SettingRow {
+                section,
+                setting,
+                state: setting.state(cx),
+            })
+            .collect();
         results(&Query {
             projects: self.projects.read(cx),
             current: self.current,
             tab: self.tab,
             keyword: self.keyword.as_ref(),
             text,
+            settings: &setting_rows,
+            active_days: options::ACTIVE_DAYS.get(cx).max(1),
         })
     }
 
@@ -310,12 +333,42 @@ impl PaletteView {
                 }
             }
             Action::ClearKeyword => self.set_keyword(None, cx),
+            Action::Step(key) => self.step_setting(key, 1, cx),
             Action::None => {}
         }
     }
 
-    /// → at the end of the query applies the selected row's keyword, such as `project:`.
+    fn step_setting(&mut self, key: &str, step: isize, cx: &mut Context<Self>) {
+        if let Some(setting) = find_setting(key, cx) {
+            setting.step(step, cx);
+            cx.notify();
+        }
+    }
+
+    /// ← and → change the selected setting's choice while the query is empty. With text in the
+    /// query, they move the cursor.
+    fn change_choice(&mut self, step: isize, cx: &mut Context<Self>) -> bool {
+        if !self.input.read(cx).text().is_empty() {
+            return false;
+        }
+        let selected = self.results(cx).into_items().nth(self.selected);
+        let Some(Action::Step(key)) = selected.map(|item| item.action) else {
+            return false;
+        };
+        let toggle = find_setting(key, cx)
+            .is_some_and(|setting| matches!(setting.state(cx), ControlState::Toggle(_)));
+        if !toggle {
+            self.step_setting(key, step, cx);
+        }
+        !toggle
+    }
+
+    /// → at the end of the query applies the selected row's keyword, such as `project:`, or
+    /// moves the selected setting to its next choice.
     fn narrow(&mut self, _: &text_input::Right, _: &mut Window, cx: &mut Context<Self>) {
+        if self.change_choice(1, cx) {
+            return;
+        }
         let at_end = self.input.read(cx).cursor_at_end();
         let narrow = at_end
             .then(|| self.results(cx).into_items().nth(self.selected))
@@ -327,6 +380,12 @@ impl PaletteView {
                 self.set_query("", cx);
             }
             None => cx.propagate(),
+        }
+    }
+
+    fn previous_choice(&mut self, _: &text_input::Left, _: &mut Window, cx: &mut Context<Self>) {
+        if !self.change_choice(-1, cx) {
+            cx.propagate();
         }
     }
 
@@ -343,6 +402,10 @@ impl PaletteView {
             cx.propagate();
         }
     }
+}
+
+fn find_setting(key: &str, cx: &App) -> Option<&'static dyn AnySetting> {
+    cx.try_global::<Settings>()?.find(key)
 }
 
 impl Focusable for PaletteView {
@@ -372,6 +435,7 @@ impl Render for PaletteView {
             }
             Keyword::Project(None) => PaletteChip::new("project:").removable(),
             Keyword::Branch => PaletteChip::new("branch:").removable(),
+            Keyword::Setting => PaletteChip::new("setting:").removable(),
         });
         let tab = self.keyword.is_none().then(|| self.tab.index());
         let this = cx.entity().downgrade();
@@ -387,10 +451,15 @@ impl Render for PaletteView {
                 .ok();
         };
 
+        let tabs: &[&str] = if options::SHOW_TABS.get(cx) {
+            &Tab::LABELS
+        } else {
+            &[]
+        };
         let mut palette = CommandPalette::new()
             .input(self.input.clone())
             .scroll(self.scroll.clone())
-            .tabs(Tab::LABELS, tab)
+            .tabs(tabs.iter().copied(), tab)
             .on_tab(on_tab)
             .on_activate(on_activate);
         if let Some(chip) = chip {
@@ -413,7 +482,9 @@ impl Render for PaletteView {
             palette = palette.selected(selected);
         }
         if self.overlay {
-            palette = palette.overlay();
+            palette = palette
+                .overlay()
+                .opacity(options::fraction(&options::OPACITY, cx));
         }
 
         div()
@@ -429,6 +500,7 @@ impl Render for PaletteView {
             .on_action(cx.listener(Self::confirm_secondary))
             .on_action(cx.listener(Self::dismiss))
             .capture_action(cx.listener(Self::narrow))
+            .capture_action(cx.listener(Self::previous_choice))
             .capture_action(cx.listener(Self::remove_keyword))
             .child(palette)
     }
@@ -449,6 +521,10 @@ mod tests {
             Some((Typed::Tab(Tab::Commands), "fetch"))
         );
         assert_eq!(Typed::parse("active:"), Some((Typed::Tab(Tab::Active), "")));
+        assert_eq!(
+            Typed::parse("setting:scrim"),
+            Some((Typed::Keyword(Keyword::Setting), "scrim"))
+        );
         assert_eq!(Typed::parse("projects"), None);
     }
 }

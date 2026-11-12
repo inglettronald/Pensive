@@ -2,9 +2,13 @@
 //! GPUI's spacing methods (`gap_1`, `p_3`, ...) directly.
 
 use gpui::{FontWeight, Global, Pixels, Styled, px};
+use serde::{Deserialize, Serialize};
 use strum::{IntoStaticStr, VariantArray};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, VariantArray, IntoStaticStr)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, VariantArray, IntoStaticStr, Serialize, Deserialize,
+)]
+#[serde(rename_all = "lowercase")]
 pub enum DensityPreset {
     /// Inter-sized text and 28 px rows. The default.
     Calm,

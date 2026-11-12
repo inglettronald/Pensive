@@ -1,0 +1,16 @@
+[package]
+name = "config"
+version = "0.1.0"
+description = "A config folder backend that reads, writes and watches the settings and theme files."
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+etcetera.workspace = true
+model.workspace = true
+notify.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

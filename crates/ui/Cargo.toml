@@ -11,6 +11,8 @@ components.workspace = true
 gpui.workspace = true
 model.workspace = true
 nucleo-matcher.workspace = true
+serde.workspace = true
+settings.workspace = true
 theme.workspace = true
 unicode-segmentation.workspace = true
 mock = { workspace = true, optional = true }

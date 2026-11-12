@@ -37,7 +37,7 @@ All four files are TOML. The theme crate already parses overrides from TOML (PEN
 
 Settings files are sparse. Defaults live in code, and the file only holds what the user changed. An empty or missing file means every default.
 
-When the palette or settings window changes a value, Pensive edits that one key with [`toml_edit`](https://docs.rs/toml_edit) (0.25), which keeps the user's comments, ordering and spacing. It writes to a temporary file and renames it over the original, so a crash never leaves half a file. When `settings.toml` is a symlink into a dotfiles repo, Pensive resolves the link first and replaces the target, so the link survives.
+When the palette or settings window changes a value, Pensive edits that one key with [`toml_edit`](https://docs.rs/toml_edit) (0.25), which keeps the user's comments, ordering and spacing. It writes to a temporary file and renames it over the original, so a crash never leaves half a file. When `settings.toml` is a symlink into a dotfiles repo, Pensive resolves the link first and replaces the target, so the link survives. Before writing, it reads the file again. If the user saved it since Pensive last read it, their edit wins and the change from the app is dropped.
 
 ### Why state is a file and not a database
 
@@ -86,7 +86,7 @@ A select's options can come from a function, so `theme` lists the themes on disk
 
 ### Palette settings
 
-These are the settings `docs/design.md` asks for. Values are a starting point for the implementation.
+These are the settings `docs/design.md` asks for.
 
 | Key | Control | Default |
 |---|---|---|
@@ -96,7 +96,7 @@ These are the settings `docs/design.md` asks for. Values are a starting point fo
 | `palette.opacity` | Select: 70, 80, 90, 100% | 100% |
 | `palette.scrim` | Segmented: 0, 25, 50, 70% | 50% |
 
-The opacity and scrim steps and defaults come from the approved palette canvas (PEN-27). In code, `CommandPalette` already takes an `opacity` prop that defaults to 1, and the root view draws the scrim at 50%. Neither value is in the `theme` crate.
+The opacity and scrim steps and defaults come from the approved palette canvas (PEN-27).
 
 ## Theme files
 
@@ -138,7 +138,7 @@ Three kinds of mistake, handled the same way in settings and theme files:
 
 Declared settings find unknown keys for free. Theme overrides deserialize through the `Refineable` derive, which ignores unknown keys and can't be told otherwise, so the loader wraps it in [`serde_ignored`](https://docs.rs/serde_ignored) (0.1), which reports each key serde skipped. Cargo's "unused manifest key" warning works this way.
 
-Unknown keys are warnings, not errors, so a settings file shared between two Pensive versions still loads in the older one. Zed does the same: an invalid value falls back to its default and the rest of the file still applies. How a report looks in the app needs its own mockup, with the settings implementation.
+Unknown keys are warnings, not errors, so a settings file shared between two Pensive versions still loads in the older one. Zed does the same: an invalid value falls back to its default and the rest of the file still applies. Until the notice in PEN-32 exists, problems print to stderr.
 
 ## Reloading
 
@@ -157,7 +157,7 @@ Pensive watches the config folder with [`notify`](https://docs.rs/notify) (8.2) 
 | `serde_ignored` 0.1 | Reports unknown keys in theme files | `deny_unknown_fields`, which `Refineable` can't pass through, and which turns a typo into an error |
 | `notify` 8.2 | Watches the config folder for edits | Reloading when the window gains focus, which can't show a theme edit live while Pensive sits beside the editor |
 
-`toml` 1.2 is already a dependency.
+`toml` 1.2 was already a dependency. The workspace turns on its `preserve_order` feature, so tables keep the file's key order and problems are reported in the order they appear.
 
 ## Recommendation
 
@@ -170,4 +170,4 @@ Pensive watches the config folder with [`notify`](https://docs.rs/notify) (8.2) 
 7. Pensive reloads settings and themes when they change on disk.
 8. `.pensive/project.toml` describes a project, including the icon everyone who clones it sees, and never overrides user settings.
 
-Left for the implementation: which crate holds the store and the declaration type (it sits below `theme`, `model` and `ui`, so probably a new `settings` crate in `docs/architecture.md`), and how the file I/O fits the backend traits in `model`.
+In code, the store and the declarations live in the `settings` crate, below `theme` and `ui`. Reading, watching and writing the config folder is I/O, so it goes behind a trait in `model` like Git does, and the app gives that model a filesystem backend. Blocking calls run on GPUI's background executor.
