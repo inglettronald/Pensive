@@ -598,7 +598,9 @@ mod tests {
         let browser = view.read_with(cx, |pensive, _| pensive.mock_browser().unwrap());
         browser.update(cx, |browser, cx| browser.select_subject("project", cx));
         // The last project mock is the Dense one, which changes the density for the whole app.
-        cx.simulate_keystrokes("right right right right right right right right right enter");
+        // Right stops at the last mock, however many there are.
+        cx.simulate_keystrokes(&["right"; 20].join(" "));
+        cx.simulate_keystrokes("enter");
         assert_eq!(mocks(cx), Some(true));
         assert_ne!(row_height(cx), calm);
 
