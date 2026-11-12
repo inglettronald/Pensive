@@ -103,6 +103,7 @@ impl RenderOnce for TitleBar {
         let crumb = |id: &'static str| {
             div()
                 .id(id)
+                .debug_selector(|| id.into())
                 .occlude()
                 .flex()
                 .items_center()

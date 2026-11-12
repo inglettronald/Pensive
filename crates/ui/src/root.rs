@@ -555,8 +555,12 @@ mod tests {
     #[gpui::test]
     fn a_crumb_opens_the_palette_scoped_with_its_input_focused(cx: &mut TestAppContext) {
         let (view, cx) = pensive_window(cx);
-        for (x, scope) in [(50., Keyword::Project(None)), (150., Keyword::Branch)] {
-            click(cx, point(px(x), px(20.)));
+        for (crumb, scope) in [
+            ("project", Keyword::Project(None)),
+            ("branch", Keyword::Branch),
+        ] {
+            let bounds = cx.debug_bounds(crumb).unwrap();
+            click(cx, bounds.center());
             assert!(palette_open(&view, cx));
             let keyword = view.read_with(cx, |pensive, cx| {
                 pensive.palette.read(cx).keyword().cloned()
