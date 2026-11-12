@@ -1,7 +1,8 @@
 //! A labeled page of a component's states, which its gallery mock renders.
 
 use gpui::{
-    AnyElement, App, IntoElement, ParentElement, RenderOnce, SharedString, Styled, Window, div, px,
+    AnyElement, App, IntoElement, ParentElement, Pixels, RenderOnce, SharedString, Styled, Window,
+    div, px,
 };
 use theme::{ActiveTheme, Typeset};
 
@@ -151,10 +152,40 @@ impl RenderOnce for Gallery {
                                 .children(
                                     cells
                                         .into_iter()
-                                        .map(|cell| div().flex_1().min_w_0().child(cell)),
+                                        .map(|cell| div().flex().flex_1().min_w_0().child(cell)),
                                 )
                         })),
                 }
             }))
+    }
+}
+
+/// A sidebar-colored box to show rows on, as they sit in the app.
+#[derive(IntoElement)]
+pub(crate) struct Panel {
+    width: Pixels,
+    children: Vec<AnyElement>,
+}
+
+impl Panel {
+    pub(crate) fn new(width: Pixels, children: impl IntoIterator<Item = impl IntoElement>) -> Self {
+        Self {
+            width,
+            children: children
+                .into_iter()
+                .map(IntoElement::into_any_element)
+                .collect(),
+        }
+    }
+}
+
+impl RenderOnce for Panel {
+    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+        div()
+            .w(self.width)
+            .p_1()
+            .rounded(cx.density().radius_lg)
+            .bg(cx.theme().colors.surface_panel)
+            .children(self.children)
     }
 }

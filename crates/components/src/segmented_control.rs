@@ -1,16 +1,22 @@
-//! A row of mutually exclusive options in a track, with at most one selected.
+//! A row of mutually exclusive options in a track, labeled with text or icons, with at most one
+//! selected.
 
 use std::rc::Rc;
 
 use gpui::{App, ElementId, SharedString, Window, div, prelude::*, px};
 use theme::{ActiveTheme, Typeset};
 
-use crate::Callback;
+use crate::{Callback, Icon, IconName};
+
+enum Segment {
+    Text(SharedString),
+    Icon(IconName),
+}
 
 #[derive(IntoElement)]
 pub struct SegmentedControl {
     id: ElementId,
-    options: Vec<SharedString>,
+    options: Vec<Segment>,
     selected: Option<usize>,
     on_select: Option<Callback<usize>>,
 }
@@ -23,7 +29,24 @@ impl SegmentedControl {
     ) -> Self {
         Self {
             id: id.into(),
-            options: options.into_iter().map(Into::into).collect(),
+            options: options
+                .into_iter()
+                .map(|option| Segment::Text(option.into()))
+                .collect(),
+            selected: selected.into(),
+            on_select: None,
+        }
+    }
+
+    /// Options drawn as icons only, such as views of the same list.
+    pub fn icons(
+        id: impl Into<ElementId>,
+        icons: impl IntoIterator<Item = IconName>,
+        selected: impl Into<Option<usize>>,
+    ) -> Self {
+        Self {
+            id: id.into(),
+            options: icons.into_iter().map(Segment::Icon).collect(),
             selected: selected.into(),
             on_select: None,
         }
@@ -54,21 +77,36 @@ impl RenderOnce for SegmentedControl {
             .typeset(density.small)
             .children(self.options.into_iter().enumerate().map(|(index, option)| {
                 let selected = self.selected == Some(index);
-                div()
+                let segment = div()
                     .id(index)
-                    .px_2()
-                    .line_height(px(20.))
                     .rounded(density.radius_sm)
-                    .whitespace_nowrap()
-                    .when_else(
-                        selected,
-                        |option| option.bg(colors.border).text_color(colors.text_strong),
-                        |option| option.text_color(colors.text_muted),
-                    )
-                    .child(option)
-                    .when_some(on_select.clone(), |option, handler| {
-                        option.on_click(move |_, window, cx| handler(index, window, cx))
-                    })
+                    .when(selected, |segment| segment.bg(colors.border));
+                match option {
+                    Segment::Text(text) => segment
+                        .px_2()
+                        .line_height(px(20.))
+                        .whitespace_nowrap()
+                        .text_color(if selected {
+                            colors.text_strong
+                        } else {
+                            colors.text_muted
+                        })
+                        .child(text),
+                    Segment::Icon(icon) => segment
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .w(px(24.))
+                        .h(px(20.))
+                        .child(Icon::new(icon).size(px(14.)).color(if selected {
+                            colors.text_strong
+                        } else {
+                            colors.text_faint
+                        })),
+                }
+                .when_some(on_select.clone(), |option, handler| {
+                    option.on_click(move |_, window, cx| handler(index, window, cx))
+                })
             }))
     }
 }
@@ -90,8 +128,18 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
                         )
                     }),
                 )
+                .section(
+                    "Icons",
+                    [("List", 0), ("Tree", 1), ("Symbols", 2)].map(|(label, index)| {
+                        let icons = [IconName::List, IconName::ListTree, IconName::Braces];
+                        (
+                            label,
+                            SegmentedControl::icons(label, icons, index).into_any_element(),
+                        )
+                    }),
+                )
                 .into_any_element()
         })
-        .size(size(px(640.), px(200.))),
+        .size(size(px(640.), px(280.))),
     ]
 }
