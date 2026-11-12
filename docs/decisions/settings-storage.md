@@ -96,7 +96,7 @@ These are the settings `docs/design.md` asks for. Values are a starting point fo
 | `palette.opacity` | Select: 70, 80, 90, 100% | 100% |
 | `palette.scrim` | Segmented: 0, 25, 50, 70% | 50% |
 
-The opacity and scrim steps and defaults come from the approved palette canvas (PEN-27). In code, `CommandPalette` already takes an `opacity` prop that defaults to 1, but nothing draws the scrim yet, and neither value is in the `theme` crate.
+The opacity and scrim steps and defaults come from the approved palette canvas (PEN-27). In code, `CommandPalette` already takes an `opacity` prop that defaults to 1, and the root view draws the scrim at 50%. Neither value is in the `theme` crate.
 
 ## Theme files
 
