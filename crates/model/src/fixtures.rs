@@ -1,4 +1,8 @@
-//! Sample projects for mocks and tests: the ones drawn on the command palette's design canvas.
+//! Sample projects and changes for mocks and tests: the ones drawn on the design canvases.
+
+mod changes;
+
+pub use changes::changes;
 
 use std::time::{Duration, SystemTime};
 

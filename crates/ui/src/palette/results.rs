@@ -444,19 +444,13 @@ fn open_hints(verb: &str) -> [KeyHint; 2] {
 }
 
 fn project_item(query: &Query, project: &Project, matches: Vec<Range<usize>>) -> Item {
-    let tile = project
-        .name
-        .chars()
-        .next()
-        .map(|letter| letter.to_uppercase().to_string())
-        .unwrap_or_default();
     let when = if query.current == Some(project.id) {
         "This window".into()
     } else {
         age(query.projects.as_of, project.last_opened)
     };
     let mut entry = PaletteEntry::new(project.name.clone())
-        .leading(Leading::Tile(tile.into()))
+        .leading(Leading::Tile(project.initial()))
         .matches(matches)
         .detail(project.root.display().to_string())
         .when(when)

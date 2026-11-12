@@ -19,6 +19,17 @@ pub struct Project {
     pub last_opened: SystemTime,
 }
 
+impl Project {
+    /// The name's first letter in upper case, for the letter tile that stands in for an icon.
+    pub fn initial(&self) -> SharedString {
+        self.name
+            .chars()
+            .next()
+            .map(|letter| letter.to_uppercase().to_string().into())
+            .unwrap_or_default()
+    }
+}
+
 /// A checkout of a project. The project's own root is its main worktree.
 #[derive(Clone, Debug)]
 pub struct Worktree {
