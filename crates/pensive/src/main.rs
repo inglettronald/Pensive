@@ -1,4 +1,4 @@
-mod config;
+mod config_sync;
 
 use std::{path::PathBuf, sync::Arc};
 
@@ -21,7 +21,7 @@ fn main() {
         .run(move |cx: &mut App| {
             theme::init(cx);
             ui::init(cx);
-            config::init(cx);
+            config_sync::init(cx);
 
             cx.on_window_closed(|cx, _window_id| {
                 if cx.windows().is_empty() {

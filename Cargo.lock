@@ -848,6 +848,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "config"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "etcetera",
+ "model",
+ "notify",
+ "tempfile",
+]
+
+[[package]]
 name = "console_error_panic_hook"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2974,6 +2985,7 @@ name = "model"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "futures",
  "gpui",
 ]
 
@@ -3712,14 +3724,12 @@ version = "0.1.0"
 dependencies = [
  "assets",
  "components",
- "etcetera",
- "futures",
+ "config",
  "git",
  "gpui",
  "gpui_platform",
  "mock",
  "model",
- "notify",
  "settings",
  "theme",
  "ui",

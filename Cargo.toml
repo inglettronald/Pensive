@@ -10,6 +10,7 @@ repository = "https://github.com/inglettronald/Pensive"
 [workspace.dependencies]
 assets = { path = "crates/assets" }
 components = { path = "crates/components" }
+config = { path = "crates/config" }
 git = { path = "crates/git" }
 mock = { path = "crates/mock" }
 model = { path = "crates/model" }

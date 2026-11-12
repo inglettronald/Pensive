@@ -6,17 +6,18 @@ Pensive is a Cargo workspace. A crate can only use the crates it lists as depend
 
 | Crate | Job | Depends on |
 |---|---|---|
-| `pensive` | The app. Opens the window and gives each model its backend. | `ui`, `model`, `git`, `settings`, `theme`, `assets` |
+| `pensive` | The app. Opens the window and gives each model its backend. | `ui`, `model`, `git`, `config`, `settings`, `theme`, `assets` |
 | `ui` | Views: screens and panels that read models and own their view state. | `components`, `model`, `settings`, `theme` |
 | `components` | Stateless building blocks that render from props and the theme. | `theme` |
 | `model` | Application state, and the traits that I/O backends implement. | |
 | `git` | The Git backend, which runs the `git` command line. | `model` |
+| `config` | The config folder backend, which reads, writes and watches the settings and theme files. | `model` |
 | `settings` | Declared settings, and the store that holds the settings file's text and the values in it. It does no I/O. | |
 | `theme` | Color, type and spacing roles, with user themes and the appearance settings. | `settings` |
 | `mock` | Named mock states for views, rendered without a window. | `theme`, `assets` |
 | `assets` | Files bundled into the app, such as icons, served to GPUI by path. | |
 
-Every crate except `git` also depends on `gpui`.
+Every crate except `git` and `config` also depends on `gpui`.
 
 ## Rules
 
