@@ -54,6 +54,18 @@ The first build takes a few minutes while it downloads and compiles dependencies
 | Rust libraries such as `gpui` | Code Pensive depends on | cargo, automatically, from [crates.io](https://crates.io) or the Zed Git repo at the versions in `Cargo.lock` |
 | System libraries | Your OS's desktop and graphics stack | Your package manager (step 2) |
 
+## Stepping into dependencies
+
+Dev builds keep only line tables for dependencies such as gpui. Backtraces still show the file and line of every frame, but a debugger can't show their variables or types. This keeps `target/` at about half the size.
+
+To step through gpui with a debugger, build with full debug info for everything:
+
+```sh
+cargo run --profile debug-deps
+```
+
+This builds into `target/debug-deps/`, so switching back to a plain `cargo run` doesn't rebuild anything. Point your debugger at `target/debug-deps/pensive`.
+
 ## Before opening a pull request
 
 CI rejects formatting differences and any compiler or clippy warning. To run the same checks locally:
