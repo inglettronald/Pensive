@@ -1,27 +1,29 @@
+mod backends;
 mod config_sync;
 
-use std::{path::PathBuf, sync::Arc};
-
-use git::GitCli;
 use gpui::{App, AppContext};
-use model::Projects;
 
 fn main() {
-    let args: Vec<PathBuf> = std::env::args_os().skip(1).map(PathBuf::from).collect();
-    let (projects, paths) = match args.as_slice() {
-        // The sample projects, for clicking around views without real repositories.
-        #[cfg(debug_assertions)]
-        [arg] if arg.as_os_str() == "mocked" => (model::fixtures::projects(), Vec::new()),
-        // Until Pensive remembers projects, they come from the command line.
-        _ => (Projects::new(Arc::new(GitCli)), args),
-    };
+    #[cfg(target_family = "wasm")]
+    {
+        gpui_platform::web_init();
+        // Debug builds log each shader wgpu compiles, which buries the warnings.
+        log::set_max_level(log::LevelFilter::Info);
+    }
+    let backends::Startup {
+        projects,
+        paths,
+        config,
+    } = backends::startup();
 
     gpui_platform::application()
         .with_assets(assets::Assets)
         .run(move |cx: &mut App| {
             theme::init(cx);
             ui::init(cx);
-            config_sync::init(cx);
+            if let Some(config) = config {
+                config_sync::init(config, cx);
+            }
 
             cx.on_window_closed(|cx, _window_id| {
                 if cx.windows().is_empty() {

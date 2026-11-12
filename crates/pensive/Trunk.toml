@@ -1,0 +1,13 @@
+# `trunk serve --config crates/pensive/Trunk.toml` builds Pensive for the browser, serves it, and
+# rebuilds when a crate or asset changes.
+
+[build]
+target = "index.html"
+dist = "../../target/web"
+
+[watch]
+watch = ["..", "../../assets"]
+
+[serve]
+addresses = ["127.0.0.1"]
+port = 8765

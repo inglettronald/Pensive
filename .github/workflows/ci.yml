@@ -30,6 +30,14 @@ jobs:
       - run: rustup toolchain install
       - run: cargo fmt --check
 
+  web:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy -p pensive --target wasm32-unknown-unknown
+
   platforms:
     runs-on: ubuntu-24.04
     outputs:

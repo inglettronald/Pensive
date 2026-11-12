@@ -6,7 +6,7 @@ Pensive is a Cargo workspace. A crate can only use the crates it lists as depend
 
 | Crate | Job | Depends on |
 |---|---|---|
-| `pensive` | The app. Opens the window and gives each model its backend. | `ui`, `model`, `git`, `config`, `settings`, `theme`, `assets` |
+| `pensive` | The app. Opens the window and gives each model its backend, which differ between the desktop and the browser. | `ui`, `model`, `git` and `config` on the desktop, `settings`, `theme`, `assets` |
 | `ui` | Views: screens and panels that read models and own their view state. | `components`, `model`, `settings`, `theme` |
 | `components` | Stateless building blocks that render from props and the theme. | `theme` |
 | `model` | Application state, and the traits that I/O backends implement. | |
@@ -38,3 +38,7 @@ Each view declares named mocks next to its code: the view built from fixed data.
 ## GPUI
 
 crates.io stops at gpui 0.2.2, which can't render headless. We pin `gpui` and `gpui_platform` to a Zed release tag in the root `Cargo.toml`. To upgrade, change both tags together.
+
+## The browser build
+
+`pensive` also builds for `wasm32-unknown-unknown`, where `gpui_web` draws the window to a canvas. A browser has no `git` command or config folder, so `git` and `config` are desktop-only dependencies. In their place the app opens the sample projects and keeps settings in memory. It runs single-threaded, because threads in wasm need a nightly toolchain, so `gpui_platform`'s default features are off.
