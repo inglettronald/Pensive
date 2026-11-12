@@ -13,8 +13,10 @@ pub enum IconName {
     ArrowUpFromLine,
     Box,
     Braces,
+    Check,
     ChevronDown,
     ChevronRight,
+    CircleX,
     Cloud,
     Download,
     Ellipsis,
@@ -34,6 +36,7 @@ pub enum IconName {
     SearchX,
     Settings,
     Square,
+    TriangleAlert,
     X,
 }
 
@@ -100,7 +103,7 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
                 .section("20 px", named(20.))
                 .into_any_element()
         })
-        .size(size(px(960.), px(480.))),
+        .size(size(px(960.), px(520.))),
     ]
 }
 
