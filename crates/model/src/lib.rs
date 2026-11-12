@@ -6,6 +6,7 @@ mod config;
 pub mod fixtures;
 mod git;
 mod notice;
+mod notices;
 mod projects;
 
 pub use changes::{
@@ -14,5 +15,6 @@ pub use changes::{
 };
 pub use config::{ConfigBackend, ConfigEvent, ConfigFiles};
 pub use git::{GitBackend, Repository};
-pub use notice::{Notice, Origin, Severity};
+pub use notice::{FixtureGap, Notice, Origin, Severity};
+pub use notices::{Held, Notices};
 pub use projects::{Branch, Project, ProjectId, Projects, Work, WorkKind, Worktree};

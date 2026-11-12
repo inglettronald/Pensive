@@ -2,9 +2,9 @@
 
 use std::path::Path;
 
-use anyhow::{Context as _, Result};
+use anyhow::Result;
 
-use crate::{Changes, GitBackend, Repository};
+use crate::{Changes, FixtureGap, GitBackend, Repository};
 
 #[derive(Debug)]
 pub struct FakeGit {
@@ -33,7 +33,9 @@ impl GitBackend for FakeGit {
                     .any(|worktree| worktree.path == path)
             })
             .cloned()
-            .with_context(|| format!("{} is not in a sample repository", path.display()))
+            .ok_or_else(|| {
+                FixtureGap(format!("{} is not in a sample repository", path.display())).into()
+            })
     }
 
     /// The sample changes in pensive's main worktree, and none in any other sample worktree.

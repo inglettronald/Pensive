@@ -1,9 +1,6 @@
 //! What the palette lists for a query: the sections, their rows, and what each row does.
 
-use std::{
-    ops::Range,
-    time::{Duration, SystemTime},
-};
+use std::{ops::Range, time::Duration};
 
 use components::{
     IconName, KeyHint, Leading, PaletteEntry, SegmentedControl, Select, Toggle, TrailingText,
@@ -11,6 +8,8 @@ use components::{
 use gpui::{IntoElement, SharedString};
 use model::{Project, ProjectId, Projects, Work, WorkKind};
 use settings::{AnySetting, ControlState};
+
+use crate::age::age;
 
 use super::{
     Action, Keyword, Tab,
@@ -602,28 +601,6 @@ fn work_item(
     }
 }
 
-/// How long before `as_of` something happened, as the palette prints it: `4m`, `2h`, `3d`, `5w`.
-fn age(as_of: Option<SystemTime>, time: SystemTime) -> SharedString {
-    let Some(seconds) = as_of
-        .and_then(|as_of| as_of.duration_since(time).ok())
-        .map(|age| age.as_secs())
-    else {
-        return SharedString::default();
-    };
-    const MINUTE: u64 = 60;
-    const HOUR: u64 = 60 * MINUTE;
-    const DAY: u64 = 24 * HOUR;
-    const WEEK: u64 = 7 * DAY;
-    let text = match seconds {
-        s if s < HOUR => format!("{}m", (s / MINUTE).max(1)),
-        s if s < DAY => format!("{}h", s / HOUR),
-        s if s < WEEK => format!("{}d", s / DAY),
-        s if s < 52 * WEEK => format!("{}w", s / WEEK),
-        s => format!("{}y", s / (52 * WEEK)),
-    };
-    text.into()
-}
-
 /// A repository named by a pasted clone URL.
 struct Repo {
     /// `owner/name`
@@ -773,16 +750,5 @@ mod tests {
             assert_eq!(repo.name, "zed");
         }
         assert!(clone_url("zed").is_none());
-    }
-
-    #[test]
-    fn ages_use_the_largest_whole_unit() {
-        let now = SystemTime::UNIX_EPOCH + Duration::from_secs(10_000_000);
-        let ago = |seconds| age(Some(now), now - Duration::from_secs(seconds));
-        assert_eq!(ago(30), "1m");
-        assert_eq!(ago(26 * 60), "26m");
-        assert_eq!(ago(3 * 60 * 60), "3h");
-        assert_eq!(ago(3 * 24 * 60 * 60), "3d");
-        assert_eq!(ago(5 * 7 * 24 * 60 * 60), "5w");
     }
 }

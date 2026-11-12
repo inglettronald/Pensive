@@ -17,7 +17,7 @@ use gpui::{
     App, ClipboardItem, Context, Entity, FocusHandle, Focusable, SharedString, Subscription, Task,
     Window, actions, div, prelude::*,
 };
-use model::{Changes, FileChange, Notice, ProjectId, Projects, Staging};
+use model::{Changes, FileChange, Notice, Notices, Origin, ProjectId, Projects, Staging};
 use strum::VariantArray;
 
 use crate::{key_binding, text_input::TextInput};
@@ -136,12 +136,19 @@ impl ProjectView {
             .map(|project| project.repository.root.clone())
             .unwrap_or_default();
         if projects.read(cx).changes(&worktree).is_none() {
-            // A backend that can't read changes yet leaves the timeline empty.
-            projects
-                .update(cx, |projects, cx| {
-                    projects.read_changes(worktree.clone(), cx)
-                })
-                .detach();
+            // The timeline stays empty, and the error goes to the notices.
+            let read = projects.update(cx, |projects, cx| {
+                projects.read_changes(worktree.clone(), cx)
+            });
+            cx.spawn(async move |_, cx| {
+                if let Err(error) = read.await {
+                    let notice = Notice::failed("Couldn't read changes", Origin::Git, &error);
+                    cx.update(|cx| {
+                        Notices::global(cx).update(cx, |notices, cx| notices.report(notice, cx))
+                    });
+                }
+            })
+            .detach();
         }
         let subscription = cx.observe(&projects, |_, _, cx| cx.notify());
         let mut view = Self {

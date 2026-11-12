@@ -12,6 +12,7 @@ mod icon;
 mod icon_button;
 mod kbd;
 mod list_row;
+mod notice_list;
 mod segmented_control;
 mod select;
 mod status_ring;
@@ -21,7 +22,9 @@ mod tag;
 mod theme_gallery;
 mod timeline_row;
 mod title_bar;
+mod toast;
 mod toggle;
+mod tone;
 mod tooltip;
 
 use std::rc::Rc;
@@ -42,6 +45,7 @@ pub use icon::{Icon, IconName};
 pub use icon_button::IconButton;
 pub use kbd::Kbd;
 pub use list_row::ListRow;
+pub use notice_list::{NoticeList, NoticeRow};
 pub use segmented_control::SegmentedControl;
 pub use select::Select;
 pub use status_ring::{RingFill, StatusRing};
@@ -49,8 +53,10 @@ pub use tab_strip::TabStrip;
 pub use tag::Tag;
 pub use timeline_row::{TimelineLine, TimelineNode, TimelineRow};
 pub use title_bar::{TitleBar, TitleBarProject};
+pub use toast::Toast;
 pub use toggle::Toggle;
-pub use tooltip::{Tone, Tooltip};
+pub use tone::Tone;
+pub use tooltip::Tooltip;
 
 /// How a component reports a change: called with the new value. An `Rc`, so a component can
 /// share one callback among its children.
@@ -70,6 +76,8 @@ pub fn mocks() -> Vec<mock::Mock> {
         icon::mocks(),
         kbd::mocks(),
         tag::mocks(),
+        toast::mocks(),
+        notice_list::mocks(),
         toggle::mocks(),
         select::mocks(),
         segmented_control::mocks(),

@@ -1,5 +1,6 @@
 //! Views: the screens and panels that read models and own their view state.
 
+mod age;
 #[cfg(feature = "mocks")]
 mod mock_browser;
 mod notices;
@@ -21,6 +22,7 @@ pub use root::{Pensive, open_window};
 /// Binds every view's keys and declares the views' settings.
 pub fn init(cx: &mut App) {
     palette::declare_settings(cx);
+    notices::declare_settings(cx);
     text_input::bind_keys(cx);
     palette::bind_keys(cx);
     project::bind_keys(cx);
@@ -66,10 +68,15 @@ fn view_callback_with<V: 'static, T: 'static>(
 /// Every view's mocks.
 #[cfg(feature = "mocks")]
 pub fn mocks() -> Vec<mock::Mock> {
-    [root::mocks(), project::mocks(), mock_browser::mocks()]
-        .into_iter()
-        .flatten()
-        .collect()
+    [
+        root::mocks(),
+        project::mocks(),
+        notices::mocks(),
+        mock_browser::mocks(),
+    ]
+    .into_iter()
+    .flatten()
+    .collect()
 }
 
 /// Every component's mocks, then every view's.
