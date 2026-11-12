@@ -1,5 +1,6 @@
 //! Views: the screens and panels that read models and own their view state.
 
+mod notices;
 mod palette;
 mod project;
 mod root;

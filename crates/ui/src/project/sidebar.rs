@@ -5,13 +5,13 @@ use components::{
     Button, ButtonStyle, FadeText, Icon, IconButton, IconName, RingFill, SegmentedControl,
     StatusRing, TimelineLine, TimelineNode, TimelineRow,
 };
-use gpui::{AnyElement, Context, SharedString, Window, div, prelude::*, px};
+use gpui::{AnyElement, App, Context, SharedString, Window, deferred, div, prelude::*, px};
 use model::{Changes, Commit, Staging};
 use strum::VariantArray;
 use theme::{ActiveTheme, Typeset};
 
-use super::{FileLayout, ProjectView, Source};
-use crate::{view_callback, view_callback_with};
+use super::{Control, FileLayout, ProjectView, Source};
+use crate::{notices, view_callback, view_callback_with};
 
 /// The sidebar's width. It becomes resizable later.
 const WIDTH: f32 = 280.;
@@ -91,22 +91,71 @@ impl ProjectView {
                         format!("{} ahead of {}", changes.ahead_of_base(), base.branch)
                     })),
             )
-            // Fetch, pull and push wait on a Git backend.
-            .child(IconButton::new("fetch", IconName::RefreshCw))
+            .child(
+                self.with_notice(
+                    Control::Fetch,
+                    IconButton::new("fetch", IconName::RefreshCw)
+                        .on_click(self.on_use(Control::Fetch, cx)),
+                ),
+            )
             .when(behind > 0, |header| {
                 header.child(
-                    Button::new("pull", behind.to_string())
-                        .icon(IconName::ArrowDownToLine)
-                        .small(),
+                    self.with_notice(
+                        Control::Pull,
+                        Button::new("pull", behind.to_string())
+                            .icon(IconName::ArrowDownToLine)
+                            .small()
+                            .on_click(self.on_use(Control::Pull, cx)),
+                    ),
                 )
             })
             .when(ahead > 0, |header| {
                 header.child(
-                    Button::new("push", ahead.to_string())
-                        .icon(IconName::ArrowUpFromLine)
-                        .small(),
+                    self.with_notice(
+                        Control::Push,
+                        Button::new("push", ahead.to_string())
+                            .icon(IconName::ArrowUpFromLine)
+                            .small()
+                            .on_click(self.on_use(Control::Push, cx)),
+                    ),
                 )
             })
+    }
+
+    fn on_use(
+        &self,
+        control: Control,
+        cx: &mut Context<Self>,
+    ) -> impl Fn(&mut Window, &mut App) + 'static {
+        view_callback(cx, move |this: &mut Self, _, cx| {
+            this.use_control(control, cx)
+        })
+    }
+
+    /// `control` with its notice in a tooltip, right-aligned to it: below in the header, above at
+    /// the bottom of the sidebar.
+    fn with_notice(&self, control: Control, element: impl IntoElement) -> impl IntoElement {
+        let notice = self
+            .notice
+            .as_ref()
+            .filter(|(shown, ..)| *shown == control)
+            .map(|(_, notice, _)| notices::tooltip(notice));
+        div()
+            .relative()
+            .child(element)
+            .children(notice.map(|tooltip| {
+                div()
+                    .absolute()
+                    .right_0()
+                    .map(|anchor| {
+                        if control == Control::Commit {
+                            anchor.bottom_full().mb_1()
+                        } else {
+                            anchor.top_full().mt_1()
+                        }
+                    })
+                    .child(deferred(tooltip).priority(1))
+            }))
     }
 
     /// The node that stages everything, the label that folds the files, and the layout switcher.
@@ -377,13 +426,16 @@ impl ProjectView {
             )
             .child(
                 div().flex().justify_end().child(
-                    Button::new("commit", label)
-                        .style(ButtonStyle::Outline)
-                        .shortcut("Ctrl Enter")
-                        .disabled(staged == 0)
-                        .on_click(|window: &mut Window, cx| {
-                            window.dispatch_action(Box::new(super::CommitStaged), cx)
-                        }),
+                    self.with_notice(
+                        Control::Commit,
+                        Button::new("commit", label)
+                            .style(ButtonStyle::Outline)
+                            .shortcut("Ctrl Enter")
+                            .disabled(staged == 0)
+                            .on_click(|window: &mut Window, cx| {
+                                window.dispatch_action(Box::new(super::CommitStaged), cx)
+                            }),
+                    ),
                 ),
             )
     }

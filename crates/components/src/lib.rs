@@ -16,6 +16,7 @@ mod segmented_control;
 mod select;
 mod status_ring;
 mod tab_strip;
+mod tag;
 #[cfg(feature = "mocks")]
 mod theme_gallery;
 mod timeline_row;
@@ -45,6 +46,7 @@ pub use segmented_control::SegmentedControl;
 pub use select::Select;
 pub use status_ring::{RingFill, StatusRing};
 pub use tab_strip::TabStrip;
+pub use tag::Tag;
 pub use timeline_row::{TimelineLine, TimelineNode, TimelineRow};
 pub use title_bar::{TitleBar, TitleBarProject};
 pub use toggle::Toggle;
@@ -67,6 +69,7 @@ pub fn mocks() -> Vec<mock::Mock> {
         command_palette::mocks(),
         icon::mocks(),
         kbd::mocks(),
+        tag::mocks(),
         toggle::mocks(),
         select::mocks(),
         segmented_control::mocks(),

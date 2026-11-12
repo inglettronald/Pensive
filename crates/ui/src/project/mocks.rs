@@ -12,7 +12,7 @@ use model::{
 };
 use theme::{ActiveTheme, DensityPreset};
 
-use super::{FileLayout, ProjectView};
+use super::{Control, FileLayout, ProjectView};
 
 pub(crate) fn mocks() -> Vec<Mock> {
     vec![
@@ -40,6 +40,12 @@ pub(crate) fn mocks() -> Vec<Mock> {
         }),
         Mock::new("project", "path_copied", |window, cx| {
             framed(|view, cx| view.show_copied(1, cx), window, cx)
+        }),
+        Mock::new("project", "push_not_wired", |window, cx| {
+            framed(|view, cx| view.show_notice(Control::Push, cx), window, cx)
+        }),
+        Mock::new("project", "commit_not_wired", |window, cx| {
+            framed(|view, cx| view.show_notice(Control::Commit, cx), window, cx)
         }),
         Mock::new("project", "tree_layout", |window, cx| {
             framed(|view, cx| view.set_layout(FileLayout::Tree, cx), window, cx)
