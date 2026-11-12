@@ -12,14 +12,20 @@ assets = { path = "crates/assets" }
 components = { path = "crates/components" }
 mock = { path = "crates/mock" }
 model = { path = "crates/model" }
+settings = { path = "crates/settings" }
 theme = { path = "crates/theme" }
 ui = { path = "crates/ui" }
 
+etcetera = "0.11"
+futures = "0.3"
 image = { version = "0.25", default-features = false, features = ["png"] }
+notify = "8"
 nucleo-matcher = "0.3"
 serde = { version = "1", features = ["derive"] }
+serde_ignored = "0.1"
 strum = { version = "0.28", features = ["derive"] }
-toml = "1"
+toml = { version = "1", features = ["preserve_order"] }
+toml_edit = "0.25"
 unicode-segmentation = "1"
 
 # GPUI is not published to crates.io past 0.2.2, so we pin a Zed release tag.

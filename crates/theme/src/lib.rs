@@ -1,5 +1,6 @@
 //! The colors, fonts and sizes that components read, with user overrides.
 
+mod appearance;
 mod colors;
 mod density;
 mod fonts;
@@ -7,16 +8,19 @@ mod theme;
 
 use gpui::App;
 
+pub use appearance::{CODE_FONT, DENSITY, THEME, UI_FONT, apply};
 pub use colors::{Role, ThemeColors, ThemeColorsRefinement, gray};
 pub use density::{Density, DensityPreset, TextRole, TextSize, Typeset};
 pub use fonts::{ThemeFonts, ThemeFontsRefinement};
 /// Lists every value of `DensityPreset` and `TextRole`, for galleries.
 pub use strum::VariantArray;
-pub use theme::{Theme, ThemeOverride};
+pub use theme::{BASE_THEME, Theme, ThemeOverride, UserThemes};
 
-/// Loads the bundled fonts and installs the default theme and density.
+/// Loads the bundled fonts, declares the appearance settings, and installs the default theme and
+/// density.
 pub fn init(cx: &mut App) {
     fonts::load_bundled(cx);
+    appearance::declare(cx);
     cx.set_global(Theme::pensive_dark());
     cx.set_global(DensityPreset::Calm.density());
 }

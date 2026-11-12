@@ -1,3 +1,5 @@
+mod config;
+
 use std::process::ExitCode;
 
 use gpui::{App, AppContext};
@@ -21,6 +23,7 @@ fn main() -> ExitCode {
         .run(move |cx: &mut App| {
             theme::init(cx);
             ui::init(cx);
+            config::init(cx);
 
             cx.on_window_closed(|cx, _window_id| {
                 if cx.windows().is_empty() {

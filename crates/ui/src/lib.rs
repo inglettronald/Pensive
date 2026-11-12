@@ -11,8 +11,9 @@ use gpui::{Action, App, KeyBinding, KeyBindingContextPredicate};
 pub use palette::{Keyword, PaletteEvent, PaletteView, Tab};
 pub use root::{Pensive, open_window};
 
-/// Binds every view's keys.
+/// Binds every view's keys and declares the views' settings.
 pub fn init(cx: &mut App) {
+    palette::declare_settings(cx);
     text_input::bind_keys(cx);
     palette::bind_keys(cx);
     root::bind_keys(cx);

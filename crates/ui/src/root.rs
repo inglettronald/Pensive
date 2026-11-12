@@ -10,7 +10,7 @@ use theme::{ActiveTheme, Typeset};
 
 use crate::{
     key_binding,
-    palette::{PaletteEvent, PaletteView, Tab},
+    palette::{OPEN_ON, PaletteEvent, PaletteView, SCRIM, Tab},
 };
 
 actions!(pensive, [OpenPalette, OpenActive]);
@@ -192,7 +192,7 @@ impl Render for Pensive {
             .text_color(theme.colors.text)
             .font_family(theme.fonts.ui.clone())
             .on_action(cx.listener(|pensive, _: &OpenPalette, window, cx| {
-                pensive.open_palette(Tab::All, window, cx)
+                pensive.open_palette(OPEN_ON.get(cx), window, cx)
             }))
             .on_action(cx.listener(|pensive, _: &OpenActive, window, cx| {
                 pensive.open_palette(Tab::Active, window, cx)
@@ -211,7 +211,7 @@ impl Render for Pensive {
                                 .items_center()
                                 .pt_16()
                                 .pb_16()
-                                .bg(hsla(0., 0., 0., 0.5))
+                                .bg(hsla(0., 0., 0., crate::palette::fraction(&SCRIM, cx)))
                                 .child(self.palette.clone()),
                         )
                     })
@@ -235,6 +235,7 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
         window: &mut Window,
         cx: &mut App,
     ) -> gpui::AnyView {
+        crate::palette::declare_settings(cx);
         let projects = cx.new(|_| fixtures::projects());
         let view = cx.new(|cx| Pensive::new(projects, project, window, cx));
         view.update(cx, |pensive, cx| {
@@ -305,6 +306,15 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
                 Some(PENSIVE),
                 Some(Tab::All),
                 |palette, cx| palette.set_query("https://github.com/zed-industries/zed.git", cx),
+                w,
+                cx,
+            )
+        }),
+        Mock::new("root", "settings", |w, cx| {
+            window(
+                Some(PENSIVE),
+                Some(Tab::All),
+                |palette, cx| palette.set_keyword(Some(Keyword::Setting), cx),
                 w,
                 cx,
             )
