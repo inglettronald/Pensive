@@ -28,7 +28,7 @@ Every crate also depends on `gpui`.
 
 Each view declares named mocks next to its code: the view built from fixed data. They sit behind a `mocks` feature on `ui` and `components`, so they never ship in the app.
 
-`cargo mocks` renders every mock to `target/mocks/<subject>/<mock>.png` without opening a window. `cargo mocks root` renders only the mocks whose `<subject>/<mock>` contains `root`. `cargo test` renders them too, so CI checks that every mock renders on Linux and macOS. GitHub's Windows runner can't render them yet (PEN-24). On Windows, mocks render with wgpu rather than the app's DirectX 11 renderer, so fine details of text can differ from the running app.
+`cargo mocks` renders every mock to `target/mocks/<subject>/<mock>.png` without opening a window. A subject with more than one mock also gets an atlas at `target/mocks/<subject>.png`, with all of its mocks in one numbered grid. `cargo mocks root` renders only the mocks whose `<subject>/<mock>` contains `root`. `cargo test` renders them too, so CI checks that every mock renders on Linux and macOS. GitHub's Windows runner can't render them yet (PEN-24). On Windows, mocks render with wgpu rather than the app's DirectX 11 renderer, so fine details of text can differ from the running app.
 
 ## GPUI
 

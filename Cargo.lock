@@ -3604,6 +3604,7 @@ dependencies = [
  "components",
  "gpui",
  "gpui_platform",
+ "mock",
  "model",
  "theme",
  "ui",
