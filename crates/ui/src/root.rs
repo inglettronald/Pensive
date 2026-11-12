@@ -14,6 +14,7 @@ use theme::{ActiveTheme, Typeset};
 use crate::mock_browser::{MockBrowser, MockBrowserEvent, MockMode, ViewMocks};
 use crate::{
     key_binding,
+    notices::NoticeOverlay,
     palette::{Keyword, OPEN_ON, PaletteEvent, PaletteView, Tab, scrim},
     project::ProjectView,
     view_callback,
@@ -40,6 +41,7 @@ pub struct Pensive {
     project: Option<(ProjectId, Entity<ProjectView>)>,
     palette: Entity<PaletteView>,
     palette_open: bool,
+    notices: Entity<NoticeOverlay>,
     /// Set while the window shows the mock browser, or a mock opened from it.
     #[cfg(feature = "mocks")]
     mocks: Option<MockMode>,
@@ -56,12 +58,15 @@ impl Pensive {
         cx: &mut Context<Self>,
     ) -> Self {
         let palette = cx.new(|cx| PaletteView::new(projects.clone(), cx));
+        let notices = cx.new(NoticeOverlay::new);
+        cx.observe(&notices, |_, _, cx| cx.notify()).detach();
         let subscription = cx.subscribe_in(&palette, window, Self::on_palette_event);
         let mut pensive = Self {
             projects,
             project: None,
             palette,
             palette_open: false,
+            notices,
             #[cfg(feature = "mocks")]
             mocks: None,
             focus_handle: cx.focus_handle(),
@@ -204,6 +209,11 @@ impl Pensive {
     }
 
     #[cfg(feature = "mocks")]
+    pub(crate) fn notices(&self) -> Entity<NoticeOverlay> {
+        self.notices.clone()
+    }
+
+    #[cfg(feature = "mocks")]
     pub(crate) fn mock_browser(&self) -> Option<Entity<MockBrowser>> {
         Some(self.mocks.as_ref()?.browser.clone())
     }
@@ -245,7 +255,13 @@ impl Pensive {
                 }
             })
         };
-        let title_bar = TitleBar::new(project).controls(draws_window_controls(window));
+        let (errors, warnings, list_open) = self.notices.read(cx).badge(cx);
+        let title_bar = TitleBar::new(project)
+            .controls(draws_window_controls(window))
+            .notices(errors, warnings, list_open)
+            .on_notices(view_callback(cx, |this: &mut Self, _, cx| {
+                this.notices.update(cx, NoticeOverlay::toggle_list)
+            }));
         if has_project {
             title_bar
                 .on_project(open(Some(Keyword::Project(None))))
@@ -350,6 +366,7 @@ impl Render for Pensive {
                 pensive.close_palette(window, cx)
             }))
             .child(screen)
+            .child(self.notices.clone())
             .when(self.project.is_some() && self.palette_open, |root| {
                 root.key_context(PALETTE_OVERLAY).child(
                     div()

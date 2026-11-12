@@ -7,7 +7,7 @@ use gpui::{
 };
 use theme::{ActiveTheme, Typeset};
 
-use crate::{Breadcrumb, Callback, Icon, IconButton, IconName, Kbd, callback};
+use crate::{Breadcrumb, Callback, Icon, IconButton, IconName, Kbd, Tone, callback};
 
 /// Room left of the crumbs for the macOS window buttons.
 const TRAFFIC_LIGHTS_WIDTH: Pixels = px(76.);
@@ -24,6 +24,9 @@ pub struct TitleBarProject {
 pub struct TitleBar {
     project: Option<TitleBarProject>,
     location: Option<AnyElement>,
+    notices: (usize, usize),
+    notices_open: bool,
+    on_notices: Option<Callback<()>>,
     controls: bool,
     on_project: Option<Callback<()>>,
     on_branch: Option<Callback<()>>,
@@ -40,6 +43,9 @@ impl TitleBar {
         Self {
             project,
             location: None,
+            notices: (0, 0),
+            notices_open: false,
+            on_notices: None,
             controls: false,
             on_project: None,
             on_branch: None,
@@ -50,6 +56,19 @@ impl TitleBar {
     /// Shown in place of project › branch, on screens that aren't a project.
     pub fn location(mut self, location: impl IntoElement) -> Self {
         self.location = Some(location.into_any_element());
+        self
+    }
+
+    /// The badge beside the gear: an icon and a count for the errors and for the warnings held,
+    /// outlined in the worse one. It's gone while both are zero.
+    pub fn notices(mut self, errors: usize, warnings: usize, open: bool) -> Self {
+        self.notices = (errors, warnings);
+        self.notices_open = open;
+        self
+    }
+
+    pub fn on_notices(mut self, handler: impl Fn(&mut Window, &mut App) + 'static) -> Self {
+        self.on_notices = Some(callback(handler));
         self
     }
 
@@ -178,6 +197,46 @@ impl RenderOnce for TitleBar {
                 .on_click(move |_, window, cx| handler((), window, cx))
         });
 
+        let (errors, warnings) = self.notices;
+        let badge = (errors + warnings > 0).then(|| {
+            let worst = if errors > 0 {
+                Tone::Error
+            } else {
+                Tone::Warning
+            };
+            let part = |tone: Tone, count: usize| {
+                (count > 0).then(|| {
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_1()
+                        .children(tone.icon(14., colors))
+                        .child(count.to_string())
+                })
+            };
+            div()
+                .id("notices")
+                .occlude()
+                .flex()
+                .items_center()
+                .gap_1p5()
+                .h(px(26.))
+                .px_2()
+                .mr_1()
+                .rounded(density.radius_md)
+                .border_1()
+                .border_color(worst.outline(colors))
+                .when(self.notices_open, |badge| badge.bg(colors.surface_raised))
+                .hover(|badge| badge.bg(colors.surface_raised))
+                .typeset(density.small)
+                .text_color(colors.text_strong)
+                .children(part(Tone::Error, errors))
+                .children(part(Tone::Warning, warnings))
+                .when_some(self.on_notices, |badge, handler| {
+                    badge.on_click(move |_, window, cx| handler((), window, cx))
+                })
+        });
+
         let controls = self.controls.then(|| {
             div()
                 .flex()
@@ -231,6 +290,7 @@ impl RenderOnce for TitleBar {
                     .justify_end()
                     .flex_1()
                     .min_w_0()
+                    .children(badge)
                     // Settings opens from here once its window exists (PEN-11).
                     .child(
                         div()
@@ -336,8 +396,21 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
                         bar(TitleBar::new(None).controls(true)),
                     )],
                 )
+                .section(
+                    "Notices held",
+                    [
+                        (
+                            "Errors and warnings",
+                            bar(TitleBar::new(None).notices(2, 1, false)),
+                        ),
+                        (
+                            "Warnings only, list open",
+                            bar(TitleBar::new(None).notices(0, 3, true)),
+                        ),
+                    ],
+                )
                 .into_any_element()
         })
-        .size(size(px(1088.), px(400.))),
+        .size(size(px(1088.), px(640.))),
     ]
 }

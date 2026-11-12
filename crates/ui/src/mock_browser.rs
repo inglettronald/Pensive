@@ -9,6 +9,7 @@ use gpui::{
     ObjectFit, RenderImage, SharedString, Subscription, Window, actions, div, img, prelude::*, px,
 };
 use mock::{Mock, atlas};
+use model::Notices;
 use theme::{ActiveTheme, Density, Theme, Typeset};
 
 use crate::{
@@ -459,27 +460,34 @@ pub(crate) struct ShownMock {
 }
 
 /// A window's visit to the mocks: the browser, the mock opened from it, and the theme and
-/// density to put back, since mocks such as the Dense ones change them for the whole app.
+/// density to put back, since mocks such as the Dense ones change them for the whole app, and the
+/// app's notices, which mocks get a store of their own in place of.
 pub(crate) struct MockMode {
     pub browser: Entity<MockBrowser>,
     pub shown: Option<ShownMock>,
-    saved: (Theme, Density),
+    saved: (Theme, Density, Entity<Notices>),
     _subscription: Subscription,
 }
 
 impl MockMode {
-    pub fn new(browser: Entity<MockBrowser>, subscription: Subscription, cx: &App) -> Self {
+    pub fn new(browser: Entity<MockBrowser>, subscription: Subscription, cx: &mut App) -> Self {
         Self {
             browser,
             shown: None,
-            saved: (cx.theme().clone(), cx.density().clone()),
+            saved: (
+                cx.theme().clone(),
+                cx.density().clone(),
+                Notices::global(cx),
+            ),
             _subscription: subscription,
         }
     }
 
-    /// Opens `mock` on the theme and density the window had before the mocks.
+    /// Opens `mock` on the theme and density the window had before the mocks, with notices of its
+    /// own.
     pub fn show(&mut self, mock: Mock, component: bool, window: &mut Window, cx: &mut App) {
         self.restore(cx);
+        Notices::set_global(cx.new(|_| Notices::default()), cx);
         let view = mock.build(window, cx);
         self.shown = Some(ShownMock {
             mock,
@@ -493,6 +501,7 @@ impl MockMode {
         self.shown = None;
         cx.set_global(self.saved.0.clone());
         cx.set_global(self.saved.1.clone());
+        Notices::set_global(self.saved.2.clone(), cx);
     }
 
     /// A view mock fills the window. A component mock sits centered at its size, labeled, so

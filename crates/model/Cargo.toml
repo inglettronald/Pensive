@@ -11,6 +11,10 @@ anyhow.workspace = true
 futures.workspace = true
 gpui.workspace = true
 
+# `SystemTime::now` panics in a browser.
+[target.'cfg(target_family = "wasm")'.dependencies]
+web-time = "1"
+
 [dev-dependencies]
 gpui = { workspace = true, features = ["test-support"] }
 

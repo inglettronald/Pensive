@@ -92,6 +92,14 @@ Every file row shows its added and removed line counts. The folder isn't on the 
 
 The tree draws a guide under each folder's chevron and folds a chain of single-child folders into one row. By symbol, each file lists the functions, types and headings its hunks touch, each with an icon and its own line counts.
 
+## Notices
+
+A notice about a control shows in a tooltip on that control. One with no control behind it, such as a failed read or a bad settings file, shows as a toast at the top right, under the title bar.
+
+Only errors and the successes of long work toast. Warnings never do, so a noisy source can't take over the screen. A success fades on its own. An error folds into the badge once its time runs out, three seconds by default and a setting. A line along its bottom drains until then, and hovering it holds it open.
+
+The badge sits beside the settings gear: an icon and a count for the errors held and for the warnings, outlined in the worse of the two. It's gone while nothing is held. Clicking it opens the list, errors first and newest first within each. A repeat counts on its row as ×3 instead of adding one. Each row dismisses on its own, and Clear all empties the list.
+
 ## Command palette
 
 Ctrl K opens the palette from anywhere. On the landing screen the palette is the whole page, so the same keys work before and after a project is open.

@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use gpui::{App, AppContext, UpdateGlobal};
-use model::{ConfigBackend, ConfigEvent, ConfigFiles};
+use model::{ConfigBackend, ConfigEvent, ConfigFiles, Notice, Notices, Origin, Severity};
 use settings::Settings;
 use theme::UserThemes;
 
@@ -17,18 +17,30 @@ pub fn init(backend: Arc<dyn ConfigBackend>, cx: &mut App) {
             let source = files.read(cx).settings.clone();
             // The settings observer builds the theme.
             let problems = Settings::update_global(cx, |settings, _| settings.load(&source));
-            print(
-                problems
-                    .into_iter()
-                    .map(|problem| format!("settings.toml: {problem}")),
-            );
+            warn("Setting ignored", problems, cx);
         }
         ConfigEvent::ThemesRead => {
             let themes = files.read(cx).themes.clone();
-            print(cx.default_global::<UserThemes>().load(themes));
+            let problems = cx.default_global::<UserThemes>().load(themes);
+            warn("Theme problem", problems, cx);
             apply_theme(cx);
         }
-        ConfigEvent::Problem(problem) => eprintln!("{problem}"),
+        ConfigEvent::Problem(problem) => {
+            // Most read "What failed: why". The part before the colon is the title.
+            let (title, detail) = match problem.split_once(": ") {
+                Some((title, detail)) => (title.to_string(), Some(detail.to_string().into())),
+                None => (problem.clone(), None),
+            };
+            report(
+                Notice {
+                    severity: Severity::Error,
+                    origin: Origin::Config,
+                    title: title.into(),
+                    detail,
+                },
+                cx,
+            );
+        }
     })
     .detach();
     cx.observe_global::<Settings>({
@@ -43,14 +55,29 @@ pub fn init(backend: Arc<dyn ConfigBackend>, cx: &mut App) {
     files.update(cx, |files, cx| files.load(cx));
 }
 
-/// Installs the theme and density the settings ask for, and prints what went wrong.
+/// Installs the theme and density the settings ask for, and reports what went wrong.
 fn apply_theme(cx: &mut App) {
-    print(theme::apply(cx));
+    let problems = theme::apply(cx);
+    warn("Theme problem", problems, cx);
     cx.refresh_windows();
 }
 
-fn print(problems: impl IntoIterator<Item = String>) {
+/// One warning per problem, each with `title`. The same problem on a later load counts as a
+/// repeat.
+fn warn(title: &'static str, problems: impl IntoIterator<Item = String>, cx: &mut App) {
     for problem in problems {
-        eprintln!("{problem}");
+        report(
+            Notice {
+                severity: Severity::Warning,
+                origin: Origin::Config,
+                title: title.into(),
+                detail: Some(problem.into()),
+            },
+            cx,
+        );
     }
+}
+
+fn report(notice: Notice, cx: &mut App) {
+    Notices::global(cx).update(cx, |notices, cx| notices.report(notice, cx));
 }
