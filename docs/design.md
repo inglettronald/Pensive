@@ -2,7 +2,7 @@
 
 How Pensive looks and why. This doc records decisions, not values. Exact colors, fonts and sizes live in the `theme` crate, and `cargo mocks theme` renders all of them.
 
-To draft a design, run the `design` skill. It sets up boards that use the theme's tokens, on a claude.ai canvas where one is available. Drafts are throwaway: once a design is built, its mocks are the record. The [old design canvas](https://claude.ai/artifact/39s8kb64HfEHWMni3pPhTJ) is deprecated, but it still holds the only drafts of diffs and project icons.
+To draft a design, run the `design` skill. It draws boards as HTML pages that use the theme's tokens and shows them inline in the chat. Drafts are throwaway: once a design is built, its mocks are the record. The [old design canvas](https://claude.ai/artifact/39s8kb64HfEHWMni3pPhTJ) is deprecated, but it still holds the only drafts of diffs and project icons.
 
 ## Principles
 
