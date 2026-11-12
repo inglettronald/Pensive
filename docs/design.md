@@ -25,6 +25,8 @@ Disabled text and unchanged line numbers fall below the 4.5:1 contrast minimum o
 - Removed (red): removed lines and words, file status D, conflicts, destructive actions
 - Modified (amber): file status M, moved lines, warnings
 
+A tooltip that reports how an action went leads with an icon and tints its outline toward the hue: green for success, amber for a warning, red for an error.
+
 ### Accent
 
 One blue for interface signals: info callouts, links and the accent button.
@@ -86,7 +88,7 @@ Files show as a list, a tree or by symbol, switched by an icon control on the Un
 
 A file's ring takes its status color and fills when it's staged, or half fills when only some of its hunks are. A commit's files are always filled. Clicking a ring stages the whole file, or unstages it once it's fully staged.
 
-Every file row shows its added and removed line counts. The folder isn't on the row. Hovering the file shows its full path in a tooltip, and Ctrl Shift C copies it while the tooltip is open, leaving plain Ctrl C alone.
+Every file row shows its added and removed line counts. The folder isn't on the row. Hovering the file shows its full path in a tooltip, and Ctrl Shift C copies it while the tooltip is open, leaving plain Ctrl C alone. The tooltip then says Copied path for a second, outlined in green.
 
 The tree draws a guide under each folder's chevron and folds a chain of single-child folders into one row. By symbol, each file lists the functions, types and headings its hunks touch, each with an icon and its own line counts.
 

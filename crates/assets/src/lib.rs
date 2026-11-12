@@ -19,8 +19,10 @@ const FILES: &[(&str, &[u8])] = bundled![
     "icons/arrow-up-from-line.svg",
     "icons/box.svg",
     "icons/braces.svg",
+    "icons/check.svg",
     "icons/chevron-down.svg",
     "icons/chevron-right.svg",
+    "icons/circle-x.svg",
     "icons/cloud.svg",
     "icons/download.svg",
     "icons/ellipsis.svg",
@@ -39,6 +41,7 @@ const FILES: &[(&str, &[u8])] = bundled![
     "icons/search.svg",
     "icons/settings.svg",
     "icons/square.svg",
+    "icons/triangle-alert.svg",
     "icons/x.svg",
 ];
 

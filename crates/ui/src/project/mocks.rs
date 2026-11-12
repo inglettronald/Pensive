@@ -38,6 +38,9 @@ pub(crate) fn mocks() -> Vec<Mock> {
         Mock::new("project", "hovering_a_file", |window, cx| {
             framed(|view, cx| view.show_path(1, cx), window, cx)
         }),
+        Mock::new("project", "path_copied", |window, cx| {
+            framed(|view, cx| view.show_copied(1, cx), window, cx)
+        }),
         Mock::new("project", "tree_layout", |window, cx| {
             framed(|view, cx| view.set_layout(FileLayout::Tree, cx), window, cx)
         }),
