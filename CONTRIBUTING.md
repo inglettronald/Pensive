@@ -54,6 +54,18 @@ The first build takes a few minutes while it downloads and compiles dependencies
 | Rust libraries such as `gpui` | Code Pensive depends on | cargo, automatically, from [crates.io](https://crates.io) or the Zed Git repo at the versions in `Cargo.lock` |
 | System libraries | Your OS's desktop and graphics stack | Your package manager (step 2) |
 
+## Inspecting dependencies in a debugger
+
+Debug builds keep only line tables for dependencies such as gpui. Backtraces show the file and line of every frame, and a debugger can still break on a line in gpui and step through it. What it can't show is gpui's local variables and types. Once tests are built, this saves about 3 GB in `target/`.
+
+To inspect gpui's variables in a debugger, build with full debug info for every dependency:
+
+```sh
+cargo build --profile debug-deps
+```
+
+Then point your debugger at `target/debug-deps/pensive` (`pensive.exe` on Windows). The profile builds into its own directory, so switching back to a plain `cargo build` doesn't rebuild anything.
+
 ## Before opening a pull request
 
 CI rejects formatting differences and any compiler or clippy warning. To run the same checks locally:
