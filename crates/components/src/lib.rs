@@ -48,7 +48,7 @@ pub use tab_strip::TabStrip;
 pub use timeline_row::{TimelineLine, TimelineNode, TimelineRow};
 pub use title_bar::{TitleBar, TitleBarProject};
 pub use toggle::Toggle;
-pub use tooltip::Tooltip;
+pub use tooltip::{Tone, Tooltip};
 
 /// How a component reports a change: called with the new value. An `Rc`, so a component can
 /// share one callback among its children.

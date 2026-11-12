@@ -30,6 +30,8 @@ actions!(project, [CopyPath, CommitStaged]);
 const CONTEXT: &str = "ProjectView";
 /// How long the pointer rests on a file before its path shows.
 const TOOLTIP_DELAY: Duration = Duration::from_millis(500);
+/// How long the tooltip says the path was copied before showing the path again.
+const COPIED_FOR: Duration = Duration::from_secs(1);
 
 pub(crate) fn bind_keys(cx: &mut App) {
     cx.bind_keys([
@@ -88,6 +90,8 @@ pub struct ProjectView {
     hovered_commit: Option<SharedString>,
     tooltip: Option<FileKey>,
     tooltip_delay: Option<Task<()>>,
+    /// Set after Ctrl Shift C, until the tooltip goes back to the path.
+    copied: Option<Task<()>>,
     message: Entity<TextInput>,
     focus_handle: FocusHandle,
     _subscription: Subscription,
@@ -128,6 +132,7 @@ impl ProjectView {
             hovered_commit: None,
             tooltip: None,
             tooltip_delay: None,
+            copied: None,
             message,
             focus_handle: cx.focus_handle(),
             _subscription: subscription,
@@ -208,6 +213,13 @@ impl ProjectView {
         cx.notify();
     }
 
+    /// Shows the path of the `index`th uncommitted file as just copied.
+    #[cfg(feature = "mocks")]
+    pub fn show_copied(&mut self, index: usize, cx: &mut Context<Self>) {
+        self.show_path(index, cx);
+        self.copied = Some(Task::ready(()));
+    }
+
     /// Picks the `index`th symbol of the selected file, as clicking it in the symbol layout does.
     #[cfg(feature = "mocks")]
     pub fn select_symbol(&mut self, index: usize, cx: &mut Context<Self>) {
@@ -256,6 +268,7 @@ impl ProjectView {
                 self.hovered = None;
                 self.tooltip = None;
                 self.tooltip_delay = None;
+                self.copied = None;
                 cx.notify();
             }
             return;
@@ -264,6 +277,7 @@ impl ProjectView {
         // path must go now, or Ctrl Shift C would copy it.
         if self.tooltip.as_ref().is_some_and(|tooltip| *tooltip != key) {
             self.tooltip = None;
+            self.copied = None;
             cx.notify();
         }
         self.hovered = Some(key.clone());
@@ -304,6 +318,15 @@ impl ProjectView {
             return;
         };
         cx.write_to_clipboard(ClipboardItem::new_string(file.path.display().to_string()));
+        self.copied = Some(cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(COPIED_FOR).await;
+            this.update(cx, |this, cx| {
+                this.copied = None;
+                cx.notify();
+            })
+            .ok();
+        }));
+        cx.notify();
     }
 
     /// Committing waits on a Git backend.

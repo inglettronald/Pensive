@@ -1,6 +1,6 @@
 //! The rows of a list of changed files, as a list, a tree or by symbol.
 
-use components::{DiffStat, Icon, IconName, ListRow, RingFill, StatusRing, Tooltip};
+use components::{DiffStat, Icon, IconName, ListRow, RingFill, StatusRing, Tone, Tooltip};
 use gpui::{AnyElement, App, Context, ElementId, Hsla, Window, div, prelude::*, px};
 use model::{FileChange, FileStatus, Staging, SymbolKind};
 use theme::{ActiveTheme, ThemeColors};
@@ -111,10 +111,12 @@ impl ProjectView {
                     this.hover(key.clone(), hovered, cx)
                 }
             }));
-        if self.tooltip.as_ref() == Some(&key) {
-            row.below(Tooltip::new(path_label(file, cx)).shortcut("Copy", "Ctrl Shift C"))
-        } else {
+        if self.tooltip.as_ref() != Some(&key) {
             row
+        } else if self.copied.is_some() {
+            row.below(Tooltip::new("Copied path").tone(Tone::Success))
+        } else {
+            row.below(Tooltip::new(path_label(file, cx)).shortcut("Copy", "Ctrl Shift C"))
         }
     }
 
