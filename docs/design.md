@@ -25,7 +25,7 @@ Disabled text and unchanged line numbers fall below the 4.5:1 contrast minimum o
 - Removed (red): removed lines and words, file status D, conflicts, destructive actions
 - Modified (amber): file status M, moved lines, warnings
 
-A tooltip that reports how an action went leads with an icon and tints its outline toward the hue: green for success, amber for a warning, red for an error.
+A tooltip that reports how an action went leads with an icon and tints its outline toward the hue: green for success, amber for a warning, red for an error. A tag after its title says where a problem came from: UI, Git, Config or Fixture. Fixture is blue, so a gap in the sample data never reads as a bug in the interface. A control with nothing behind it yet answers with an amber notice tagged UI.
 
 ### Accent
 

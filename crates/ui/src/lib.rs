@@ -2,6 +2,7 @@
 
 #[cfg(feature = "mocks")]
 mod mock_browser;
+mod notices;
 mod palette;
 mod project;
 mod root;

@@ -17,7 +17,7 @@ use gpui::{
     App, ClipboardItem, Context, Entity, FocusHandle, Focusable, SharedString, Subscription, Task,
     Window, actions, div, prelude::*,
 };
-use model::{Changes, FileChange, ProjectId, Projects, Staging};
+use model::{Changes, FileChange, Notice, ProjectId, Projects, Staging};
 use strum::VariantArray;
 
 use crate::{key_binding, text_input::TextInput};
@@ -32,6 +32,8 @@ const CONTEXT: &str = "ProjectView";
 const TOOLTIP_DELAY: Duration = Duration::from_millis(500);
 /// How long the tooltip says the path was copied before showing the path again.
 const COPIED_FOR: Duration = Duration::from_secs(1);
+/// How long a notice stays on the control it's about.
+const NOTICE_FOR: Duration = Duration::from_secs(3);
 
 pub(crate) fn bind_keys(cx: &mut App) {
     cx.bind_keys([
@@ -57,6 +59,27 @@ impl FileLayout {
             FileLayout::Tree => IconName::ListTree,
             FileLayout::Symbols => IconName::Braces,
         }
+    }
+}
+
+/// A sidebar control that answers with a notice.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Control {
+    Fetch,
+    Pull,
+    Push,
+    Commit,
+}
+
+impl Control {
+    /// None of them has a Git backend behind it yet.
+    fn notice(self) -> Notice {
+        Notice::not_wired(match self {
+            Control::Fetch => "Fetch",
+            Control::Pull => "Pull",
+            Control::Push => "Push",
+            Control::Commit => "Commit",
+        })
     }
 }
 
@@ -92,6 +115,8 @@ pub struct ProjectView {
     tooltip_delay: Option<Task<()>>,
     /// Set after Ctrl Shift C, until the tooltip goes back to the path.
     copied: Option<Task<()>>,
+    /// What the control used last had to say, until the task clears it.
+    notice: Option<(Control, Notice, Task<()>)>,
     message: Entity<TextInput>,
     focus_handle: FocusHandle,
     _subscription: Subscription,
@@ -133,6 +158,7 @@ impl ProjectView {
             tooltip: None,
             tooltip_delay: None,
             copied: None,
+            notice: None,
             message,
             focus_handle: cx.focus_handle(),
             _subscription: subscription,
@@ -218,6 +244,13 @@ impl ProjectView {
     pub fn show_copied(&mut self, index: usize, cx: &mut Context<Self>) {
         self.show_path(index, cx);
         self.copied = Some(Task::ready(()));
+    }
+
+    /// Shows the notice `control` answers with, as if it had just been used.
+    #[cfg(feature = "mocks")]
+    pub fn show_notice(&mut self, control: Control, cx: &mut Context<Self>) {
+        self.notice = Some((control, control.notice(), Task::ready(())));
+        cx.notify();
     }
 
     /// Picks the `index`th symbol of the selected file, as clicking it in the symbol layout does.
@@ -318,19 +351,35 @@ impl ProjectView {
             return;
         };
         cx.write_to_clipboard(ClipboardItem::new_string(file.path.display().to_string()));
-        self.copied = Some(cx.spawn(async move |this, cx| {
-            cx.background_executor().timer(COPIED_FOR).await;
-            this.update(cx, |this, cx| {
-                this.copied = None;
-                cx.notify();
-            })
-            .ok();
-        }));
+        self.copied = Some(clear_after(COPIED_FOR, |this| this.copied = None, cx));
         cx.notify();
     }
 
-    /// Committing waits on a Git backend.
-    fn commit_staged(&mut self, _: &CommitStaged, _window: &mut Window, _cx: &mut Context<Self>) {}
+    fn use_control(&mut self, control: Control, cx: &mut Context<Self>) {
+        let clear = clear_after(NOTICE_FOR, |this| this.notice = None, cx);
+        self.notice = Some((control, control.notice(), clear));
+        cx.notify();
+    }
+
+    fn commit_staged(&mut self, _: &CommitStaged, _window: &mut Window, cx: &mut Context<Self>) {
+        self.use_control(Control::Commit, cx);
+    }
+}
+
+/// Runs `clear` on the view once `duration` has passed, unless the task is dropped first.
+fn clear_after(
+    duration: Duration,
+    clear: fn(&mut ProjectView),
+    cx: &mut Context<ProjectView>,
+) -> Task<()> {
+    cx.spawn(async move |this, cx| {
+        cx.background_executor().timer(duration).await;
+        this.update(cx, |this, cx| {
+            clear(this);
+            cx.notify();
+        })
+        .ok();
+    })
 }
 
 impl Focusable for ProjectView {

@@ -3,7 +3,7 @@
 use gpui::{AnyElement, App, BoxShadow, Hsla, SharedString, Window, div, hsla, prelude::*, px};
 use theme::{ActiveTheme, ThemeColors, Typeset};
 
-use crate::{Icon, IconName, Kbd};
+use crate::{Icon, IconName, Kbd, Tag};
 
 /// What a tooltip reports on. Every tone but `Neutral` leads with its icon and tints the outline
 /// with its hue.
@@ -32,6 +32,8 @@ impl Tone {
 pub struct Tooltip {
     content: AnyElement,
     tone: Tone,
+    tag: Option<Tag>,
+    detail: Option<SharedString>,
     shortcut: Option<(SharedString, SharedString)>,
 }
 
@@ -40,12 +42,26 @@ impl Tooltip {
         Self {
             content: content.into_any_element(),
             tone: Tone::Neutral,
+            tag: None,
+            detail: None,
             shortcut: None,
         }
     }
 
     pub fn tone(mut self, tone: Tone) -> Self {
         self.tone = tone;
+        self
+    }
+
+    /// Follows the content on its line, such as where a failure came from.
+    pub fn tag(mut self, tag: Tag) -> Self {
+        self.tag = Some(tag);
+        self
+    }
+
+    /// A second line in muted text, which wraps where the first never does.
+    pub fn detail(mut self, detail: impl Into<SharedString>) -> Self {
+        self.detail = Some(detail.into());
         self
     }
 
@@ -88,13 +104,30 @@ impl RenderOnce for Tooltip {
                 colors.text
             })
             .whitespace_nowrap()
+            .when(self.detail.is_some(), |tooltip| tooltip.py_1p5().px_2p5())
             .child(
                 div()
                     .flex()
-                    .items_center()
-                    .gap_1p5()
-                    .children(mark.map(|(name, hue)| Icon::new(name).size(px(14.)).color(hue)))
-                    .child(self.content),
+                    .flex_col()
+                    .gap_0p5()
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_1p5()
+                            .children(
+                                mark.map(|(name, hue)| Icon::new(name).size(px(14.)).color(hue)),
+                            )
+                            .child(self.content)
+                            .children(self.tag),
+                    )
+                    .children(self.detail.map(|detail| {
+                        div()
+                            .max_w(px(280.))
+                            .whitespace_normal()
+                            .text_color(colors.text_muted)
+                            .child(detail)
+                    })),
             )
             .when_some(self.shortcut, |tooltip, (label, keys)| {
                 tooltip
@@ -145,8 +178,28 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
                         )
                     }),
                 )
+                .section(
+                    "Notices",
+                    [
+                        (
+                            "With a tag",
+                            Tooltip::new("Push isn't wired up yet")
+                                .tone(Tone::Warning)
+                                .tag(Tag::new("UI"))
+                                .into_any_element(),
+                        ),
+                        (
+                            "With a detail",
+                            Tooltip::new("Fetch failed")
+                                .tone(Tone::Error)
+                                .tag(Tag::new("Fixture").accent())
+                                .detail("FakeGit has no remote for ~/Projects/pensive")
+                                .into_any_element(),
+                        ),
+                    ],
+                )
                 .into_any_element()
         })
-        .size(size(px(640.), px(300.))),
+        .size(size(px(640.), px(420.))),
     ]
 }
