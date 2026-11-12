@@ -66,8 +66,8 @@ impl Mock {
         }
     }
 
-    /// Renders the mock at twice its size without opening a window. Returns `None` on platforms
-    /// with no headless renderer.
+    /// Renders the mock at twice its size without opening a window, with the default theme and
+    /// the bundled fonts and assets. Returns `None` on platforms with no headless renderer.
     pub fn render(&self) -> Result<Option<RgbaImage>> {
         render_headless(self.size, |window, cx| {
             let view = self.build(window, cx);
@@ -76,9 +76,7 @@ impl Mock {
     }
 }
 
-/// Opens a window of `size` on the headless renderer, with the default theme and the bundled
-/// fonts and assets, and captures it at twice its size. Returns `None` on platforms with no
-/// headless renderer.
+/// Opens a window of `size` on the headless renderer and captures it at twice its size.
 fn render_headless<V: Render>(
     size: Size<Pixels>,
     build_root: impl FnOnce(&mut Window, &mut App) -> Entity<V>,
