@@ -120,6 +120,9 @@ mod tests {
             fs::create_dir(repo.path()).unwrap();
             fs::write(repo.dir.path().join("gitconfig"), "").unwrap();
             repo.run(&["init", "-q", "--initial-branch=main"]);
+            // The backend reads this machine's config, and Git for Windows turns on CRLF
+            // checkouts system-wide. The repository's own setting wins.
+            repo.run(&["config", "core.autocrlf", "false"]);
             repo
         }
 
