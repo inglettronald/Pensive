@@ -84,7 +84,6 @@ pub struct FileChange {
     pub added: usize,
     pub removed: usize,
     pub symbols: Vec<Symbol>,
-    pub hunks: Vec<Hunk>,
 }
 
 impl FileChange {
@@ -136,6 +135,20 @@ impl FileChange {
             self.index = None;
         }
     }
+}
+
+/// Which list a file is in.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum Source {
+    Uncommitted,
+    Commit(SharedString),
+}
+
+/// A file in one of a worktree's lists, by its path.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct FileKey {
+    pub source: Source,
+    pub path: PathBuf,
 }
 
 #[derive(Clone, Debug)]
@@ -223,6 +236,15 @@ impl Changes {
 
     pub fn commit(&self, sha: &str) -> Option<&Commit> {
         self.commits.iter().find(|commit| commit.sha == sha)
+    }
+
+    /// The file `key` names, in the uncommitted list or its commit.
+    pub fn find(&self, key: &FileKey) -> Option<&FileChange> {
+        let files = match &key.source {
+            Source::Uncommitted => &self.uncommitted,
+            Source::Commit(sha) => &self.commit(sha)?.files,
+        };
+        files.iter().find(|file| file.path == key.path)
     }
 }
 

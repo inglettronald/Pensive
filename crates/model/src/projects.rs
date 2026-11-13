@@ -1,7 +1,7 @@
 //! The projects Pensive knows about, with their worktrees and branches.
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     path::{Path, PathBuf},
     sync::Arc,
     time::{Duration, SystemTime},
@@ -10,7 +10,7 @@ use std::{
 use anyhow::Result;
 use gpui::{Context, SharedString, Task};
 
-use crate::{Backend, Changes, GitBackend, Origin, Repository};
+use crate::{Backend, Changes, FileDiff, FileKey, GitBackend, Origin, Repository, Source};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ProjectId(pub usize);
@@ -80,6 +80,10 @@ pub struct Projects {
     pub as_of: Option<SystemTime>,
     /// Each worktree's changes, by its path, once they've been read.
     changes: HashMap<PathBuf, Changes>,
+    /// The diffs of files that have been shown, by worktree and file.
+    diffs: HashMap<(PathBuf, FileKey), FileDiff>,
+    /// Diffs being read, so a second request waits for the first.
+    reading: HashSet<(PathBuf, FileKey)>,
     git: Backend<dyn GitBackend>,
 }
 
@@ -90,6 +94,8 @@ impl Projects {
             projects: Vec::new(),
             as_of: None,
             changes: HashMap::new(),
+            diffs: HashMap::new(),
+            reading: HashSet::new(),
             git: Backend::new(git, Origin::Git),
         }
     }
@@ -149,7 +155,8 @@ impl Projects {
     }
 
     /// Reads the changes in the worktree at `worktree` off the UI thread, replacing what's
-    /// cached.
+    /// cached. Uncommitted files whose diffs are cached are read again, since they may have
+    /// changed too. A commit's diffs never change.
     pub fn read_changes(&mut self, worktree: PathBuf, cx: &mut Context<Self>) -> Task<Result<()>> {
         let path = worktree.clone();
         let read = self
@@ -158,7 +165,16 @@ impl Projects {
         cx.spawn(async move |this, cx| {
             let changes = read.await?;
             this.update(cx, |this, cx| {
-                this.insert_changes(worktree, changes);
+                this.insert_changes(worktree.clone(), changes);
+                let stale: Vec<FileKey> = this
+                    .diffs
+                    .keys()
+                    .filter(|(path, key)| *path == worktree && key.source == Source::Uncommitted)
+                    .map(|(_, key)| key.clone())
+                    .collect();
+                for key in stale {
+                    this.read_diff(worktree.clone(), key, cx).detach();
+                }
                 cx.notify();
             })
         })
@@ -166,6 +182,58 @@ impl Projects {
 
     pub(crate) fn insert_changes(&mut self, worktree: PathBuf, changes: Changes) {
         self.changes.insert(worktree, changes);
+    }
+
+    /// The diff of the file `key` names, once read. A stale one stays until its update arrives.
+    pub fn diff(&self, worktree: &Path, key: &FileKey) -> Option<&FileDiff> {
+        self.diffs.get(&(worktree.to_path_buf(), key.clone()))
+    }
+
+    /// Reads both versions of the file `key` names and diffs them, off the UI thread. Does
+    /// nothing while the same file is already being read, or when the changes don't list it.
+    pub fn read_diff(
+        &mut self,
+        worktree: PathBuf,
+        key: FileKey,
+        cx: &mut Context<Self>,
+    ) -> Task<Result<()>> {
+        let Some(file) = self
+            .changes(&worktree)
+            .and_then(|changes| changes.find(&key))
+        else {
+            return Task::ready(Ok(()));
+        };
+        let renamed_from = file.renamed_from.clone();
+        let entry = (worktree, key);
+        if !self.reading.insert(entry.clone()) {
+            return Task::ready(Ok(()));
+        }
+        let (path, key) = entry.clone();
+        let title = format!("Couldn't read {}", key.path.display());
+        let read = self.git.call(
+            title,
+            move |git| {
+                let versions = git.versions(&path, &key, renamed_from.as_deref())?;
+                Ok(FileDiff::new(&versions))
+            },
+            cx,
+        );
+        cx.spawn(async move |this, cx| {
+            let diff = read.await;
+            this.update(cx, |this, cx| {
+                this.reading.remove(&entry);
+                if let Ok(diff) = &diff {
+                    this.diffs.insert(entry, diff.clone());
+                    cx.notify();
+                }
+            })?;
+            diff.map(|_| ())
+        })
+    }
+
+    #[cfg(feature = "fixtures")]
+    pub(crate) fn insert_diff(&mut self, worktree: PathBuf, key: FileKey, diff: FileDiff) {
+        self.diffs.insert((worktree, key), diff);
     }
 
     /// Stages or unstages one file in the cached changes. Git's index follows once a backend

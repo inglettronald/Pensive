@@ -21,6 +21,7 @@ ui = { path = "crates/ui" }
 anyhow = "1"
 etcetera = "0.11"
 futures = "0.3"
+imara-diff = "0.2"
 image = { version = "0.25", default-features = false, features = ["png"] }
 log = "0.4"
 notify = "8"

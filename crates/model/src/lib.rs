@@ -3,6 +3,7 @@
 mod backend;
 mod changes;
 mod config;
+mod diff;
 #[cfg(feature = "fixtures")]
 pub mod fixtures;
 mod git;
@@ -12,10 +13,11 @@ mod projects;
 
 pub use backend::Backend;
 pub use changes::{
-    Base, Changes, Commit, FileChange, FileStatus, Hunk, HunkLine, LineChange, Staging, Symbol,
-    SymbolKind, Upstream,
+    Base, Changes, Commit, FileChange, FileKey, FileStatus, Hunk, HunkLine, LineChange, Source,
+    Staging, Symbol, SymbolKind, Upstream,
 };
 pub use config::{ConfigBackend, ConfigEvent, ConfigFiles};
+pub use diff::{FileDiff, FileVersions, Version};
 pub use git::{GitBackend, Repository};
 pub use notice::{FixtureGap, Notice, Origin, Severity};
 pub use notices::{Held, Notices};

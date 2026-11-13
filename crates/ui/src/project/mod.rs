@@ -17,7 +17,7 @@ use gpui::{
     App, ClipboardItem, Context, Entity, FocusHandle, Focusable, SharedString, Subscription, Task,
     Window, actions, div, prelude::*,
 };
-use model::{Changes, FileChange, Notice, ProjectId, Projects, Staging};
+use model::{Changes, FileChange, FileKey, Notice, ProjectId, Projects, Source, Staging};
 use strum::VariantArray;
 
 use crate::{key_binding, text_input::TextInput};
@@ -83,20 +83,6 @@ impl Control {
     }
 }
 
-/// Which list a file is in.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum Source {
-    Uncommitted,
-    Commit(SharedString),
-}
-
-/// A file in one of the sidebar's lists, by its path.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct FileKey {
-    source: Source,
-    path: PathBuf,
-}
-
 pub struct ProjectView {
     projects: Entity<Projects>,
     /// The worktree shown: for now, always the project's main one.
@@ -143,7 +129,14 @@ impl ProjectView {
                 })
                 .detach();
         }
-        let subscription = cx.observe(&projects, |_, _, cx| cx.notify());
+        let subscription = cx.observe(&projects, |this: &mut Self, _, cx| {
+            // Changes read after the view opened select their first file, as if they'd been
+            // there from the start.
+            if this.selected.is_none() {
+                this.select_first(cx);
+            }
+            cx.notify()
+        });
         let mut view = Self {
             projects,
             worktree,
@@ -163,11 +156,18 @@ impl ProjectView {
             focus_handle: cx.focus_handle(),
             _subscription: subscription,
         };
-        view.selected = view.changes(cx).uncommitted.first().map(|file| FileKey {
+        view.select_first(cx);
+        view
+    }
+
+    fn select_first(&mut self, cx: &mut Context<Self>) {
+        let first = self.changes(cx).uncommitted.first().map(|file| FileKey {
             source: Source::Uncommitted,
             path: file.path.clone(),
         });
-        view
+        if let Some(key) = first {
+            self.select(key, None, cx);
+        }
     }
 
     /// The worktree's changes as cached, or none until they've been read.
@@ -261,7 +261,17 @@ impl ProjectView {
         }
     }
 
+    /// Shows the file `key` names, reading its diff unless it's cached.
     fn select(&mut self, key: FileKey, symbol: Option<usize>, cx: &mut Context<Self>) {
+        let worktree = self.worktree.clone();
+        if self.projects.read(cx).diff(&worktree, &key).is_none() {
+            // A failure leaves the main view empty, and Projects reports it.
+            self.projects
+                .update(cx, |projects, cx| {
+                    projects.read_diff(worktree, key.clone(), cx)
+                })
+                .detach();
+        }
         self.selected = Some(key);
         self.selected_symbol = symbol;
         cx.notify();
@@ -337,12 +347,7 @@ impl ProjectView {
     }
 
     fn file(&self, key: &FileKey, cx: &App) -> Option<FileChange> {
-        let changes = self.changes(cx);
-        let files = match &key.source {
-            Source::Uncommitted => &changes.uncommitted,
-            Source::Commit(sha) => &changes.commit(sha)?.files,
-        };
-        files.iter().find(|file| file.path == key.path).cloned()
+        self.changes(cx).find(key).cloned()
     }
 
     fn copy_path(&mut self, _: &CopyPath, _window: &mut Window, cx: &mut Context<Self>) {
