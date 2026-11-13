@@ -1,5 +1,6 @@
 //! Application state, and the traits that I/O backends implement for it.
 
+mod backend;
 mod changes;
 mod config;
 #[cfg(feature = "fixtures")]
@@ -9,6 +10,7 @@ mod notice;
 mod notices;
 mod projects;
 
+pub use backend::Backend;
 pub use changes::{
     Base, Changes, Commit, FileChange, FileStatus, Hunk, HunkLine, LineChange, Staging, Symbol,
     SymbolKind, Upstream,

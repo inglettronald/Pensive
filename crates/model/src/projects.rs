@@ -8,9 +8,9 @@ use std::{
 };
 
 use anyhow::Result;
-use gpui::{AsyncApp, Context, SharedString, Task};
+use gpui::{Context, SharedString, Task};
 
-use crate::{Changes, GitBackend, Notice, Notices, Origin, Repository};
+use crate::{Backend, Changes, GitBackend, Origin, Repository};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ProjectId(pub usize);
@@ -80,7 +80,7 @@ pub struct Projects {
     pub as_of: Option<SystemTime>,
     /// Each worktree's changes, by its path, once they've been read.
     changes: HashMap<PathBuf, Changes>,
-    git: Arc<dyn GitBackend>,
+    git: Backend<dyn GitBackend>,
 }
 
 impl Projects {
@@ -90,29 +90,22 @@ impl Projects {
             projects: Vec::new(),
             as_of: None,
             changes: HashMap::new(),
-            git,
+            git: Backend::new(git, Origin::Git),
         }
     }
 
     /// Adds the repository that contains `path`, reading it off the UI thread. Opening one that's
     /// already here reads it again.
     pub fn open(&mut self, path: PathBuf, cx: &mut Context<Self>) -> Task<Result<ProjectId>> {
-        let git = self.git.clone();
+        let title = format!("Couldn't open {}", path.display());
+        let read = self.git.call(title, move |git| git.repository(&path), cx);
         cx.spawn(async move |this, cx| {
-            let title = format!("Couldn't open {}", path.display());
-            let opened = async {
-                let repository = cx
-                    .background_executor()
-                    .spawn(async move { git.repository(&path) })
-                    .await?;
-                this.update(cx, |this, cx| {
-                    let id = this.add(repository, SystemTime::now());
-                    cx.notify();
-                    id
-                })
-            }
-            .await;
-            reported(title, opened, cx)
+            let repository = read.await?;
+            this.update(cx, |this, cx| {
+                let id = this.add(repository, SystemTime::now());
+                cx.notify();
+                id
+            })
         })
     }
 
@@ -158,21 +151,16 @@ impl Projects {
     /// Reads the changes in the worktree at `worktree` off the UI thread, replacing what's
     /// cached.
     pub fn read_changes(&mut self, worktree: PathBuf, cx: &mut Context<Self>) -> Task<Result<()>> {
-        let git = self.git.clone();
+        let path = worktree.clone();
+        let read = self
+            .git
+            .call("Couldn't read changes", move |git| git.changes(&path), cx);
         cx.spawn(async move |this, cx| {
-            let read = async {
-                let path = worktree.clone();
-                let changes = cx
-                    .background_executor()
-                    .spawn(async move { git.changes(&path) })
-                    .await?;
-                this.update(cx, |this, cx| {
-                    this.insert_changes(worktree, changes);
-                    cx.notify();
-                })
-            }
-            .await;
-            reported("Couldn't read changes", read, cx)
+            let changes = read.await?;
+            this.update(cx, |this, cx| {
+                this.insert_changes(worktree, changes);
+                cx.notify();
+            })
         })
     }
 
@@ -281,17 +269,6 @@ impl Projects {
     }
 }
 
-/// Reports a failed backend call to the notices under `title` and passes the result on. Every
-/// backend call goes through it, so no caller can drop the error, and a caller that started it
-/// from a control can still show the error there.
-fn reported<T>(title: impl Into<SharedString>, result: Result<T>, cx: &mut AsyncApp) -> Result<T> {
-    if let Err(error) = &result {
-        let notice = Notice::failed(title, Origin::Git, error);
-        cx.update(|cx| Notices::global(cx).update(cx, |notices, cx| notices.report(notice, cx)));
-    }
-    result
-}
-
 #[cfg(all(test, feature = "fixtures"))]
 mod tests {
     use std::path::Path;
@@ -299,7 +276,10 @@ mod tests {
     use gpui::{AppContext as _, TestAppContext};
 
     use super::*;
-    use crate::fixtures::{self, FakeGit, HARBOR};
+    use crate::{
+        Notices,
+        fixtures::{self, FakeGit, HARBOR},
+    };
 
     #[test]
     fn a_checked_out_branch_shows_once_as_its_worktree() {
