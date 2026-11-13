@@ -71,18 +71,28 @@ pub(crate) struct NoticeOverlay {
     notices: Entity<Notices>,
     toasts: Vec<Shown>,
     list_open: bool,
-    _subscription: Subscription,
+    _subscriptions: [Subscription; 2],
 }
 
 impl NoticeOverlay {
     pub fn new(cx: &mut Context<Self>) -> Self {
         let notices = Notices::global(cx);
-        let subscription = cx.observe(&notices, |this, _, cx| this.sync(cx));
+        let observe = cx.observe(&notices, |this, _, cx| this.sync(cx));
+        // A window that closes with a toast under the pointer never sees the pointer leave.
+        let release = cx.on_release(|this, cx| {
+            let paused = this.toasts.iter().filter(|shown| shown.draining.is_none());
+            let ids: Vec<u64> = paused.map(|shown| shown.id).collect();
+            this.notices.update(cx, |notices, cx| {
+                for id in ids {
+                    notices.let_go(id, cx);
+                }
+            });
+        });
         let mut overlay = Self {
             notices,
             toasts: Vec::new(),
             list_open: false,
-            _subscription: subscription,
+            _subscriptions: [observe, release],
         };
         overlay.sync(cx);
         overlay
@@ -132,24 +142,31 @@ impl NoticeOverlay {
         let notices = self.notices.clone();
         let fold = cx.spawn(async move |_, cx| {
             cx.background_executor().timer(left).await;
-            notices.update(cx, |notices, cx| notices.fold(id, cx));
+            notices.update(cx, |notices, cx| notices.expire(id, cx));
         });
         shown.draining = Some((now, fold));
     }
 
-    /// Holds a toast while the pointer is on it, and lets it drain again when it leaves.
+    /// Holds a toast while the pointer is on it, in every window, and lets it drain again when
+    /// the pointer leaves.
     fn hover(&mut self, id: u64, hovered: bool, cx: &mut Context<Self>) {
-        if hovered {
-            let now = self.notices.read(cx).now();
-            if let Some(shown) = self.toasts.iter_mut().find(|shown| shown.id == id)
-                && let Some((since, _)) = shown.draining.take()
-            {
+        let Some(shown) = self.toasts.iter_mut().find(|shown| shown.id == id) else {
+            return;
+        };
+        // Draining means not held, so a repeated hover event changes nothing.
+        match (hovered, shown.draining.take()) {
+            (true, Some((since, _))) => {
+                let now = self.notices.read(cx).now();
                 shown.left = shown
                     .left
                     .saturating_sub(now.duration_since(since).unwrap_or_default());
+                self.notices.update(cx, |notices, _| notices.pause(id));
             }
-        } else {
-            self.drain(id, cx);
+            (false, None) => {
+                self.notices.update(cx, |notices, _| notices.resume(id));
+                self.drain(id, cx);
+            }
+            (_, draining) => shown.draining = draining,
         }
         cx.notify();
     }
@@ -356,5 +373,67 @@ mod tests {
         cx.run_until_parked();
         overlay.read_with(cx, |overlay, _| assert!(overlay.toasts.is_empty()));
         notices.read_with(cx, |notices, _| assert_eq!(notices.counts(), (1, 0)));
+    }
+
+    #[gpui::test]
+    fn a_toast_under_the_pointer_in_one_window_stays_in_every_window(cx: &mut TestAppContext) {
+        let first = cx.new(NoticeOverlay::new);
+        let second = cx.new(NoticeOverlay::new);
+        let notices = cx.update(Notices::global);
+        notices.update(cx, |notices, cx| {
+            notices.report(
+                Notice {
+                    severity: Severity::Error,
+                    origin: Origin::Git,
+                    title: "Fetch failed".into(),
+                    detail: None,
+                },
+                cx,
+            )
+        });
+        cx.run_until_parked();
+        let id = first.read_with(cx, |overlay, _| overlay.toasts[0].id);
+        let toasting = |cx: &mut TestAppContext| {
+            let shown = |overlay: &Entity<NoticeOverlay>, cx: &mut TestAppContext| {
+                overlay.read_with(cx, |overlay, _| overlay.toasts.len())
+            };
+            (shown(&first, cx), shown(&second, cx))
+        };
+
+        // The second window's time runs out, but the first window holds the toast.
+        first.update(cx, |overlay, cx| overlay.hover(id, true, cx));
+        cx.executor().advance_clock(Duration::from_secs(10));
+        cx.run_until_parked();
+        assert_eq!(toasting(cx), (1, 1));
+
+        first.update(cx, |overlay, cx| overlay.hover(id, false, cx));
+        cx.executor().advance_clock(Duration::from_secs(10));
+        cx.run_until_parked();
+        assert_eq!(toasting(cx), (0, 0));
+    }
+
+    #[gpui::test]
+    fn closing_a_window_lets_go_of_the_toast_it_held(cx: &mut TestAppContext) {
+        let closing = cx.new(NoticeOverlay::new);
+        let staying = cx.new(NoticeOverlay::new);
+        let notices = cx.update(Notices::global);
+        notices.update(cx, |notices, cx| {
+            notices.report(
+                Notice {
+                    severity: Severity::Error,
+                    origin: Origin::Git,
+                    title: "Fetch failed".into(),
+                    detail: None,
+                },
+                cx,
+            )
+        });
+        cx.run_until_parked();
+        let id = closing.read_with(cx, |overlay, _| overlay.toasts[0].id);
+        closing.update(cx, |overlay, cx| overlay.hover(id, true, cx));
+        drop(closing);
+        cx.executor().advance_clock(Duration::from_secs(10));
+        cx.run_until_parked();
+        staying.read_with(cx, |overlay, _| assert!(overlay.toasts.is_empty()));
     }
 }
