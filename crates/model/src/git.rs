@@ -7,7 +7,7 @@ use std::{
 
 use anyhow::Result;
 
-use crate::{Branch, Changes, FileKey, FileVersions, Worktree};
+use crate::{Branch, Changes, FileKey, FileVersions, Version, Worktree};
 
 /// Calls block, so models run them off the UI thread.
 pub trait GitBackend: Send + Sync + Debug {
@@ -26,6 +26,12 @@ pub trait GitBackend: Send + Sync + Debug {
         key: &FileKey,
         renamed_from: Option<&Path>,
     ) -> Result<FileVersions>;
+
+    /// Reads the file at `path` in the worktree as it is on disk.
+    fn read_file(&self, worktree: &Path, path: &Path) -> Result<Version>;
+
+    /// Replaces the file at `path` in the worktree with `text`.
+    fn write_file(&self, worktree: &Path, path: &Path, text: &str) -> Result<()>;
 }
 
 /// A repository as Git reports it.

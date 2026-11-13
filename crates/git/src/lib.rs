@@ -7,7 +7,7 @@ mod parse;
 use std::{collections::HashMap, fs, path::Path, time::SystemTime};
 
 use anyhow::{Context as _, Result};
-use model::{Branch, Changes, FileKey, FileVersions, GitBackend, Repository, Worktree};
+use model::{Branch, Changes, FileKey, FileVersions, GitBackend, Repository, Version, Worktree};
 
 use crate::{command::git, parse::ListedWorktree};
 
@@ -44,6 +44,14 @@ impl GitBackend for GitCli {
         renamed_from: Option<&Path>,
     ) -> Result<FileVersions> {
         changes::versions(worktree, key, renamed_from)
+    }
+
+    fn read_file(&self, worktree: &Path, path: &Path) -> Result<Version> {
+        changes::read_file(worktree, path)
+    }
+
+    fn write_file(&self, worktree: &Path, path: &Path, text: &str) -> Result<()> {
+        changes::write_file(worktree, path, text)
     }
 }
 
@@ -448,6 +456,48 @@ mod tests {
         let changes = repo.changes();
         assert_eq!(changes.uncommitted.len(), 1);
         assert!(changes.commits.is_empty());
+    }
+
+    #[test]
+    fn writing_a_file_replaces_its_text_and_reads_back() {
+        let repo = Repo::new();
+        repo.write("a.rs", "old\n");
+        GitCli
+            .write_file(&repo.path(), Path::new("a.rs"), "new\n")
+            .unwrap();
+        assert_eq!(
+            GitCli.read_file(&repo.path(), Path::new("a.rs")).unwrap(),
+            Version::Text("new\n".into())
+        );
+        assert_eq!(
+            GitCli
+                .read_file(&repo.path(), Path::new("gone.rs"))
+                .unwrap(),
+            Version::Missing
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn writing_keeps_permissions_and_symlinks() {
+        use std::os::unix::fs::{PermissionsExt as _, symlink};
+
+        let repo = Repo::new();
+        repo.write("run.sh", "echo old\n");
+        let script = repo.path().join("run.sh");
+        fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
+        symlink("run.sh", repo.path().join("link.sh")).unwrap();
+        GitCli
+            .write_file(&repo.path(), Path::new("link.sh"), "echo new\n")
+            .unwrap();
+        assert!(
+            fs::symlink_metadata(repo.path().join("link.sh"))
+                .unwrap()
+                .is_symlink()
+        );
+        assert_eq!(fs::read_to_string(&script).unwrap(), "echo new\n");
+        let mode = fs::metadata(&script).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o755);
     }
 
     #[test]

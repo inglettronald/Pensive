@@ -4,6 +4,7 @@ mod backend;
 mod changes;
 mod config;
 mod diff;
+mod document;
 #[cfg(feature = "fixtures")]
 pub mod fixtures;
 mod git;
@@ -17,7 +18,10 @@ pub use changes::{
     Staging, Symbol, SymbolKind, Upstream, short_sha,
 };
 pub use config::{ConfigBackend, ConfigEvent, ConfigFiles};
-pub use diff::{FileDiff, FileVersions, Version};
+pub use diff::{
+    ChangedLines, FileDiff, FileVersions, LineDiff, Version, changed_words, text_lines,
+};
+pub use document::{Document, DocumentEvent};
 pub use git::{GitBackend, Repository};
 pub use notice::{FixtureGap, Notice, Origin, Severity};
 pub use notices::{Held, Notices};
