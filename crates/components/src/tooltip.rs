@@ -79,6 +79,9 @@ impl RenderOnce for Tooltip {
             })
             .whitespace_nowrap()
             .when(self.detail.is_some(), |tooltip| tooltip.py_1p5().px_2p5())
+            // The key cap's border makes it 2 px taller than the text, which this takes back so
+            // every one-line tooltip is the same height.
+            .when(self.shortcut.is_some(), |tooltip| tooltip.py(px(3.)))
             .child(
                 div()
                     .flex()

@@ -1,10 +1,11 @@
-//! An icon from the bundled Lucide set, tinted like text.
+//! A bundled icon, tinted like text.
 
 use gpui::{App, Hsla, IntoElement, Pixels, RenderOnce, SharedString, Styled, Window, px, svg};
 use strum::{IntoStaticStr, VariantArray};
 use theme::ActiveTheme;
 
-/// A Lucide icon, named as Lucide names it. Each one is a file in `assets/icons`.
+/// A Lucide icon, named as Lucide names it, or a window control, which are drawn to match each
+/// other in size where Lucide's minus, square and x don't. Each one is a file in `assets/icons`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, VariantArray, IntoStaticStr)]
 #[strum(serialize_all = "kebab-case")]
 pub enum IconName {
@@ -29,14 +30,15 @@ pub enum IconName {
     Hash,
     List,
     ListTree,
-    Minus,
     Plus,
     RefreshCw,
     Search,
     SearchX,
     Settings,
-    Square,
     TriangleAlert,
+    WindowClose,
+    WindowMaximize,
+    WindowMinimize,
     X,
 }
 

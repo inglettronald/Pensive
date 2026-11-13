@@ -246,17 +246,17 @@ impl RenderOnce for TitleBar {
                 .child(div().w(px(1.)).h(px(16.)).mx_1p5().bg(colors.border_subtle))
                 .child(window_control(
                     "minimize",
-                    IconName::Minus,
+                    IconName::WindowMinimize,
                     WindowControlArea::Min,
                 ))
                 .child(window_control(
                     "maximize",
-                    IconName::Square,
+                    IconName::WindowMaximize,
                     WindowControlArea::Max,
                 ))
                 .child(window_control(
                     "close",
-                    IconName::X,
+                    IconName::WindowClose,
                     WindowControlArea::Close,
                 ))
         });

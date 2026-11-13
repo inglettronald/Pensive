@@ -77,23 +77,24 @@ impl RenderOnce for Toast {
         let density = cx.density();
         let hue = self.tone.mark(colors).map(|(_, hue)| hue);
         let line = self.timer.zip(hue).map(|((left, draining), hue)| {
-            let line = div()
+            let line = div().h_full().bg(hue).w(relative(left));
+            // Inset by the corner radius, so the line stays clear of the rounded corners.
+            div()
                 .absolute()
-                .left_0()
                 .bottom_0()
+                .left(density.radius_lg)
+                .right(density.radius_lg)
                 .h(px(1.))
-                .bg(hue)
-                .w(relative(left));
-            match draining {
-                Some(duration) => line
-                    .with_animation(
-                        ("timer", (left * 10_000.) as usize),
-                        Animation::new(duration),
-                        move |line, delta| line.w(relative(left * (1. - delta))),
-                    )
-                    .into_any_element(),
-                None => line.into_any_element(),
-            }
+                .child(match draining {
+                    Some(duration) => line
+                        .with_animation(
+                            ("timer", (left * 10_000.) as usize),
+                            Animation::new(duration),
+                            move |line, delta| line.w(relative(left * (1. - delta))),
+                        )
+                        .into_any_element(),
+                    None => line.into_any_element(),
+                })
         });
         div()
             .id(self.id)
