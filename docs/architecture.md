@@ -14,7 +14,7 @@ Pensive is a Cargo workspace. A crate can only use the crates it lists as depend
 | `config` | The config folder backend, which reads, writes and watches the settings and theme files. | `model` |
 | `settings` | Declared settings, and the store that holds the settings file's text and the values in it. It does no I/O. | |
 | `theme` | Color, type and spacing roles, with user themes and the appearance settings. | `settings` |
-| `mock` | Named mock states for views, rendered without a window. | `theme`, `assets` |
+| `mock` | Named mock states for views, rendered without a window. | `theme`, `assets`, `model` |
 | `assets` | Files bundled into the app, such as icons, served to GPUI by path. | |
 
 Every crate except `git` and `config` also depends on `gpui`.
@@ -34,6 +34,8 @@ Every crate except `git` and `config` also depends on `gpui`.
 Each view declares named mocks next to its code: the view built from fixed data. They sit behind a `mocks` feature on `ui` and `components`, so they never ship in the app. `pensive` has the feature too, for the mock browser, and `cargo mocked` turns it on.
 
 `cargo mocks` renders every mock to `target/mocks/<subject>/<mock>.png` without opening a window. `cargo mocks root` renders only the mocks whose `<subject>/<mock>` contains `root`. A subject with more than one mock also gets an atlas at `target/mocks/<subject>.png`, with all of its mocks in one numbered grid. The atlas is only written when the filter matches every mock of the subject, so `cargo mocks root/landing` deletes `root.png` instead of leaving one that's out of date. `cargo test` renders them too, so CI checks that every mock renders on Linux and macOS. GitHub's Windows runner can't render them yet (PEN-24). On Windows, mocks render with wgpu rather than the app's DirectX 11 renderer, so fine details of text can differ from the running app.
+
+A mock fails to render when it asks a fake backend for something the fixtures don't have, and the error names what was missing. Add the sample to `model::fixtures`, or mark a mock that shows such a failure on purpose with `expects_fixture_gaps`.
 
 ## GPUI
 

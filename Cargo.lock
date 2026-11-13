@@ -2971,11 +2971,13 @@ dependencies = [
 name = "mock"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "assets",
  "gpui",
  "gpui_platform",
  "gpui_wgpu",
  "image",
+ "model",
  "theme",
 ]
 

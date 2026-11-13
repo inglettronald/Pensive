@@ -54,7 +54,7 @@ impl Atlas {
     /// Renders like `Mock::render`, at twice its size so each mock keeps the pixels of its PNG.
     pub fn render(self) -> Result<Option<RgbaImage>> {
         let window_size = self.window_size();
-        crate::render_headless(window_size, |_, cx| cx.new(|_| self))
+        crate::render_headless(window_size, |_, cx| cx.new(|_| self), |_| Ok(()))
     }
 
     fn columns(&self) -> usize {
