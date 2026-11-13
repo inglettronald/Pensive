@@ -10,7 +10,7 @@ use std::{
 use anyhow::Result;
 use gpui::{Context, SharedString, Task};
 
-use crate::{Changes, GitBackend, Repository};
+use crate::{Backend, Changes, GitBackend, Origin, Repository};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ProjectId(pub usize);
@@ -80,7 +80,7 @@ pub struct Projects {
     pub as_of: Option<SystemTime>,
     /// Each worktree's changes, by its path, once they've been read.
     changes: HashMap<PathBuf, Changes>,
-    git: Arc<dyn GitBackend>,
+    git: Backend<dyn GitBackend>,
 }
 
 impl Projects {
@@ -90,19 +90,17 @@ impl Projects {
             projects: Vec::new(),
             as_of: None,
             changes: HashMap::new(),
-            git,
+            git: Backend::new(git, Origin::Git),
         }
     }
 
     /// Adds the repository that contains `path`, reading it off the UI thread. Opening one that's
     /// already here reads it again.
     pub fn open(&mut self, path: PathBuf, cx: &mut Context<Self>) -> Task<Result<ProjectId>> {
-        let git = self.git.clone();
+        let title = format!("Couldn't open {}", path.display());
+        let read = self.git.call(title, move |git| git.repository(&path), cx);
         cx.spawn(async move |this, cx| {
-            let repository = cx
-                .background_executor()
-                .spawn(async move { git.repository(&path) })
-                .await?;
+            let repository = read.await?;
             this.update(cx, |this, cx| {
                 let id = this.add(repository, SystemTime::now());
                 cx.notify();
@@ -153,13 +151,12 @@ impl Projects {
     /// Reads the changes in the worktree at `worktree` off the UI thread, replacing what's
     /// cached.
     pub fn read_changes(&mut self, worktree: PathBuf, cx: &mut Context<Self>) -> Task<Result<()>> {
-        let git = self.git.clone();
+        let path = worktree.clone();
+        let read = self
+            .git
+            .call("Couldn't read changes", move |git| git.changes(&path), cx);
         cx.spawn(async move |this, cx| {
-            let read = worktree.clone();
-            let changes = cx
-                .background_executor()
-                .spawn(async move { git.changes(&read) })
-                .await?;
+            let changes = read.await?;
             this.update(cx, |this, cx| {
                 this.insert_changes(worktree, changes);
                 cx.notify();
@@ -279,7 +276,10 @@ mod tests {
     use gpui::{AppContext as _, TestAppContext};
 
     use super::*;
-    use crate::fixtures::{self, FakeGit, HARBOR};
+    use crate::{
+        Notices,
+        fixtures::{self, FakeGit, HARBOR},
+    };
 
     #[test]
     fn a_checked_out_branch_shows_once_as_its_worktree() {
@@ -346,11 +346,18 @@ mod tests {
     }
 
     #[gpui::test]
-    async fn open_fails_outside_any_repository(cx: &mut TestAppContext) {
+    async fn open_fails_outside_any_repository_and_reports_it(cx: &mut TestAppContext) {
         let projects = cx.new(|_| Projects::new(Arc::new(FakeGit::default())));
         let open = projects.update(cx, |projects, cx| projects.open("~/nowhere".into(), cx));
         assert!(open.await.is_err());
         projects.read_with(cx, |projects, _| assert!(projects.projects.is_empty()));
+        let notices = cx.update(Notices::global);
+        notices.read_with(cx, |notices, _| {
+            let held = notices.held();
+            assert_eq!(held[0].notice.title, "Couldn't open ~/nowhere");
+            // FakeGit has no such repository, which is a gap in the samples, not a Git failure.
+            assert_eq!(held[0].notice.origin, Origin::Fixture);
+        });
     }
 
     #[gpui::test]
