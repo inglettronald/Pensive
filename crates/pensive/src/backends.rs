@@ -18,22 +18,28 @@ pub struct Startup {
 /// folder in the home folder. A demo build opens the sample projects instead.
 #[cfg(not(target_family = "wasm"))]
 pub fn startup() -> Startup {
-    let args: Vec<PathBuf> = std::env::args_os().skip(1).map(PathBuf::from).collect();
     let config = config::ConfigFolder::find();
     if config.is_none() {
         eprintln!("Couldn't find a home folder, so every setting uses its default");
     }
-    let (projects, paths) = if cfg!(feature = "demo") {
-        (model::fixtures::projects(), Vec::new())
-    } else {
-        // Until Pensive remembers projects, they come from the command line.
-        (Projects::new(Arc::new(git::GitCli)), args)
-    };
+    let (projects, paths) = projects();
     Startup {
         projects,
         paths,
         config: config.map(|folder| Arc::new(folder) as Arc<dyn ConfigBackend>),
     }
+}
+
+/// Until Pensive remembers projects, they come from the command line.
+#[cfg(not(any(target_family = "wasm", feature = "demo")))]
+fn projects() -> (Projects, Vec<PathBuf>) {
+    let paths = std::env::args_os().skip(1).map(PathBuf::from).collect();
+    (Projects::new(Arc::new(git::GitCli)), paths)
+}
+
+#[cfg(all(not(target_family = "wasm"), feature = "demo"))]
+fn projects() -> (Projects, Vec<PathBuf>) {
+    (model::fixtures::projects(), Vec::new())
 }
 
 /// A browser tab has no `git` command or config folder, so it shows the sample projects and

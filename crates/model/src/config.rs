@@ -207,7 +207,7 @@ fn write_if_unchanged(
     Ok(None)
 }
 
-#[cfg(all(test, feature = "fixtures"))]
+#[cfg(test)]
 mod tests {
     use std::{cell::RefCell, rc::Rc};
 

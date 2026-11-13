@@ -11,7 +11,7 @@ repository.workspace = true
 assets.workspace = true
 gpui.workspace = true
 gpui_platform.workspace = true
-model = { workspace = true, features = ["fixtures"] }
+model.workspace = true
 settings.workspace = true
 theme.workspace = true
 ui.workspace = true
@@ -25,11 +25,12 @@ mock = { workspace = true, optional = true }
 
 [target.'cfg(target_family = "wasm")'.dependencies]
 log.workspace = true
+model = { workspace = true, features = ["fixtures"] }
 
 [features]
 # The sample projects in place of real ones, and the mock browser on Ctrl Shift M with thumbnails
 # rendered at launch. `cargo demo` turns it on. It never ships in the app.
-demo = ["ui/mocks", "dep:image", "dep:mock"]
+demo = ["ui/mocks", "model/fixtures", "dep:image", "dep:mock"]
 
 [dev-dependencies]
 mock.workspace = true

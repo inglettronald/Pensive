@@ -5,7 +5,7 @@ mod changes;
 mod config;
 mod diff;
 mod document;
-#[cfg(feature = "fixtures")]
+#[cfg(any(test, feature = "fixtures"))]
 pub mod fixtures;
 mod git;
 mod notice;
