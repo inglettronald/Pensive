@@ -157,7 +157,7 @@ impl Pensive {
         self.settings = None;
         if self.project_id() != Some(project) {
             let projects = self.projects.clone();
-            let view = cx.new(|cx| ProjectView::new(projects, project, cx));
+            let view = cx.new(|cx| ProjectView::new(projects, project, window, cx));
             self.project = Some((project, view));
         }
         if let Some((_, view)) = &self.project {

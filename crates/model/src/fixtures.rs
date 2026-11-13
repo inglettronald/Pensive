@@ -38,9 +38,6 @@ pub fn projects() -> Projects {
     }
     projects.as_of = Some(as_of());
     projects.insert_changes(PENSIVE_ROOT.into(), changes());
-    for (key, diff) in changes::diffs() {
-        projects.insert_diff(PENSIVE_ROOT.into(), key, diff);
-    }
     projects
 }
 

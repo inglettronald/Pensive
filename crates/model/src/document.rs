@@ -1,5 +1,5 @@
-//! An uncommitted file open for editing: its text, the committed text it's compared with, undo,
-//! and saving it back to the worktree.
+//! A changed file open in the main view: its text, the committed text it's compared with, and,
+//! for an uncommitted file, editing with undo and saving it back to the worktree.
 
 use std::{
     ops::Range,
@@ -12,8 +12,8 @@ use gpui::{Context, EventEmitter, Task};
 use ropey::Rope;
 
 use crate::{
-    Backend, FileVersions, GitBackend, LineDiff, Notice, Notices, Origin, Severity, Version,
-    diff::line_ranges,
+    Backend, FileKey, FileVersions, GitBackend, LineDiff, Notice, Notices, Origin, Severity,
+    Source, Version, diff::line_ranges,
 };
 
 pub enum DocumentEvent {
@@ -23,7 +23,7 @@ pub enum DocumentEvent {
 
 pub struct Document {
     worktree: PathBuf,
-    path: PathBuf,
+    key: FileKey,
     /// The committed text the diff compares with.
     base: Arc<str>,
     /// Where each line of `base` sits, for showing removed lines.
@@ -73,22 +73,28 @@ pub(crate) struct Contents {
 }
 
 impl Contents {
-    /// The file read as `versions`, or `None` when either version is binary or the file is
-    /// deleted, since there's no text to edit. Diffs the whole file, so it's slow on a big one.
+    /// The file read as `versions`, or `None` when either version is binary, since there are no
+    /// lines to show. A deleted file is empty. Diffs the whole file, so it's slow on a big one.
     pub(crate) fn new(versions: FileVersions) -> Option<Self> {
         let base = match versions.old {
             Version::Text(text) => text,
             Version::Missing => String::new(),
             Version::Binary => return None,
         };
-        let Version::Text(text) = versions.new else {
-            return None;
+        let (text, deleted) = match versions.new {
+            Version::Text(text) => (text, false),
+            Version::Missing => (String::new(), true),
+            Version::Binary => return None,
         };
         Some(Self {
             base_lines: line_ranges(&base),
             diff: LineDiff::new(&base, &text),
             text: Rope::from_str(&text),
-            on_disk: Version::Text(text),
+            on_disk: if deleted {
+                Version::Missing
+            } else {
+                Version::Text(text)
+            },
             base,
         })
     }
@@ -97,13 +103,13 @@ impl Contents {
 impl Document {
     pub(crate) fn new(
         worktree: PathBuf,
-        path: PathBuf,
+        key: FileKey,
         contents: Contents,
         git: Backend<dyn GitBackend>,
     ) -> Self {
         Self {
             worktree,
-            path,
+            key,
             base: contents.base.into(),
             base_lines: contents.base_lines,
             on_disk: contents.on_disk,
@@ -126,7 +132,12 @@ impl Document {
     }
 
     pub fn path(&self) -> &Path {
-        &self.path
+        &self.key.path
+    }
+
+    /// Whether it can change: an uncommitted file can, unless it's deleted, and a commit's can't.
+    pub fn is_editable(&self) -> bool {
+        self.key.source == Source::Uncommitted && self.on_disk != Version::Missing
     }
 
     pub fn text(&self) -> &Rope {
@@ -160,7 +171,7 @@ impl Document {
     /// Replaces the bytes in `range` with `text`. Typing or deleting next to the last edit joins
     /// its undo step until [`Self::break_undo_group`].
     pub fn edit(&mut self, range: Range<usize>, text: &str, cx: &mut Context<Self>) {
-        if range.is_empty() && text.is_empty() {
+        if !self.is_editable() || (range.is_empty() && text.is_empty()) {
             return;
         }
         let edit = self.apply(range, text);
@@ -288,8 +299,8 @@ impl Document {
         let revision = self.revision;
         let text = self.text.to_string();
         let expected = self.on_disk.clone();
-        let (worktree, path) = (self.worktree.clone(), self.path.clone());
-        let title = format!("Couldn't save {}", self.path.display());
+        let (worktree, path) = (self.worktree.clone(), self.key.path.clone());
+        let title = format!("Couldn't save {}", self.key.path.display());
         let write = self.git.call(
             title,
             move |git| {
@@ -336,7 +347,7 @@ impl Document {
             origin: Origin::Git,
             title: format!(
                 "{} changed on disk, so your edits weren't saved",
-                self.path.display()
+                self.key.path.display()
             )
             .into(),
             detail: None,
@@ -346,8 +357,8 @@ impl Document {
     /// Replaces the text with what's on disk, as one undo step, so the edits it drops can come
     /// back. Clears a conflict.
     pub fn reload(&mut self, cx: &mut Context<Self>) {
-        let (worktree, path) = (self.worktree.clone(), self.path.clone());
-        let title = format!("Couldn't read {}", self.path.display());
+        let (worktree, path) = (self.worktree.clone(), self.key.path.clone());
+        let title = format!("Couldn't read {}", self.key.path.display());
         let read = self
             .git
             .call(title, move |git| git.read_file(&worktree, &path), cx);
@@ -374,16 +385,15 @@ impl Document {
         self.disk_generation
     }
 
-    /// Follows the file on disk and a new committed text, as after the changes are read again.
+    /// Follows a new committed text and the file on disk, as after the changes are read again.
     /// Edits that aren't saved are kept. `stamp` is [`Self::disk_stamp`] from before the read, so
     /// a read that a save or another read overtook doesn't roll the text back.
-    pub(crate) fn refresh(
-        &mut self,
-        stamp: usize,
-        base: String,
-        on_disk: Version,
-        cx: &mut Context<Self>,
-    ) {
+    pub(crate) fn refresh(&mut self, stamp: usize, versions: FileVersions, cx: &mut Context<Self>) {
+        let base = match versions.old {
+            Version::Text(text) => text,
+            _ => String::new(),
+        };
+        let on_disk = versions.new;
         if *self.base != *base {
             self.base_lines = line_ranges(&base);
             self.base = base.into();
@@ -446,13 +456,17 @@ mod tests {
     async fn open(cx: &mut TestAppContext) -> (Entity<Document>, Arc<FakeGit>) {
         let git = Arc::new(FakeGit::default());
         let projects = cx.new(|_| Projects::new(git.clone()));
+        let key = FileKey {
+            source: Source::Uncommitted,
+            path: PATH.into(),
+        };
         let open = projects.update(cx, |projects, cx| {
-            projects.open_document(PENSIVE_ROOT.into(), PATH.into(), cx)
+            projects.open_document(PENSIVE_ROOT.into(), key.clone(), cx)
         });
         open.await.unwrap();
         let document = projects.read_with(cx, |projects, _| {
             projects
-                .document(Path::new(PENSIVE_ROOT), Path::new(PATH))
+                .document(Path::new(PENSIVE_ROOT), &key)
                 .unwrap()
                 .clone()
         });
@@ -512,7 +526,11 @@ mod tests {
         let disk = on_disk(&git);
         document.update(cx, |document, cx| {
             let stamp = document.disk_stamp();
-            document.refresh(stamp, String::new(), Version::Text(disk), cx)
+            let versions = FileVersions {
+                old: Version::Missing,
+                new: Version::Text(disk),
+            };
+            document.refresh(stamp, versions, cx)
         });
         cx.run_until_parked();
         document.read_with(cx, |document, _| {
@@ -532,7 +550,11 @@ mod tests {
         });
         cx.run_until_parked();
         document.update(cx, |document, cx| {
-            document.refresh(stamp, String::new(), Version::Text(before), cx)
+            let versions = FileVersions {
+                old: Version::Missing,
+                new: Version::Text(before),
+            };
+            document.refresh(stamp, versions, cx)
         });
         assert!(text(&document, cx).starts_with("saved\n"));
     }

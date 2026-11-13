@@ -6,7 +6,7 @@ use std::rc::Rc;
 use gpui::{App, ElementId, SharedString, Window, div, prelude::*, px};
 use theme::{ActiveTheme, Typeset};
 
-use crate::{Callback, Icon, IconName};
+use crate::{Callback, Icon, IconName, tooltip::text_tooltip};
 
 enum Segment {
     Text(SharedString),
@@ -17,6 +17,7 @@ enum Segment {
 pub struct SegmentedControl {
     id: ElementId,
     options: Vec<Segment>,
+    tooltips: Vec<SharedString>,
     selected: Option<usize>,
     on_select: Option<Callback<usize>>,
 }
@@ -33,6 +34,7 @@ impl SegmentedControl {
                 .into_iter()
                 .map(|option| Segment::Text(option.into()))
                 .collect(),
+            tooltips: Vec::new(),
             selected: selected.into(),
             on_select: None,
         }
@@ -47,9 +49,16 @@ impl SegmentedControl {
         Self {
             id: id.into(),
             options: icons.into_iter().map(Segment::Icon).collect(),
+            tooltips: Vec::new(),
             selected: selected.into(),
             on_select: None,
         }
+    }
+
+    /// Names each option in a tooltip once the pointer rests on it, which icon options need.
+    pub fn tooltips(mut self, tooltips: impl IntoIterator<Item = impl Into<SharedString>>) -> Self {
+        self.tooltips = tooltips.into_iter().map(Into::into).collect();
+        self
     }
 
     /// Called with the index of the option that was clicked.
@@ -64,6 +73,7 @@ impl RenderOnce for SegmentedControl {
         let colors = &cx.theme().colors;
         let density = cx.density();
         let on_select = self.on_select;
+        let mut tooltips = self.tooltips.into_iter();
         div()
             .id(self.id)
             .flex()
@@ -104,6 +114,9 @@ impl RenderOnce for SegmentedControl {
                             colors.text_faint
                         })),
                 }
+                .when_some(tooltips.next(), |option, tooltip| {
+                    option.tooltip(text_tooltip(tooltip))
+                })
                 .when_some(on_select.clone(), |option, handler| {
                     option.on_click(move |_, window, cx| {
                         cx.stop_propagation();

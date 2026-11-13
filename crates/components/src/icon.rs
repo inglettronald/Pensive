@@ -10,7 +10,9 @@ use theme::ActiveTheme;
 #[strum(serialize_all = "kebab-case")]
 pub enum IconName {
     Archive,
+    ArrowDown,
     ArrowDownToLine,
+    ArrowUp,
     ArrowUpFromLine,
     Bell,
     Box,
@@ -18,12 +20,16 @@ pub enum IconName {
     Check,
     ChevronDown,
     ChevronRight,
+    ChevronsUpDown,
     CircleX,
     Cloud,
     Command,
     Download,
     Ellipsis,
     FileCog,
+    FileDiff,
+    FileText,
+    FoldVertical,
     Folder,
     #[strum(serialize = "folder-git-2")]
     FolderGit2,

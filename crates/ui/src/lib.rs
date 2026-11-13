@@ -1,6 +1,7 @@
 //! Views: the screens and panels that read models and own their view state.
 
 mod age;
+mod editor;
 mod fuzzy;
 #[cfg(feature = "mocks")]
 mod mock_browser;
@@ -27,7 +28,9 @@ pub use root::{Pensive, open_window};
 pub fn init(cx: &mut App) {
     palette::declare_settings(cx);
     notices::declare_settings(cx);
+    editor::declare_settings(cx);
     text_input::bind_keys(cx);
+    editor::bind_keys(cx);
     palette::bind_keys(cx);
     project::bind_keys(cx);
     root::bind_keys(cx);

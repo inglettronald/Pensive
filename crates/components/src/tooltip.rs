@@ -1,6 +1,8 @@
 //! A small raised box for what doesn't fit where it's anchored, or for how an action there went.
 
-use gpui::{AnyElement, App, BoxShadow, SharedString, Window, div, hsla, prelude::*, px};
+use gpui::{
+    AnyElement, AnyView, App, BoxShadow, Context, SharedString, Window, div, hsla, prelude::*, px,
+};
 use theme::{ActiveTheme, Typeset};
 
 use crate::{Kbd, Tag, Tone};
@@ -117,6 +119,19 @@ impl RenderOnce for Tooltip {
                             .child(Kbd::new(keys)),
                     )
             })
+    }
+}
+
+/// A tooltip of plain text for GPUI's own `tooltip`, which shows it after the pointer rests.
+pub(crate) fn text_tooltip(text: SharedString) -> impl Fn(&mut Window, &mut App) -> AnyView {
+    move |_, cx| cx.new(|_| TextTooltip(text.clone())).into()
+}
+
+struct TextTooltip(SharedString);
+
+impl Render for TextTooltip {
+    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        Tooltip::new(self.0.clone())
     }
 }
 

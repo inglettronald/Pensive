@@ -1,82 +1,104 @@
-//! The main view: where the selected file is, then its diff.
+//! The main view: where the selected file is, how it's shown, then the file in the editor.
 
-use components::{Breadcrumb, Diff, DiffLine, DiffStat, Icon, IconName};
-use gpui::{AnyElement, Context, div, prelude::*, px};
-use model::{FileChange, FileDiff, Hunk, LineChange, Source, short_sha};
+use components::{Breadcrumb, DiffStat, Icon, IconName, SegmentedControl};
+use gpui::{AnyElement, App, Context, div, prelude::*, px};
+use model::{FileChange, Source, short_sha};
+use strum::VariantArray;
 use theme::{ActiveTheme, Typeset};
 
 use super::ProjectView;
+use crate::{editor::Mode, view_callback_with};
 
 impl ProjectView {
     pub(super) fn render_main_view(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let colors = &cx.theme().colors;
         let density = cx.density();
-        let selected = self.selected.as_ref().and_then(|key| {
-            let diff = self.projects.read(cx).diff(&self.worktree, key).cloned();
-            Some((key.source.clone(), self.file(key, cx)?, diff))
-        });
+        let selected = self
+            .selected
+            .as_ref()
+            .and_then(|key| Some((key, self.file(key, cx)?)));
+        let Some((key, file)) = selected else {
+            return div()
+                .flex()
+                .flex_1()
+                .items_center()
+                .justify_center()
+                .bg(colors.surface_app)
+                .typeset(density.small)
+                .text_color(colors.text_faint)
+                .child("Nothing selected");
+        };
+        let editor = self.editor.read(cx);
+        let mode = editor.mode();
+        let unsaved = editor
+            .document()
+            .is_some_and(|document| document.read(cx).is_dirty());
+        let binary = self.projects.read(cx).is_binary(&self.worktree, key);
+        let editor = self.editor.clone();
         div()
             .flex()
             .flex_col()
             .flex_1()
             .min_w_0()
             .bg(colors.surface_app)
-            .map(|view| match selected {
-                Some((source, file, diff)) => view
+            .child(
+                div()
+                    .flex()
+                    .flex_none()
+                    .items_center()
+                    .gap_2()
+                    .h(density.row_height + px(8.))
+                    .pl_3()
+                    .pr_2()
+                    .border_b_1()
+                    .border_color(colors.border_subtle)
+                    .typeset(density.small)
+                    .text_color(colors.text_faint)
                     .child(
-                        div()
-                            .flex()
-                            .flex_none()
-                            .items_center()
-                            .gap_2()
-                            .h(density.row_height + px(8.))
-                            .pl_3()
-                            .pr_2()
-                            .border_b_1()
-                            .border_color(colors.border_subtle)
-                            .typeset(density.small)
-                            .text_color(colors.text_faint)
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .min_w_0()
-                                    .overflow_hidden()
-                                    .child(Breadcrumb::new(self.crumbs(&source, &file, cx))),
-                            )
-                            .child(DiffStat::new(file.added, file.removed)),
+                        div().flex().flex_1().min_w_0().child(
+                            Breadcrumb::new(self.crumbs(&key.source, &file, unsaved, cx))
+                                .fade_start(|colors| colors.surface_app),
+                        ),
                     )
                     .child(
-                        div()
-                            .id("diff")
-                            .flex_1()
-                            .min_h_0()
-                            .overflow_y_scroll()
-                            .map(|body| match diff {
-                                Some(FileDiff::Text(hunks)) => {
-                                    body.child(Diff::new(diff_lines(&hunks)))
-                                }
-                                Some(FileDiff::Binary) => body.child(
-                                    div()
-                                        .p_3()
-                                        .typeset(density.small)
-                                        .text_color(colors.text_faint)
-                                        .child("Binary file"),
-                                ),
-                                // Still being read.
-                                None => body,
-                            }),
-                    ),
-                None => view.items_center().justify_center().child(
-                    div()
+                        SegmentedControl::icons(
+                            "editor-mode",
+                            Mode::VARIANTS.iter().map(|mode| mode.icon()),
+                            Mode::VARIANTS.iter().position(|&each| each == mode),
+                        )
+                        .tooltips(Mode::VARIANTS.iter().map(|mode| mode.label()))
+                        .on_select(view_callback_with(
+                            cx,
+                            move |this: &mut Self, index: usize, _, cx| {
+                                this.editor.update(cx, |editor, cx| {
+                                    editor.set_mode(Mode::VARIANTS[index], cx)
+                                })
+                            },
+                        )),
+                    )
+                    .child(DiffStat::new(file.added, file.removed)),
+            )
+            .child(div().flex_1().min_h_0().map(|body| {
+                if binary {
+                    body.p_3()
                         .typeset(density.small)
                         .text_color(colors.text_faint)
-                        .child("Nothing selected"),
-                ),
-            })
+                        .child("Binary file")
+                } else {
+                    body.child(editor)
+                }
+            }))
     }
 
-    /// The commit, if the file is in one, its folders, its name, then the selected symbol.
-    fn crumbs(&self, source: &Source, file: &FileChange, cx: &Context<Self>) -> Vec<AnyElement> {
+    /// The commit, if the file is in one, its folders, its name with whether it has unsaved
+    /// edits, then the selected symbol.
+    fn crumbs(
+        &self,
+        source: &Source,
+        file: &FileChange,
+        unsaved: bool,
+        cx: &App,
+    ) -> Vec<AnyElement> {
         let theme = cx.theme();
         let colors = &theme.colors;
         let symbol = self
@@ -112,12 +134,26 @@ impl ProjectView {
         }
         crumbs.push(
             div()
+                .flex()
+                .items_center()
                 .text_color(if symbol.is_some() {
                     colors.text_muted
                 } else {
                     colors.text_strong
                 })
                 .child(file.name())
+                .when(unsaved, |name| {
+                    name.child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(5.))
+                            .ml(px(6.))
+                            .text_color(colors.text_muted)
+                            .child(div().size(px(6.)).rounded_full().bg(colors.text_muted))
+                            .child("Unsaved"),
+                    )
+                })
                 .into_any_element(),
         );
         if let Some(symbol) = symbol {
@@ -131,25 +167,4 @@ impl ProjectView {
         }
         crumbs
     }
-}
-
-fn diff_lines(hunks: &[Hunk]) -> Vec<DiffLine> {
-    let mut lines = Vec::new();
-    for hunk in hunks {
-        lines.push(DiffLine::hunk(hunk.header.clone()));
-        for line in &hunk.lines {
-            let diff_line = match line.change {
-                LineChange::Added(number) => DiffLine::added(number, line.text.clone()),
-                LineChange::Context(number) => DiffLine::context(number, line.text.clone()),
-                LineChange::Removed => DiffLine::removed(line.text.clone()),
-            };
-            lines.push(
-                line.changed
-                    .iter()
-                    .cloned()
-                    .fold(diff_line, DiffLine::changed),
-            );
-        }
-    }
-    lines
 }

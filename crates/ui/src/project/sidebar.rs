@@ -240,6 +240,7 @@ impl ProjectView {
                     FileLayout::VARIANTS.iter().map(|layout| layout.icon()),
                     layout,
                 )
+                .tooltips(FileLayout::VARIANTS.iter().map(|layout| layout.label()))
                 .on_select(view_callback_with(
                     cx,
                     |this: &mut Self, index: usize, _, cx| {
