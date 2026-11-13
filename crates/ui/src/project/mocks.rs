@@ -1,14 +1,12 @@
 //! One mock per board on the app shell canvas: the pensive project's window in each state,
 //! built from the sample changes.
 
-use std::sync::Arc;
-
 use components::{TitleBar, TitleBarProject};
 use gpui::{AnyView, App, Context, Entity, Window, div, prelude::*};
 use mock::Mock;
 use model::{
-    Projects,
-    fixtures::{self, FakeGit, PENSIVE},
+    ProjectId, Projects,
+    fixtures::{self, HARBOR, PENSIVE},
 };
 use theme::{ActiveTheme, DensityPreset};
 
@@ -61,9 +59,8 @@ pub(crate) fn mocks() -> Vec<Mock> {
             )
         }),
         Mock::new("project", "no_changes", |_, cx| {
-            let projects = cx.new(|_| Projects::new(Arc::new(FakeGit::default())));
-            let view = cx.new(|cx| ProjectView::new(projects, PENSIVE, cx));
-            cx.new(|_| Framed(view)).into()
+            // Harbor's sample worktree is clean, so FakeGit reads it as having no changes.
+            framed_project(HARBOR, untouched, cx)
         }),
         Mock::new("project", "some_staged_dense", |window, cx| {
             cx.set_global(DensityPreset::Dense.density());
@@ -80,16 +77,42 @@ fn framed(
     _window: &mut Window,
     cx: &mut App,
 ) -> AnyView {
-    let projects = cx.new(|_| fixtures::projects());
-    let view = cx.new(|cx| ProjectView::new(projects, PENSIVE, cx));
-    view.update(cx, setup);
-    cx.new(|_| Framed(view)).into()
+    framed_project(PENSIVE, setup, cx)
 }
 
-struct Framed(Entity<ProjectView>);
+/// [`framed`] for any sample project.
+fn framed_project(
+    project: ProjectId,
+    setup: fn(&mut ProjectView, &mut Context<ProjectView>),
+    cx: &mut App,
+) -> AnyView {
+    let projects = cx.new(|_| fixtures::projects());
+    let view = cx.new(|cx| ProjectView::new(projects.clone(), project, cx));
+    view.update(cx, setup);
+    cx.new(|_| Framed {
+        view,
+        projects,
+        project,
+    })
+    .into()
+}
+
+struct Framed {
+    view: Entity<ProjectView>,
+    projects: Entity<Projects>,
+    project: ProjectId,
+}
 
 impl Render for Framed {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let projects = self.projects.read(cx);
+        let title = projects
+            .project(self.project)
+            .map(|project| TitleBarProject {
+                initial: project.initial(),
+                name: project.name.clone(),
+                branch: projects.current_branch(self.project).cloned(),
+            });
         let theme = cx.theme();
         div()
             .flex()
@@ -98,14 +121,7 @@ impl Render for Framed {
             .bg(theme.colors.surface_app)
             .text_color(theme.colors.text)
             .font_family(theme.fonts.ui.clone())
-            .child(
-                TitleBar::new(Some(TitleBarProject {
-                    initial: "P".into(),
-                    name: "pensive".into(),
-                    branch: Some("feat/command-palette".into()),
-                }))
-                .on_palette(|_, _| {}),
-            )
-            .child(self.0.clone())
+            .child(TitleBar::new(title).on_palette(|_, _| {}))
+            .child(self.view.clone())
     }
 }

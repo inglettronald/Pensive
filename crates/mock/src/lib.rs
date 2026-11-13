@@ -4,6 +4,7 @@ pub mod atlas;
 
 use std::{cell::Cell, sync::Arc};
 
+use anyhow::anyhow;
 pub use atlas::Atlas;
 use gpui::{
     AnyElement, AnyView, App, AppContext, Context, Entity, HeadlessAppContext, IntoElement,
@@ -11,6 +12,7 @@ use gpui::{
     Styled, Window, div, px, size,
 };
 use image::RgbaImage;
+use model::{Notices, Origin};
 use theme::ActiveTheme;
 
 /// One view or component in one state, built from fixed data.
@@ -21,6 +23,8 @@ pub struct Mock {
     pub name: &'static str,
     pub size: Size<Pixels>,
     content: Content,
+    /// Whether it shows fixture gaps on purpose, such as a sample notice about one.
+    expects_gaps: bool,
 }
 
 #[derive(Clone)]
@@ -54,11 +58,20 @@ impl Mock {
             name,
             size: size(px(960.), px(640.)),
             content,
+            expects_gaps: false,
         }
     }
 
     pub fn size(self, size: Size<Pixels>) -> Self {
         Self { size, ..self }
+    }
+
+    /// Lets the mock render although the fixtures had nothing for something it asked for.
+    pub fn expects_fixture_gaps(self) -> Self {
+        Self {
+            expects_gaps: true,
+            ..self
+        }
     }
 
     /// `<subject>/<name>`, which is also its PNG's path under `target/mocks`.
@@ -75,18 +88,53 @@ impl Mock {
 
     /// Renders the mock at twice its size without opening a window, with the default theme and
     /// the bundled fonts and assets. Returns `None` on platforms with no headless renderer.
+    ///
+    /// Fails if the fixtures had nothing for something the mock asked for, unless it
+    /// [expects that](Self::expects_fixture_gaps).
     pub fn render(&self) -> Result<Option<RgbaImage>> {
-        render_headless(self.size, |window, cx| {
-            let view = self.build(window, cx);
-            cx.new(|_| Frame(view))
-        })
+        render_headless(
+            self.size,
+            |window, cx| {
+                let view = self.build(window, cx);
+                cx.new(|_| Frame(view))
+            },
+            |cx| match fixture_gaps(cx) {
+                gaps if gaps.is_empty() || self.expects_gaps => Ok(()),
+                gaps => Err(anyhow!(
+                    "{} asked for what the fixtures don't have:\n{}\nAdd it to \
+                     model::fixtures, or mark a mock that shows it on purpose with \
+                     expects_fixture_gaps.",
+                    self.id(),
+                    gaps.join("\n"),
+                )),
+            },
+        )
     }
 }
 
-/// Opens a window of `size` on the headless renderer and captures it at twice its size.
+/// Each notice blamed on the fixtures, as its title and detail.
+fn fixture_gaps(cx: &mut App) -> Vec<String> {
+    Notices::global(cx)
+        .read(cx)
+        .held()
+        .into_iter()
+        .filter(|held| held.notice.origin == Origin::Fixture)
+        .map(|held| {
+            let notice = &held.notice;
+            match &notice.detail {
+                Some(detail) => format!("  {}: {detail}", notice.title),
+                None => format!("  {}", notice.title),
+            }
+        })
+        .collect()
+}
+
+/// Opens a window of `size` on the headless renderer, waits for its work to finish, runs `check`,
+/// and captures the window at twice its size.
 fn render_headless<V: Render>(
     size: Size<Pixels>,
     build_root: impl FnOnce(&mut Window, &mut App) -> Entity<V>,
+    check: impl FnOnce(&mut App) -> Result<()>,
 ) -> Result<Option<RgbaImage>> {
     let Some(renderer) = headless_renderer()? else {
         return Ok(None);
@@ -99,6 +147,7 @@ fn render_headless<V: Render>(
     cx.update(theme::init);
     let window = cx.open_window(size, build_root)?;
     cx.run_until_parked();
+    cx.update(check)?;
     cx.capture_screenshot(window.into()).map(Some)
 }
 

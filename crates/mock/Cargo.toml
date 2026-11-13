@@ -7,10 +7,12 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+anyhow.workspace = true
 assets.workspace = true
 gpui = { workspace = true, features = ["test-support"] }
 gpui_platform = { workspace = true, features = ["test-support"] }
 image.workspace = true
+model.workspace = true
 theme.workspace = true
 
 [target.'cfg(target_os = "windows")'.dependencies]

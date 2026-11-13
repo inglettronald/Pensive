@@ -319,6 +319,9 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
         Mock::new("notices", "folded", |w, cx| window(true, false, w, cx)),
         Mock::new("notices", "list_open", |w, cx| window(true, true, w, cx)),
     ]
+    .into_iter()
+    .map(Mock::expects_fixture_gaps)
+    .collect()
 }
 
 #[cfg(test)]
