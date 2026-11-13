@@ -1,6 +1,7 @@
 //! Named mock states for views, rendered headlessly for review and regression tests.
 
 pub mod atlas;
+pub mod diff;
 
 use std::{cell::Cell, sync::Arc};
 
