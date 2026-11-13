@@ -20,7 +20,7 @@ use gpui::{
 use model::{Changes, FileChange, Notice, ProjectId, Projects, Staging};
 use strum::VariantArray;
 
-use crate::{key_binding, text_input::TextInput};
+use crate::{clear_after, key_binding, text_input::TextInput};
 
 #[cfg(feature = "mocks")]
 pub(crate) use mocks::mocks;
@@ -364,22 +364,6 @@ impl ProjectView {
     fn commit_staged(&mut self, _: &CommitStaged, _window: &mut Window, cx: &mut Context<Self>) {
         self.use_control(Control::Commit, cx);
     }
-}
-
-/// Runs `clear` on the view once `duration` has passed, unless the task is dropped first.
-fn clear_after(
-    duration: Duration,
-    clear: fn(&mut ProjectView),
-    cx: &mut Context<ProjectView>,
-) -> Task<()> {
-    cx.spawn(async move |this, cx| {
-        cx.background_executor().timer(duration).await;
-        this.update(cx, |this, cx| {
-            clear(this);
-            cx.notify();
-        })
-        .ok();
-    })
 }
 
 impl Focusable for ProjectView {

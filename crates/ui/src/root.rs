@@ -1,5 +1,6 @@
 //! The view that fills each window: the title bar over the landing screen with no project open,
-//! otherwise over the project, with the command palette over both when Ctrl K opens it.
+//! otherwise over the project, or over Settings in place of either, with the command palette over
+//! them when Ctrl K opens it.
 
 use components::{TitleBar, TitleBarProject};
 use gpui::{
@@ -17,11 +18,15 @@ use crate::{
     notices::NoticeOverlay,
     palette::{Keyword, OPEN_ON, PaletteEvent, PaletteView, Tab, scrim},
     project::ProjectView,
-    view_callback,
+    settings::{SettingsEvent, SettingsView},
+    view_callback, view_callback_with,
     window_frame::{draws_window_controls, window_frame},
 };
 
-actions!(pensive, [OpenPalette, OpenActive, ClosePalette]);
+actions!(
+    pensive,
+    [OpenPalette, OpenActive, ClosePalette, OpenSettings]
+);
 
 /// Set on the window while the palette is open over a project, so Escape closes it wherever
 /// focus is.
@@ -31,6 +36,7 @@ pub(crate) fn bind_keys(cx: &mut App) {
     cx.bind_keys([
         key_binding("secondary-k", OpenPalette, None, cx),
         key_binding("secondary-shift-k", OpenActive, None, cx),
+        key_binding("secondary-,", OpenSettings, None, cx),
         key_binding("escape", ClosePalette, Some(PALETTE_OVERLAY), cx),
     ]);
 }
@@ -41,6 +47,8 @@ pub struct Pensive {
     project: Option<(ProjectId, Entity<ProjectView>)>,
     palette: Entity<PaletteView>,
     palette_open: bool,
+    /// Shown in place of the project or the landing screen while open.
+    settings: Option<(Entity<SettingsView>, Subscription)>,
     notices: Entity<NoticeOverlay>,
     /// Set while the window shows the mock browser, or a mock opened from it.
     #[cfg(feature = "mocks")]
@@ -66,6 +74,7 @@ impl Pensive {
             project: None,
             palette,
             palette_open: false,
+            settings: None,
             notices,
             #[cfg(feature = "mocks")]
             mocks: None,
@@ -79,13 +88,50 @@ impl Pensive {
         pensive
     }
 
+    /// Shows Settings in place of the project or the landing screen.
+    pub(crate) fn open_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let view = match &self.settings {
+            Some((view, _)) => view.clone(),
+            None => {
+                let view = cx.new(SettingsView::new);
+                let subscription =
+                    cx.subscribe_in(&view, window, |pensive, _, event, window, cx| match event {
+                        SettingsEvent::Close => pensive.close_settings(window, cx),
+                    });
+                self.settings = Some((view.clone(), subscription));
+                view
+            }
+        };
+        self.palette_open = false;
+        window.focus(&view.focus_handle(cx), cx);
+        cx.notify();
+    }
+
+    /// Back to the project, or to the landing screen and its palette.
+    fn close_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.settings = None;
+        match &self.project {
+            Some((_, view)) => window.focus(&view.focus_handle(cx), cx),
+            None => self.open_palette(None, window, cx),
+        }
+        cx.notify();
+    }
+
+    #[cfg(feature = "mocks")]
+    pub(crate) fn settings_view(&self) -> Option<Entity<SettingsView>> {
+        Some(self.settings.as_ref()?.0.clone())
+    }
+
     fn project_id(&self) -> Option<ProjectId> {
         self.project.as_ref().map(|(id, _)| *id)
     }
 
     /// Opens the palette on `tab`, or on the tab the `palette.open_on` setting names. On the
-    /// landing screen it's already open, so this starts over.
+    /// landing screen it's already open, so this starts over, and Settings closes to show it.
     pub fn open_palette(&mut self, tab: Option<Tab>, window: &mut Window, cx: &mut Context<Self>) {
+        if self.project.is_none() {
+            self.settings = None;
+        }
         let tab = tab.unwrap_or_else(|| OPEN_ON.get(cx));
         let (project, overlay) = (self.project_id(), self.project.is_some());
         self.palette
@@ -111,6 +157,7 @@ impl Pensive {
     fn show_project(&mut self, project: ProjectId, window: &mut Window, cx: &mut Context<Self>) {
         #[cfg(feature = "mocks")]
         self.leave_mocks(cx);
+        self.settings = None;
         if self.project_id() != Some(project) {
             let projects = self.projects.clone();
             let view = cx.new(|cx| ProjectView::new(projects, project, cx));
@@ -150,6 +197,7 @@ impl Pensive {
                 self.show_project(project, window, cx);
                 self.close_palette(window, cx);
             }
+            PaletteEvent::OpenSettings => self.open_settings(window, cx),
             PaletteEvent::Dismiss => self.close_palette(window, cx),
         }
     }
@@ -256,12 +304,36 @@ impl Pensive {
             })
         };
         let (errors, warnings, list_open) = self.notices.read(cx).badge(cx);
+        let settings_open = self.settings.is_some();
         let title_bar = TitleBar::new(project)
             .controls(draws_window_controls(window))
             .notices(errors, warnings, list_open)
             .on_notices(view_callback(cx, |this: &mut Self, _, cx| {
                 this.notices.update(cx, NoticeOverlay::toggle_list)
-            }));
+            }))
+            .settings_open(settings_open)
+            .on_settings(view_callback_with(
+                cx,
+                |this: &mut Self, new_window: bool, window, cx| {
+                    if new_window {
+                        open_with(this.projects.clone(), this.project_id(), true, cx);
+                    } else if this.settings.is_some() {
+                        this.close_settings(window, cx);
+                    } else {
+                        this.open_settings(window, cx);
+                    }
+                },
+            ));
+        if settings_open {
+            let back = view_callback(cx, |this: &mut Self, window, cx| {
+                this.close_settings(window, cx)
+            });
+            return if has_project {
+                title_bar.on_project(back).on_palette(open(None))
+            } else {
+                title_bar.location(settings_crumb(cx))
+            };
+        }
         if has_project {
             title_bar
                 .on_project(open(Some(Keyword::Project(None))))
@@ -302,8 +374,23 @@ impl Pensive {
     }
 }
 
+/// The title bar's location while Settings is open with no project.
+fn settings_crumb(cx: &App) -> impl IntoElement {
+    let density = cx.density();
+    div()
+        .px_1p5()
+        .typeset(density.body)
+        .text_color(cx.theme().colors.text_strong)
+        .child("Settings")
+}
+
 /// Opens a window on `project`, or on the landing screen.
 pub fn open_window(projects: Entity<Projects>, project: Option<ProjectId>, cx: &mut App) {
+    open_with(projects, project, false, cx);
+}
+
+/// Opens a window on `project` or the landing screen, with Settings open in it if `settings`.
+fn open_with(projects: Entity<Projects>, project: Option<ProjectId>, settings: bool, cx: &mut App) {
     let bounds = Bounds::centered(None, size(px(960.), px(640.)), cx);
     cx.open_window(
         WindowOptions {
@@ -317,7 +404,15 @@ pub fn open_window(projects: Entity<Projects>, project: Option<ProjectId>, cx: &
             app_id: Some("pensive".into()),
             ..Default::default()
         },
-        |window, cx| cx.new(|cx| Pensive::new(projects, project, window, cx)),
+        |window, cx| {
+            cx.new(|cx| {
+                let mut pensive = Pensive::new(projects, project, window, cx);
+                if settings {
+                    pensive.open_settings(window, cx);
+                }
+                pensive
+            })
+        },
     )
     .expect("failed to open a window");
 }
@@ -332,9 +427,10 @@ impl Render for Pensive {
             Some(mocks) => mocks,
             None => {
                 let title_bar = self.title_bar(window, cx);
-                let content = match &self.project {
-                    Some((_, view)) => view.clone().into_any_element(),
-                    None => self.landing(cx).into_any_element(),
+                let content = match (&self.settings, &self.project) {
+                    (Some((view, _)), _) => view.clone().into_any_element(),
+                    (None, Some((_, view))) => view.clone().into_any_element(),
+                    (None, None) => self.landing(cx).into_any_element(),
                 };
                 div()
                     .flex()
@@ -364,6 +460,9 @@ impl Render for Pensive {
             }))
             .on_action(cx.listener(|pensive, _: &ClosePalette, window, cx| {
                 pensive.close_palette(window, cx)
+            }))
+            .on_action(cx.listener(|pensive, _: &OpenSettings, window, cx| {
+                pensive.open_settings(window, cx)
             }))
             .child(screen)
             .child(self.notices.clone())
@@ -597,6 +696,28 @@ mod tests {
 
         cx.simulate_keystrokes("escape");
         assert!(!palette_open(&view, cx));
+    }
+
+    #[gpui::test]
+    fn the_gear_opens_settings_and_escape_goes_back(cx: &mut TestAppContext) {
+        let (view, cx) = pensive_window(cx);
+        let settings_open = |cx: &mut VisualTestContext| {
+            view.read_with(cx, |pensive, _| pensive.settings.is_some())
+        };
+        let gear = cx.debug_bounds("settings").unwrap();
+        click(cx, gear.center());
+        assert!(settings_open(cx));
+
+        cx.simulate_keystrokes("escape");
+        assert!(!settings_open(cx));
+        let project_focused = cx.update(|window, cx| {
+            let (_, project) = view.read(cx).project.as_ref().unwrap();
+            project.focus_handle(cx).is_focused(window)
+        });
+        assert!(project_focused);
+
+        cx.dispatch_action(OpenSettings);
+        assert!(settings_open(cx));
     }
 
     #[cfg(feature = "mocks")]

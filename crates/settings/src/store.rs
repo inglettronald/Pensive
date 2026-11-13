@@ -3,12 +3,12 @@
 use gpui::{App, Global};
 use toml_edit::{DocumentMut, Item, TableLike};
 
-use crate::AnySetting;
+use crate::{AnySetting, Page};
 
 #[derive(Default)]
 pub struct Settings {
-    /// Each setting with the section it's listed under.
-    declared: Vec<(&'static str, &'static dyn AnySetting)>,
+    /// Each setting with the page it's listed on.
+    declared: Vec<(Page, &'static dyn AnySetting)>,
     source: String,
     /// The values in `source` that belong to a declared setting and are valid for it.
     values: toml::Table,
@@ -20,19 +20,24 @@ pub struct Settings {
 impl Global for Settings {}
 
 impl Settings {
-    /// Adds `settings` to the ones the palette and settings window list, under `section`. Call
-    /// it before loading the file, so their keys are known.
+    /// Adds `settings` to the ones the palette and the settings view list, on `page`. Call it
+    /// before loading the file, so their keys are known. A key that's already declared is left
+    /// where it is, so declaring twice, as a mock does in a running app, lists it once.
     pub fn declare(
-        section: &'static str,
+        page: Page,
         settings: impl IntoIterator<Item = &'static dyn AnySetting>,
         cx: &mut App,
     ) {
-        let declared = &mut cx.default_global::<Settings>().declared;
-        declared.extend(settings.into_iter().map(|setting| (section, setting)));
+        let store = cx.default_global::<Settings>();
+        for setting in settings {
+            if store.find(setting.key()).is_none() {
+                store.declared.push((page, setting));
+            }
+        }
     }
 
-    /// Every declared setting with its section, in the order they were declared.
-    pub fn declared(&self) -> impl Iterator<Item = (&'static str, &'static dyn AnySetting)> {
+    /// Every declared setting with its page, in the order they were declared.
+    pub fn declared(&self) -> impl Iterator<Item = (Page, &'static dyn AnySetting)> {
         self.declared.iter().copied()
     }
 
@@ -177,6 +182,8 @@ mod tests {
     use super::*;
     use crate::{Choice, Control, Setting};
 
+    const PALETTE: Page = Page::new("Command palette", "Tabs");
+
     static SHOW_TABS: Setting<bool> = Setting {
         key: "palette.show_tabs",
         name: "Tabs",
@@ -204,9 +211,9 @@ mod tests {
     fn settings(source: &str) -> (Settings, Vec<String>) {
         let mut settings = Settings {
             declared: vec![
-                ("Palette", &SHOW_TABS),
-                ("Palette", &DAYS),
-                ("Appearance", &DENSITY),
+                (PALETTE, &SHOW_TABS),
+                (PALETTE, &DAYS),
+                (Page::new("Appearance", "Size"), &DENSITY),
             ],
             ..Default::default()
         };

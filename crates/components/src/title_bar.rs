@@ -31,6 +31,8 @@ pub struct TitleBar {
     on_project: Option<Callback<()>>,
     on_branch: Option<Callback<()>>,
     on_palette: Option<Callback<()>>,
+    settings_open: bool,
+    on_settings: Option<Callback<bool>>,
 }
 
 impl TitleBar {
@@ -50,6 +52,8 @@ impl TitleBar {
             on_project: None,
             on_branch: None,
             on_palette: None,
+            settings_open: false,
+            on_settings: None,
         }
     }
 
@@ -88,6 +92,19 @@ impl TitleBar {
         self
     }
 
+    /// Fills the gear, and names Settings after the project in place of the branch.
+    pub fn settings_open(mut self, open: bool) -> Self {
+        self.settings_open = open;
+        self
+    }
+
+    /// Called when the gear is clicked, with whether Ctrl (Cmd on macOS) was held to ask for a
+    /// new window.
+    pub fn on_settings(mut self, handler: impl Fn(bool, &mut Window, &mut App) + 'static) -> Self {
+        self.on_settings = Some(std::rc::Rc::new(handler));
+        self
+    }
+
     /// Shows the palette trigger, which calls this when clicked.
     pub fn on_palette(mut self, handler: impl Fn(&mut Window, &mut App) + 'static) -> Self {
         self.on_palette = Some(callback(handler));
@@ -100,6 +117,7 @@ impl RenderOnce for TitleBar {
         let theme = cx.theme();
         let colors = &theme.colors;
         let density = cx.density();
+        let (gear_fill, gear_radius) = (colors.surface_selected, density.radius_md);
         let crumb = |id: &'static str| {
             div()
                 .id(id)
@@ -137,28 +155,42 @@ impl RenderOnce for TitleBar {
                 .when_some(self.on_project, |crumb, handler| {
                     crumb.on_click(move |_, window, cx| handler((), window, cx))
                 });
-            let branch = project.branch.map(|branch| {
-                crumb("branch")
-                    .gap_1p5()
-                    .child(
-                        Icon::new(IconName::GitBranch)
-                            .size(px(14.))
-                            .color(colors.text_muted),
-                    )
+            let settings = self.settings_open.then(|| {
+                crumb("settings-crumb")
                     .child(
                         div()
-                            .font_family(theme.fonts.code.clone())
-                            .typeset(density.small)
-                            .text_color(colors.text)
-                            .child(branch),
+                            .typeset(density.body)
+                            .text_color(colors.text_strong)
+                            .child("Settings"),
                     )
-                    .when_some(self.on_branch, |crumb, handler| {
-                        crumb.on_click(move |_, window, cx| handler((), window, cx))
-                    })
+                    .into_any_element()
             });
+            let branch = project
+                .branch
+                .filter(|_| !self.settings_open)
+                .map(|branch| {
+                    crumb("branch")
+                        .gap_1p5()
+                        .child(
+                            Icon::new(IconName::GitBranch)
+                                .size(px(14.))
+                                .color(colors.text_muted),
+                        )
+                        .child(
+                            div()
+                                .font_family(theme.fonts.code.clone())
+                                .typeset(density.small)
+                                .text_color(colors.text)
+                                .child(branch),
+                        )
+                        .when_some(self.on_branch, |crumb, handler| {
+                            crumb.on_click(move |_, window, cx| handler((), window, cx))
+                        })
+                });
             Breadcrumb::new(
                 std::iter::once(name.into_any_element())
-                    .chain(branch.map(IntoElement::into_any_element)),
+                    .chain(branch.map(IntoElement::into_any_element))
+                    .chain(settings),
             )
             .chevron_size(px(14.))
             .into_any_element()
@@ -292,11 +324,25 @@ impl RenderOnce for TitleBar {
                     .flex_1()
                     .min_w_0()
                     .children(badge)
-                    // Settings opens from here once its window exists (PEN-11).
                     .child(
                         div()
+                            .id("settings")
+                            .debug_selector(|| "settings".into())
                             .occlude()
-                            .child(IconButton::new("settings", IconName::Settings).size(px(28.))),
+                            .rounded(gear_radius)
+                            .when(self.settings_open, |gear| gear.bg(gear_fill))
+                            .child(
+                                IconButton::new("gear", IconName::Settings)
+                                    .size(px(28.))
+                                    .when(self.settings_open, |gear| {
+                                        gear.color(|colors| colors.text_strong)
+                                    }),
+                            )
+                            .when_some(self.on_settings, |gear, handler| {
+                                gear.on_click(move |event, window, cx| {
+                                    handler(event.modifiers().secondary(cx), window, cx)
+                                })
+                            }),
                     )
                     .children(controls),
             )
@@ -388,6 +434,20 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
                         bar(TitleBar::new(Some(pensive))
                             .controls(true)
                             .on_palette(|_, _| {})),
+                    )],
+                )
+                .section(
+                    "Settings open",
+                    [(
+                        "The gear filled, and Settings in place of the branch",
+                        bar(TitleBar::new(Some(TitleBarProject {
+                            initial: "P".into(),
+                            name: "pensive".into(),
+                            branch: Some("main".into()),
+                        }))
+                        .controls(true)
+                        .settings_open(true)
+                        .on_palette(|_, _| {})),
                     )],
                 )
                 .section(

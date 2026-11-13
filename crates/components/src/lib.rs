@@ -2,6 +2,7 @@
 
 mod breadcrumb;
 mod button;
+mod card;
 mod command_palette;
 mod diff;
 mod diff_stat;
@@ -12,9 +13,14 @@ mod icon;
 mod icon_button;
 mod kbd;
 mod list_row;
+mod nav_list;
+mod next_card;
 mod notice_list;
+mod rail;
 mod segmented_control;
 mod select;
+mod setting_row;
+mod settings_heading;
 mod status_ring;
 mod tab_strip;
 mod tag;
@@ -33,6 +39,7 @@ use gpui::{App, Window};
 
 pub use breadcrumb::Breadcrumb;
 pub use button::{Button, ButtonStyle};
+pub use card::Card;
 pub use command_palette::{
     CommandPalette, KeyHint, Leading, PaletteChip, PaletteEntry, PaletteSection, TrailingText,
 };
@@ -45,9 +52,14 @@ pub use icon::{Icon, IconName};
 pub use icon_button::IconButton;
 pub use kbd::Kbd;
 pub use list_row::ListRow;
+pub use nav_list::{NavItem, NavList};
+pub use next_card::NextCard;
 pub use notice_list::{NoticeList, NoticeRow};
+pub use rail::{Rail, RailButton, RailItem};
 pub use segmented_control::SegmentedControl;
 pub use select::Select;
+pub use setting_row::SettingRow;
+pub use settings_heading::{CategoryHeading, PageHeading};
 pub use status_ring::{RingFill, StatusRing};
 pub use tab_strip::TabStrip;
 pub use tag::Tag;
@@ -93,6 +105,12 @@ pub fn mocks() -> Vec<mock::Mock> {
         title_bar::mocks(),
         diff::mocks(),
         fade_text::mocks(),
+        rail::mocks(),
+        nav_list::mocks(),
+        card::mocks(),
+        setting_row::mocks(),
+        settings_heading::mocks(),
+        next_card::mocks(),
     ]
     .into_iter()
     .flatten()

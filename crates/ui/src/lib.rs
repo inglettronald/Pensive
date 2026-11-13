@@ -1,18 +1,21 @@
 //! Views: the screens and panels that read models and own their view state.
 
 mod age;
+mod fuzzy;
 #[cfg(feature = "mocks")]
 mod mock_browser;
 mod notices;
 mod palette;
 mod project;
 mod root;
+mod setting_control;
+mod settings;
 mod text_input;
 mod window_frame;
 
-use std::rc::Rc;
+use std::{rc::Rc, time::Duration};
 
-use gpui::{Action, App, Context, KeyBinding, KeyBindingContextPredicate, Window};
+use gpui::{Action, App, Context, KeyBinding, KeyBindingContextPredicate, Task, Window};
 
 #[cfg(feature = "mocks")]
 pub use mock_browser::MockThumbnails;
@@ -27,6 +30,7 @@ pub fn init(cx: &mut App) {
     palette::bind_keys(cx);
     project::bind_keys(cx);
     root::bind_keys(cx);
+    settings::bind_keys(cx);
     #[cfg(feature = "mocks")]
     mock_browser::bind_keys(cx);
 }
@@ -65,12 +69,25 @@ fn view_callback_with<V: 'static, T: 'static>(
     }
 }
 
+/// Runs `clear` on the view once `duration` has passed, unless the task is dropped first.
+fn clear_after<V: 'static>(duration: Duration, clear: fn(&mut V), cx: &mut Context<V>) -> Task<()> {
+    cx.spawn(async move |this, cx| {
+        cx.background_executor().timer(duration).await;
+        this.update(cx, |this, cx| {
+            clear(this);
+            cx.notify();
+        })
+        .ok();
+    })
+}
+
 /// Every view's mocks.
 #[cfg(feature = "mocks")]
 pub fn mocks() -> Vec<mock::Mock> {
     [
         root::mocks(),
         project::mocks(),
+        settings::mocks(),
         notices::mocks(),
         mock_browser::mocks(),
     ]

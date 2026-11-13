@@ -6,7 +6,7 @@ use std::time::{Duration, SystemTime};
 use components::{NoticeList, NoticeRow, Tag, Toast, Tone, Tooltip};
 use gpui::{App, Context, Entity, Subscription, Task, Window, div, prelude::*, px};
 use model::{Notice, Notices, Origin, Severity};
-use settings::{AnySetting, Choice, Control, Setting, Settings};
+use settings::{AnySetting, Choice, Control, Page, Setting, Settings};
 use theme::ActiveTheme;
 
 use crate::{age::age, view_callback, view_callback_with};
@@ -54,7 +54,7 @@ pub(crate) static TOAST_SECONDS: Setting<u32> = Setting {
 
 pub(crate) fn declare_settings(cx: &mut App) {
     let settings: [&'static dyn AnySetting; 1] = [&TOAST_SECONDS];
-    Settings::declare("Notices", settings, cx);
+    Settings::declare(Page::new("Notices", "Toasts"), settings, cx);
 }
 
 /// A toast on screen, and how much of its time is left.
