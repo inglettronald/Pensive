@@ -386,7 +386,7 @@ impl Projects {
     }
 }
 
-#[cfg(all(test, feature = "fixtures"))]
+#[cfg(test)]
 mod tests {
     use std::path::Path;
 

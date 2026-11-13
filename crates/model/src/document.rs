@@ -438,7 +438,7 @@ fn joins(last: &Edit, next: &Edit) -> bool {
     typing || deleting
 }
 
-#[cfg(all(test, feature = "fixtures"))]
+#[cfg(test)]
 mod tests {
     use std::sync::Arc;
 

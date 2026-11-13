@@ -228,7 +228,7 @@ impl Changes {
     }
 }
 
-#[cfg(all(test, feature = "fixtures"))]
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::fixtures;
