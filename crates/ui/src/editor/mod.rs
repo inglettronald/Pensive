@@ -68,7 +68,7 @@ actions!(
 const CONTEXT: &str = "Editor";
 /// How long auto-save waits after the last edit.
 const AUTO_SAVE_DELAY: Duration = Duration::from_secs(1);
-/// What Tab inserts.
+/// What Tab inserts, unless the line is indented with tabs.
 const INDENT: &str = "    ";
 
 pub(crate) fn bind_keys(cx: &mut App) {
@@ -226,17 +226,31 @@ impl Editor {
         self.document.as_ref()
     }
 
-    /// Shows `document` from its top. With auto-save, the document it replaces saves first.
+    /// Shows `document` with the cursor on its first change. With auto-save, the document it
+    /// replaces saves first.
     pub fn set_document(&mut self, document: Option<Entity<Document>>, cx: &mut Context<Self>) {
         if self.document == document {
             return;
         }
         self.auto_save_now(cx);
-        self._document = document
-            .as_ref()
-            .map(|document| cx.observe(document, |this, _, cx| this.update_rows(cx)));
+        self._document = document.as_ref().map(|document| {
+            cx.observe(document, |this, _, cx| {
+                this.clamp_selection(cx);
+                this.update_rows(cx);
+            })
+        });
+        let first_change = document.as_ref().map_or(0, |document| {
+            let document = document.read(cx);
+            let text = document.text();
+            let line = document
+                .diff()
+                .changes
+                .first()
+                .map_or(0, |change| change.new.start);
+            text.line_to_byte(line.min(text.len_lines() - 1))
+        });
         self.document = document;
-        self.selection = 0..0;
+        self.selection = first_change..first_change;
         self.reversed = false;
         self.marked = None;
         self.goal_column = None;
@@ -244,7 +258,7 @@ impl Editor {
         self.scroll_x = px(0.);
         self.rows.clear();
         self.list.reset(0);
-        self.update_rows(cx);
+        self.reveal_cursor(cx);
     }
 
     pub fn mode(&self) -> Mode {
@@ -290,15 +304,36 @@ impl Editor {
         }
     }
 
+    /// Keeps the selection inside the text and between characters, for when the text changed
+    /// without the editor, as reloading does.
+    fn clamp_selection(&mut self, cx: &App) {
+        let Some(text) = self.text(cx) else {
+            return;
+        };
+        let clamp =
+            |offset: usize| text.char_to_byte(text.byte_to_char(offset.min(text.len_bytes())));
+        self.selection = clamp(self.selection.start)..clamp(self.selection.end);
+        self.marked = self
+            .marked
+            .take()
+            .map(|marked| clamp(marked.start)..clamp(marked.end))
+            .filter(|marked| !marked.is_empty());
+    }
+
     /// Rebuilds the rows from the document and tells the list which ones changed height.
     fn update_rows(&mut self, cx: &mut Context<Self>) {
         let rows = match &self.document {
-            Some(document) => rows(
-                document.read(cx).diff(),
-                self.line_count(cx),
-                self.mode,
-                &self.revealed,
-            ),
+            Some(document) => {
+                let document = document.read(cx);
+                let cursor = document.text().byte_to_line(self.cursor());
+                rows(
+                    document.diff(),
+                    self.line_count(cx),
+                    self.mode,
+                    &self.revealed,
+                    Some(cursor),
+                )
+            }
             None => Vec::new(),
         };
         let same = |old: &Row, new: &Row| old.is_fold() == new.is_fold();
@@ -361,15 +396,12 @@ impl Editor {
         self.reveal_cursor(cx);
     }
 
-    /// Opens the fold the cursor is in, then scrolls to it.
+    /// Shows the cursor's line, which a fold never hides, then scrolls to it.
     fn reveal_cursor(&mut self, cx: &mut Context<Self>) {
         let Some(line) = self.text(cx).map(|text| text.byte_to_line(self.cursor())) else {
             return;
         };
-        if !self.rows.iter().any(|row| row.text_line() == Some(line)) && self.line_count(cx) > 0 {
-            self.revealed.push(line..line + 1);
-            self.update_rows(cx);
-        }
+        self.update_rows(cx);
         if let Some(row) = self.row_of(line) {
             self.list.scroll_to_reveal_item(row);
         }
@@ -560,6 +592,10 @@ impl Editor {
         let range = range
             .or(self.marked.clone())
             .unwrap_or(self.selection.clone());
+        let lines = document.read(cx).text();
+        let first = lines.byte_to_line(range.start);
+        let removed = lines.byte_to_line(range.end) - first;
+        self.shift_revealed(first, removed, text.matches('\n').count());
         document.update(cx, |document, cx| {
             document.edit(range.clone(), text, cx);
             if SAVE.get(cx) == SaveMode::Auto {
@@ -572,6 +608,22 @@ impl Editor {
         self.marked = None;
         self.goal_column = None;
         self.reveal_cursor(cx);
+    }
+
+    /// Moves the revealed lines below line `first` along, after an edit there that replaced
+    /// `removed` line breaks with `added`, so they stay on the same text.
+    fn shift_revealed(&mut self, first: usize, removed: usize, added: usize) {
+        let shift = |line: usize| {
+            if line <= first {
+                line
+            } else {
+                (line + added).saturating_sub(removed).max(first + 1)
+            }
+        };
+        for range in &mut self.revealed {
+            *range = shift(range.start)..shift(range.end);
+        }
+        self.revealed.retain(|range| !range.is_empty());
     }
 
     /// Deletes the selection, or from the cursor to `target` when nothing is selected.
@@ -602,18 +654,29 @@ impl Editor {
         self.delete_to(movement::previous_word, cx);
     }
 
-    /// Starts a new line with the current line's indentation.
+    /// Starts a new line with the current line's indentation and line ending.
     fn newline(&mut self, _: &Newline, _: &mut Window, cx: &mut Context<Self>) {
         let Some(text) = self.text(cx) else {
             return;
         };
-        let (_, line) = movement::line(text, text.byte_to_line(self.selection.start));
+        let index = text.byte_to_line(self.selection.start);
+        let (_, line) = movement::line(text, index);
         let indent = &line[..line.len() - line.trim_start().len()];
-        self.insert(None, &format!("\n{indent}"), cx);
+        let ending = if text.line(index).to_string().ends_with("\r\n") {
+            "\r\n"
+        } else {
+            "\n"
+        };
+        self.insert(None, &format!("{ending}{indent}"), cx);
     }
 
     fn indent(&mut self, _: &Indent, _: &mut Window, cx: &mut Context<Self>) {
-        self.insert(None, INDENT, cx);
+        let Some(text) = self.text(cx) else {
+            return;
+        };
+        let (_, line) = movement::line(text, text.byte_to_line(self.selection.start));
+        let indent = if line.starts_with('\t') { "\t" } else { INDENT };
+        self.insert(None, indent, cx);
     }
 
     fn selected_text(&self, cx: &App) -> Option<String> {
@@ -933,6 +996,10 @@ impl Editor {
 }
 
 impl EntityInputHandler for Editor {
+    fn accepts_text_input(&self, _window: &mut Window, cx: &mut Context<Self>) -> bool {
+        self.editable(cx)
+    }
+
     fn text_for_range(
         &mut self,
         range_utf16: Range<usize>,
@@ -1006,6 +1073,9 @@ impl EntityInputHandler for Editor {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if !self.editable(cx) {
+            return;
+        }
         let range = range_utf16
             .map(|range| self.range_from_utf16(&range, cx))
             .or(self.marked.clone())
@@ -1157,7 +1227,8 @@ mod tests {
 
     const PATH: &str = "crates/theme/src/colors.rs";
 
-    /// An editor in a window, focused, on the sample file at `path` from `source`.
+    /// An editor in a window, focused, on the sample file at `path` from `source`, with the
+    /// cursor at its start.
     async fn editor_on<'a>(
         source: Source,
         path: &str,
@@ -1183,6 +1254,7 @@ mod tests {
         let (editor, cx) = cx.add_window_view(Editor::new);
         editor.update_in(cx, |editor, window, cx| {
             editor.set_document(document, cx);
+            editor.move_to(0, cx);
             window.focus(&editor.focus_handle, cx);
         });
         cx.run_until_parked();
@@ -1243,6 +1315,28 @@ mod tests {
         cx.simulate_input("next");
         let text = text(&editor, cx);
         assert_eq!(text.lines().nth(1), Some("    next"));
+    }
+
+    #[gpui::test]
+    async fn a_new_line_in_a_crlf_file_ends_with_crlf(cx: &mut TestAppContext) {
+        let (editor, _, cx) = editor(cx).await;
+        cx.simulate_input("first\r\n");
+        cx.simulate_keystrokes("up end enter");
+        assert!(text(&editor, cx).starts_with("first\r\n\r\n"));
+    }
+
+    #[gpui::test]
+    async fn undoing_a_change_leaves_the_cursor_unfolded(cx: &mut TestAppContext) {
+        let (editor, _, cx) = editor(cx).await;
+        cx.simulate_keystrokes("ctrl-end");
+        cx.simulate_input("x");
+        cx.run_until_parked();
+        editor.update_in(cx, |editor, window, cx| editor.undo(&Undo, window, cx));
+        cx.run_until_parked();
+        editor.read_with(cx, |editor, cx| {
+            let line = editor.text(cx).unwrap().byte_to_line(editor.cursor());
+            assert!(editor.row_of(line).is_some());
+        });
     }
 
     #[gpui::test]

@@ -1,98 +1,16 @@
-//! Diff lines: one column of new-file numbers, an edge bar, and fills on changed lines and words.
+//! A diff line around content the caller draws: its new-file number, an edge bar and a fill.
 
+#[cfg(feature = "mocks")]
 use std::ops::Range;
 
-use gpui::{
-    AnyElement, App, HighlightStyle, Hsla, SharedString, StyledText, Window, div, prelude::*, px,
-};
-use theme::{ActiveTheme, ThemeColors, Typeset};
+use gpui::{AnyElement, App, Hsla, Window, div, prelude::*, px};
+use theme::{ActiveTheme, ThemeColors};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LineKind {
     Context,
     Added,
     Removed,
-    /// The `@@` line that starts a hunk.
-    Hunk,
-}
-
-pub struct DiffLine {
-    kind: LineKind,
-    number: Option<usize>,
-    text: SharedString,
-    changed: Vec<Range<usize>>,
-}
-
-impl DiffLine {
-    pub fn context(number: usize, text: impl Into<SharedString>) -> Self {
-        Self::new(LineKind::Context, Some(number), text)
-    }
-
-    pub fn added(number: usize, text: impl Into<SharedString>) -> Self {
-        Self::new(LineKind::Added, Some(number), text)
-    }
-
-    /// A removed line has no new-file number.
-    pub fn removed(text: impl Into<SharedString>) -> Self {
-        Self::new(LineKind::Removed, None, text)
-    }
-
-    pub fn hunk(text: impl Into<SharedString>) -> Self {
-        Self::new(LineKind::Hunk, None, text)
-    }
-
-    fn new(kind: LineKind, number: Option<usize>, text: impl Into<SharedString>) -> Self {
-        Self {
-            kind,
-            number,
-            text: text.into(),
-            changed: Vec::new(),
-        }
-    }
-
-    /// A byte range of words that changed, highlighted more strongly than the line. Call it once
-    /// per range.
-    pub fn changed(mut self, range: Range<usize>) -> Self {
-        self.changed.push(range);
-        self
-    }
-}
-
-#[derive(IntoElement)]
-pub struct Diff {
-    lines: Vec<DiffLine>,
-}
-
-impl Diff {
-    pub fn new(lines: impl IntoIterator<Item = DiffLine>) -> Self {
-        Self {
-            lines: lines.into_iter().collect(),
-        }
-    }
-}
-
-impl RenderOnce for Diff {
-    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let theme = cx.theme();
-        let colors = &theme.colors;
-        div()
-            .flex()
-            .flex_col()
-            .py_1()
-            .font_family(theme.fonts.code.clone())
-            .typeset(cx.density().code)
-            .text_color(colors.text)
-            .whitespace_nowrap()
-            .children(self.lines.into_iter().map(|line| {
-                let word = HighlightStyle {
-                    background_color: line.kind.hue(colors).map(|hue| hue.opacity(0.28)),
-                    ..Default::default()
-                };
-                let text = StyledText::new(line.text)
-                    .with_highlights(line.changed.into_iter().map(|range| (range, word)));
-                DiffRow::new(line.kind, line.number, text)
-            }))
-    }
 }
 
 impl LineKind {
@@ -101,7 +19,7 @@ impl LineKind {
         match self {
             LineKind::Added => Some(colors.diff_added),
             LineKind::Removed => Some(colors.diff_removed),
-            LineKind::Context | LineKind::Hunk => None,
+            LineKind::Context => None,
         }
     }
 }
@@ -133,9 +51,6 @@ impl RenderOnce for DiffRow {
             .flex()
             .w_full()
             .h(cx.density().code.line_height)
-            .when(self.kind == LineKind::Hunk, |row| {
-                row.text_color(colors.text_faint)
-            })
             .child(
                 div()
                     .flex_none()
@@ -167,29 +82,79 @@ impl RenderOnce for DiffRow {
     }
 }
 
+/// A row of plain text with one range of changed words, for the gallery.
+#[cfg(feature = "mocks")]
+#[derive(IntoElement)]
+struct Sample(LineKind, Option<usize>, &'static str, Option<Range<usize>>);
+
+#[cfg(feature = "mocks")]
+impl RenderOnce for Sample {
+    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+        use theme::Typeset as _;
+
+        let Sample(kind, number, text, changed) = self;
+        let theme = cx.theme();
+        let word = gpui::HighlightStyle {
+            background_color: kind.hue(&theme.colors).map(|hue| hue.opacity(0.28)),
+            ..Default::default()
+        };
+        let text = gpui::StyledText::new(text).with_highlights(changed.map(|range| (range, word)));
+        div()
+            .font_family(theme.fonts.code.clone())
+            .typeset(cx.density().code)
+            .text_color(theme.colors.text)
+            .child(DiffRow::new(kind, number, text))
+    }
+}
+
 #[cfg(feature = "mocks")]
 pub(crate) fn mocks() -> Vec<mock::Mock> {
     use gpui::size;
 
     vec![
         mock::Mock::component("diff", "gallery", || {
-            crate::Gallery::new("Diff")
+            crate::Gallery::new("Diff row")
                 .section(
                     "Every kind of line",
                     [(
-                        "A hunk with context, added, removed and changed words",
+                        "Context, added, and a removed line paired with the one that replaced it",
                         div()
                             .w(px(640.))
-                            .child(Diff::new([
-                                DiffLine::hunk("@@ -21,5 +21,6 @@ fn render"),
-                                DiffLine::context(21, "        let theme = cx.theme();"),
-                                DiffLine::added(22, "        let density = cx.density();"),
-                                DiffLine::context(23, "        h_flex()"),
-                                DiffLine::removed("            .h(px(28.))").changed(15..22),
-                                DiffLine::added(24, "            .h(density.row_height)")
-                                    .changed(15..33),
-                                DiffLine::context(25, "            .gap(density.row_gap)"),
-                            ]))
+                            .py_1()
+                            .whitespace_nowrap()
+                            .children([
+                                Sample(
+                                    LineKind::Context,
+                                    Some(21),
+                                    "        let theme = cx.theme();",
+                                    None,
+                                ),
+                                Sample(
+                                    LineKind::Added,
+                                    Some(22),
+                                    "        let density = cx.density();",
+                                    None,
+                                ),
+                                Sample(LineKind::Context, Some(23), "        h_flex()", None),
+                                Sample(
+                                    LineKind::Removed,
+                                    None,
+                                    "            .h(px(28.))",
+                                    Some(15..22),
+                                ),
+                                Sample(
+                                    LineKind::Added,
+                                    Some(24),
+                                    "            .h(density.row_height)",
+                                    Some(15..33),
+                                ),
+                                Sample(
+                                    LineKind::Context,
+                                    Some(25),
+                                    "            .gap(density.row_gap)",
+                                    None,
+                                ),
+                            ])
                             .into_any_element(),
                     )],
                 )

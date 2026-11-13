@@ -54,6 +54,14 @@ Default:
 
 Settings: change marker (edge bar or tinted lines), bar width, line numbers (off, new file, both), number color, gutter tint, line fill, changed-word highlight. One shortcut cycles through the line-number modes.
 
+## Editor
+
+The main view shows the selected file in an editor, in one of three modes picked by an icon switcher in its header. Changes shows each change with three lines around it and folds the rest. File shows the whole file with the diff marked. Plain shows it with no marks. The mode stays as files change. Removed lines show between the lines that replaced them and can't be edited. A commit's files use the same view, read-only.
+
+A fold leads with buttons that show 20 more lines down from the change above, 20 more up from the change below, or all of them, then says how many lines it hides.
+
+Saving is a setting. Auto, the default, saves a second after typing stops and when you leave the file or the window. Manual saves on Ctrl S. Unsaved edits put a dot and Unsaved after the file name, and a long path fades out at its start so the name always shows. If the file changed on disk since Pensive read it, saving stops and says so rather than overwrite it.
+
 ## Navigation
 
 Navigation sits on the top and left edges only. Nothing docks on the right, so content is never boxed in from both sides.

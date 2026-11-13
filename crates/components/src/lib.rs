@@ -43,7 +43,7 @@ pub use card::Card;
 pub use command_palette::{
     CommandPalette, KeyHint, Leading, PaletteChip, PaletteEntry, PaletteSection, TrailingText,
 };
-pub use diff::{Diff, DiffLine, DiffRow, LineKind};
+pub use diff::{DiffRow, LineKind};
 pub use diff_stat::DiffStat;
 pub use fade_text::FadeText;
 #[cfg(feature = "mocks")]

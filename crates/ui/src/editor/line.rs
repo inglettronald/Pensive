@@ -164,7 +164,7 @@ impl Element for LineElement {
                 cursor_color,
             ));
             if self.autoscroll {
-                self.scroll_to_show(cursor_x, bounds, cx);
+                self.scroll_to_show(cursor_x, bounds, window, cx);
             }
         }
         self.layouts.borrow_mut().push(LineLayout {
@@ -177,8 +177,15 @@ impl Element for LineElement {
 }
 
 impl LineElement {
-    /// Moves the text sideways when the cursor at `cursor_x` is outside `bounds`.
-    fn scroll_to_show(&self, cursor_x: Pixels, bounds: Bounds<Pixels>, cx: &mut App) {
+    /// Moves the text sideways when the cursor at `cursor_x` is outside `bounds`, from the next
+    /// frame, since a change made while painting doesn't draw another.
+    fn scroll_to_show(
+        &self,
+        cursor_x: Pixels,
+        bounds: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
         let margin = px(SCROLL_MARGIN).min(bounds.size.width / 2.);
         let scroll_x = if cursor_x > bounds.right() - margin {
             self.scroll_x + (cursor_x - (bounds.right() - margin))
@@ -190,6 +197,7 @@ impl LineElement {
         self.editor
             .update(cx, |editor, cx| editor.set_scroll_x(scroll_x, cx))
             .ok();
+        window.request_animation_frame();
     }
 }
 

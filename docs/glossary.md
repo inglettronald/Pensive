@@ -15,3 +15,4 @@ Words that mean something specific in Pensive. Where a term also exists in GPUI 
 | Notice | What Pensive tells the user about how something went: a success, warning or error, tagged with where it came from (UI, Git, Config or Fixture). It shows on the control it's about, or as a toast and in the badge's list. |
 | Fixture | Fixed sample data for mocks, tests and `cargo demo`, in `model` behind a `fixtures` feature. |
 | Fake | A test double that stands in for backend logic, such as a `GitBackend` that answers from fixtures. Never called a mock. |
+| Document | A changed file open in the main view, in `model`: its text and the committed text it's compared with. An uncommitted file's document edits and saves. A commit's is read-only. |

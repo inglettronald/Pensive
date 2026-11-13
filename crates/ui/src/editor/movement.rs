@@ -106,7 +106,8 @@ fn end_of_line(text: &Rope, index: usize) -> usize {
 /// How many characters into its line `offset` is.
 pub(crate) fn column(text: &Rope, offset: usize) -> usize {
     let (_, start, line) = line_at(text, offset);
-    line[..offset - start].chars().count()
+    // Between a `\r` and its `\n` is past the line's text.
+    line[..(offset - start).min(line.len())].chars().count()
 }
 
 /// The offset `column` characters into line `index`, or its end when it's shorter.

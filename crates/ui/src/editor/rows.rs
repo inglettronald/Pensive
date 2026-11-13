@@ -78,12 +78,14 @@ impl Row {
 }
 
 /// The rows for a text of `line_count` lines whose changes are `diff`. In Changes mode, lines in
-/// `revealed` stay unfolded too. The diff may lag the text, so its ranges are clamped to it.
+/// `revealed` and the cursor's line stay unfolded too. The diff may lag the text, so its ranges
+/// are clamped to it.
 pub(crate) fn rows(
     diff: &LineDiff,
     line_count: usize,
     mode: Mode,
     revealed: &[Range<usize>],
+    cursor: Option<usize>,
 ) -> Vec<Row> {
     let unchanged = |line| Row::Line {
         line,
@@ -103,7 +105,14 @@ pub(crate) fn rows(
     for (index, change) in changes.iter().enumerate() {
         let new = change.new.start..change.new.end.min(line_count);
         let gap = next..new.start;
-        unchanged_run(&mut rows, gap, index == 0, false, mode, revealed);
+        let shown = Shown {
+            first: index == 0,
+            last: false,
+            mode,
+            revealed,
+            cursor,
+        };
+        unchanged_run(&mut rows, gap, &shown);
         for (offset, line) in change.old.clone().enumerate() {
             rows.push(Row::Removed {
                 line,
@@ -119,33 +128,38 @@ pub(crate) fn rows(
         }
         next = new.end;
     }
-    unchanged_run(
-        &mut rows,
-        next..line_count,
-        changes.is_empty(),
-        true,
+    let shown = Shown {
+        first: changes.is_empty(),
+        last: true,
         mode,
         revealed,
-    );
+        cursor,
+    };
+    unchanged_run(&mut rows, next..line_count, &shown);
     rows
 }
 
-/// Pushes the unchanged lines in `run`. In Changes mode, only the context next to a change and
-/// revealed lines show, and the rest fold. `first` and `last` say the run starts or ends the file,
-/// where there's no change to keep context for.
-fn unchanged_run(
-    rows: &mut Vec<Row>,
-    run: Range<usize>,
+/// Which unchanged lines in a run show.
+struct Shown<'a> {
+    /// The run starts the file, where there's no change above to keep context for.
     first: bool,
+    /// The run ends the file.
     last: bool,
     mode: Mode,
-    revealed: &[Range<usize>],
-) {
+    revealed: &'a [Range<usize>],
+    cursor: Option<usize>,
+}
+
+/// Pushes the unchanged lines in `run`. In Changes mode, only the context next to a change,
+/// revealed lines and the cursor's line show, and the rest fold.
+fn unchanged_run(rows: &mut Vec<Row>, run: Range<usize>, shown: &Shown) {
+    let Shown { first, last, .. } = *shown;
     let shown = |line: usize| {
-        mode == Mode::File
+        shown.mode == Mode::File
             || (!first && line < run.start + CONTEXT)
             || (!last && line + CONTEXT >= run.end)
-            || revealed.iter().any(|range| range.contains(&line))
+            || shown.revealed.iter().any(|range| range.contains(&line))
+            || shown.cursor == Some(line)
     };
     let mut line = run.start;
     while line < run.end {
@@ -198,7 +212,7 @@ mod tests {
 
     #[test]
     fn plain_shows_every_line_without_marks() {
-        let rows = rows(&one_change(), 100, Mode::Plain, &[]);
+        let rows = rows(&one_change(), 100, Mode::Plain, &[], None);
         assert_eq!(rows.len(), 100);
         assert!(
             rows.iter()
@@ -208,7 +222,7 @@ mod tests {
 
     #[test]
     fn file_shows_every_line_and_the_removed_one() {
-        let rows = rows(&one_change(), 100, Mode::File, &[]);
+        let rows = rows(&one_change(), 100, Mode::File, &[], None);
         assert_eq!(rows.len(), 101);
         assert_eq!(
             rows[9],
@@ -229,7 +243,7 @@ mod tests {
 
     #[test]
     fn changes_folds_all_but_three_lines_around_each_change() {
-        let rows = rows(&one_change(), 100, Mode::Changes, &[]);
+        let rows = rows(&one_change(), 100, Mode::Changes, &[], None);
         // Above the first change nothing grows downward into the fold, and below the last
         // nothing grows up. The first fold is short anyway.
         assert_eq!(folds(&rows), [(0..6, false, false), (13..100, true, false)]);
@@ -238,8 +252,14 @@ mod tests {
     #[test]
     fn revealed_lines_split_a_fold() {
         let revealed = std::slice::from_ref(&(13..33));
-        let rows = rows(&one_change(), 100, Mode::Changes, revealed);
+        let rows = rows(&one_change(), 100, Mode::Changes, revealed, None);
         assert_eq!(folds(&rows), [(0..6, false, false), (33..100, true, false)]);
+    }
+
+    #[test]
+    fn the_cursors_line_never_folds() {
+        let rows = rows(&LineDiff::default(), 100, Mode::Changes, &[], Some(50));
+        assert_eq!(folds(&rows), [(0..50, false, true), (51..100, true, false)]);
     }
 
     #[test]
@@ -256,7 +276,7 @@ mod tests {
                 },
             ],
         };
-        let rows = rows(&diff, 100, Mode::Changes, &[]);
+        let rows = rows(&diff, 100, Mode::Changes, &[], None);
         assert_eq!(folds(&rows)[0], (4..57, true, true));
     }
 
@@ -274,7 +294,7 @@ mod tests {
                 },
             ],
         };
-        let rows = rows(&diff, 30, Mode::Changes, &[]);
+        let rows = rows(&diff, 30, Mode::Changes, &[], None);
         assert_eq!(folds(&rows)[0], (4..17, false, false));
     }
 
@@ -286,6 +306,6 @@ mod tests {
                 new: 0..50,
             }],
         };
-        assert_eq!(rows(&diff, 10, Mode::File, &[]).len(), 10);
+        assert_eq!(rows(&diff, 10, Mode::File, &[], None).len(), 10);
     }
 }
