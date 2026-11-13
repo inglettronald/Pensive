@@ -3,7 +3,7 @@
 use gpui::{App, ElementId, SharedString, Window, div, prelude::*, px};
 use theme::{ActiveTheme, Typeset};
 
-use crate::{Callback, Icon, IconName, callback};
+use crate::{Callback, Icon, IconName, OnClick as _, callback};
 
 #[derive(IntoElement)]
 pub struct Select {
@@ -54,12 +54,7 @@ impl RenderOnce for Select {
                     .size(px(12.))
                     .color(colors.text_faint),
             )
-            .when_some(self.on_click, |select, handler| {
-                select.on_click(move |_, window, cx| {
-                    cx.stop_propagation();
-                    handler((), window, cx)
-                })
-            })
+            .on_click_callback(self.on_click)
     }
 }
 

@@ -9,7 +9,7 @@ use gpui::{
 };
 use theme::ActiveTheme;
 
-use crate::{Callback, Icon, IconName, Tooltip, callback};
+use crate::{Callback, Icon, IconName, OnClick as _, Tooltip, callback};
 
 /// How long the fill and the bar take to reach a new category.
 const SLIDE: Duration = Duration::from_millis(150);
@@ -120,9 +120,7 @@ impl RenderOnce for RailButton {
             .when_some(self.on_hover, |button, handler| {
                 button.on_hover(move |hovered, window, cx| handler(*hovered, window, cx))
             })
-            .when_some(self.on_click, |button, handler| {
-                button.on_click(move |_, window, cx| handler((), window, cx))
-            })
+            .on_click_callback(self.on_click)
     }
 }
 

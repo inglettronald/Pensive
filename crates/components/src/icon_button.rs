@@ -3,7 +3,7 @@
 use gpui::{App, ElementId, Hsla, Pixels, Window, div, prelude::*, px};
 use theme::{ActiveTheme, ThemeColors};
 
-use crate::{Callback, Icon, IconName, callback};
+use crate::{Callback, Icon, IconName, OnClick as _, callback};
 
 #[derive(IntoElement)]
 pub struct IconButton {
@@ -62,9 +62,7 @@ impl RenderOnce for IconButton {
                     .size(px(14.))
                     .color((self.color)(colors)),
             )
-            .when_some(self.on_click, |button, handler| {
-                button.on_click(move |_, window, cx| handler((), window, cx))
-            })
+            .on_click_callback(self.on_click)
     }
 }
 

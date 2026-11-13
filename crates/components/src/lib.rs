@@ -35,7 +35,7 @@ mod tooltip;
 
 use std::rc::Rc;
 
-use gpui::{App, Window};
+use gpui::{App, StatefulInteractiveElement, Window};
 
 pub use breadcrumb::Breadcrumb;
 pub use button::{Button, ButtonStyle};
@@ -79,6 +79,23 @@ pub fn callback(handler: impl Fn(&mut Window, &mut App) + 'static) -> Callback<(
     Rc::new(move |(), window, cx| handler(window, cx))
 }
 
+/// Clicks on a component that takes an `on_click` callback.
+trait OnClick: StatefulInteractiveElement {
+    /// Calls `handler`, if there is one, on a click, and stops the click there, so a control
+    /// inside a clickable row doesn't click the row too.
+    fn on_click_callback(self, handler: Option<Callback<()>>) -> Self {
+        match handler {
+            Some(handler) => self.on_click(move |_, window, cx| {
+                cx.stop_propagation();
+                handler((), window, cx);
+            }),
+            None => self,
+        }
+    }
+}
+
+impl<E: StatefulInteractiveElement> OnClick for E {}
+
 /// Every component's mocks.
 #[cfg(feature = "mocks")]
 pub fn mocks() -> Vec<mock::Mock> {
@@ -115,4 +132,89 @@ pub fn mocks() -> Vec<mock::Mock> {
     .into_iter()
     .flatten()
     .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{cell::Cell, rc::Rc};
+
+    use gpui::{
+        AnyElement, Context, InteractiveElement, IntoElement, Modifiers, ParentElement, Render,
+        Styled, TestAppContext, div, point, px,
+    };
+
+    use super::*;
+
+    type Control = fn(Rc<Cell<usize>>) -> AnyElement;
+
+    /// A clickable row with one control in its top-left corner, like a file row with its ring.
+    struct Row {
+        control: Control,
+        control_clicks: Rc<Cell<usize>>,
+        row_clicks: Rc<Cell<usize>>,
+    }
+
+    impl Render for Row {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            let row_clicks = self.row_clicks.clone();
+            div()
+                .id("row")
+                .size_full()
+                .on_click(move |_, _, _| row_clicks.set(row_clicks.get() + 1))
+                .child((self.control)(self.control_clicks.clone()))
+        }
+    }
+
+    fn count(clicks: Rc<Cell<usize>>) -> impl Fn(&mut Window, &mut App) + 'static {
+        move |_, _| clicks.set(clicks.get() + 1)
+    }
+
+    #[gpui::test]
+    fn a_control_takes_its_click_from_the_row_around_it(cx: &mut TestAppContext) {
+        cx.update(theme::init);
+        let controls: [(&str, Control); 6] = [
+            ("Button", |clicks| {
+                Button::new("control", "Stage")
+                    .on_click(count(clicks))
+                    .into_any_element()
+            }),
+            ("IconButton", |clicks| {
+                IconButton::new("control", IconName::Plus)
+                    .on_click(count(clicks))
+                    .into_any_element()
+            }),
+            ("StatusRing", |clicks| {
+                StatusRing::new("control", RingFill::Empty)
+                    .on_click(count(clicks))
+                    .into_any_element()
+            }),
+            ("RailButton", |clicks| {
+                RailButton::new("control", IconName::Bell, "Notices")
+                    .on_click(count(clicks))
+                    .into_any_element()
+            }),
+            ("Select", |clicks| {
+                Select::new("control", "7 days")
+                    .on_click(count(clicks))
+                    .into_any_element()
+            }),
+            ("ListRow", |clicks| {
+                ListRow::new("control", "src/lib.rs")
+                    .on_click(count(clicks))
+                    .into_any_element()
+            }),
+        ];
+        for (name, control) in controls {
+            let control_clicks = Rc::new(Cell::new(0));
+            let row_clicks = Rc::new(Cell::new(0));
+            let (_, cx) = cx.add_window_view(|_, _| Row {
+                control,
+                control_clicks: control_clicks.clone(),
+                row_clicks: row_clicks.clone(),
+            });
+            cx.simulate_click(point(px(4.), px(4.)), Modifiers::none());
+            assert_eq!(control_clicks.get(), 1, "{name} wasn't clicked");
+            assert_eq!(row_clicks.get(), 0, "{name}'s click reached the row");
+        }
+    }
 }
