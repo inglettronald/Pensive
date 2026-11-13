@@ -6,10 +6,12 @@ use std::{collections::HashMap, sync::Arc};
 use components::{Breadcrumb, Icon, IconName, Kbd, ListRow, TitleBar};
 use gpui::{
     AnyElement, AnyView, App, Context, Entity, EventEmitter, FocusHandle, Focusable, Global,
-    ObjectFit, RenderImage, SharedString, Subscription, Window, actions, div, img, prelude::*, px,
+    ObjectFit, RenderImage, SharedString, Subscription, UpdateGlobal, Window, actions, div, img,
+    prelude::*, px,
 };
 use mock::{Mock, atlas};
 use model::Notices;
+use settings::Settings;
 use theme::{ActiveTheme, Density, Theme, Typeset};
 
 use crate::{
@@ -459,14 +461,42 @@ pub(crate) struct ShownMock {
     component: bool,
 }
 
-/// A window's visit to the mocks: the browser, the mock opened from it, and the theme and
-/// density to put back, since mocks such as the Dense ones change them for the whole app, and the
-/// app's notices, which mocks get a store of their own in place of.
+/// A window's visit to the mocks: the browser, the mock opened from it, and the app's state to
+/// put back after it.
 pub(crate) struct MockMode {
     pub browser: Entity<MockBrowser>,
     pub shown: Option<ShownMock>,
-    saved: (Theme, Density, Entity<Notices>),
+    saved: SavedApp,
     _subscription: Subscription,
+}
+
+/// What a mock can change for the whole app. Mocks such as the Dense ones change the theme and
+/// density, others set settings, and each gets a notices store of its own in place of the app's.
+struct SavedApp {
+    theme: Theme,
+    density: Density,
+    notices: Entity<Notices>,
+    settings: String,
+}
+
+impl SavedApp {
+    fn new(cx: &mut App) -> Self {
+        Self {
+            theme: cx.theme().clone(),
+            density: cx.density().clone(),
+            notices: Notices::global(cx),
+            settings: cx.default_global::<Settings>().source().to_string(),
+        }
+    }
+
+    fn restore(&self, cx: &mut App) {
+        if cx.default_global::<Settings>().source() != self.settings {
+            Settings::update_global(cx, |settings, _| settings.load(&self.settings));
+        }
+        cx.set_global(self.theme.clone());
+        cx.set_global(self.density.clone());
+        Notices::set_global(self.notices.clone(), cx);
+    }
 }
 
 impl MockMode {
@@ -474,11 +504,7 @@ impl MockMode {
         Self {
             browser,
             shown: None,
-            saved: (
-                cx.theme().clone(),
-                cx.density().clone(),
-                Notices::global(cx),
-            ),
+            saved: SavedApp::new(cx),
             _subscription: subscription,
         }
     }
@@ -499,9 +525,7 @@ impl MockMode {
     /// Back to the browser, or out of the mocks when `self` is dropped next.
     pub fn restore(&mut self, cx: &mut App) {
         self.shown = None;
-        cx.set_global(self.saved.0.clone());
-        cx.set_global(self.saved.1.clone());
-        Notices::set_global(self.saved.2.clone(), cx);
+        self.saved.restore(cx);
     }
 
     /// A view mock fills the window. A component mock sits centered at its size, labeled, so

@@ -725,6 +725,29 @@ mod tests {
 
     #[cfg(feature = "mocks")]
     #[gpui::test]
+    fn leaving_a_mock_puts_back_the_settings_it_changed(cx: &mut TestAppContext) {
+        use settings::Settings;
+
+        use crate::mock_browser::ViewMocks;
+
+        let (view, cx) = pensive_window(cx);
+        let source =
+            |cx: &mut VisualTestContext| cx.update(|_, cx| cx.global::<Settings>().source().into());
+        let before: String = source(cx);
+        cx.dispatch_action(ViewMocks);
+        for mock in crate::mocks() {
+            let id = mock.id();
+            view.update_in(cx, |pensive, window, cx| {
+                pensive.open_mock(mock, false, window, cx)
+            });
+            cx.run_until_parked();
+            cx.dispatch_action(ViewMocks);
+            assert_eq!(source(cx), before, "{id} left its settings behind");
+        }
+    }
+
+    #[cfg(feature = "mocks")]
+    #[gpui::test]
     fn the_mock_browser_opens_a_mock_and_puts_the_app_back(cx: &mut TestAppContext) {
         use crate::mock_browser::ViewMocks;
 
