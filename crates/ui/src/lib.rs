@@ -1,6 +1,8 @@
 //! Views: the screens and panels that read models and own their view state.
 
 mod age;
+#[cfg(feature = "mocks")]
+mod demo_window;
 mod editor;
 mod fuzzy;
 #[cfg(feature = "mocks")]
@@ -19,6 +21,8 @@ use std::{rc::Rc, time::Duration};
 
 use gpui::{Action, App, Context, KeyBinding, KeyBindingContextPredicate, Task, Window};
 
+#[cfg(feature = "mocks")]
+pub use demo_window::open_demo_window;
 #[cfg(feature = "mocks")]
 pub use mock_browser::MockThumbnails;
 pub use palette::{Keyword, PaletteEvent, PaletteView, Tab};

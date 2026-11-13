@@ -4,7 +4,7 @@
 
 use components::{TitleBar, TitleBarProject};
 use gpui::{
-    App, Bounds, Context, Entity, FocusHandle, Focusable, MouseButton, Subscription,
+    App, Bounds, Context, Entity, FocusHandle, Focusable, MouseButton, Pixels, Size, Subscription,
     TitlebarOptions, Window, WindowBounds, WindowDecorations, WindowOptions, actions, div,
     prelude::*, px, size, svg,
 };
@@ -382,31 +382,39 @@ pub fn open_window(projects: Entity<Projects>, project: Option<ProjectId>, cx: &
     open_with(projects, project, false, cx);
 }
 
+/// The size a window opens at.
+pub(crate) const WINDOW_SIZE: Size<Pixels> = size(px(960.), px(640.));
+
+/// A Pensive window of `window_size`, centered on the screen.
+pub(crate) fn window_options(window_size: Size<Pixels>, cx: &App) -> WindowOptions {
+    WindowOptions {
+        window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
+            None,
+            window_size,
+            cx,
+        ))),
+        titlebar: Some(TitlebarOptions {
+            title: Some("Pensive".into()),
+            appears_transparent: true,
+            traffic_light_position: Some(TitleBar::TRAFFIC_LIGHTS),
+        }),
+        window_decorations: Some(WindowDecorations::Client),
+        app_id: Some("pensive".into()),
+        ..Default::default()
+    }
+}
+
 /// Opens a window on `project` or the landing screen, with Settings open in it if `settings`.
 fn open_with(projects: Entity<Projects>, project: Option<ProjectId>, settings: bool, cx: &mut App) {
-    let bounds = Bounds::centered(None, size(px(960.), px(640.)), cx);
-    cx.open_window(
-        WindowOptions {
-            window_bounds: Some(WindowBounds::Windowed(bounds)),
-            titlebar: Some(TitlebarOptions {
-                title: Some("Pensive".into()),
-                appears_transparent: true,
-                traffic_light_position: Some(TitleBar::TRAFFIC_LIGHTS),
-            }),
-            window_decorations: Some(WindowDecorations::Client),
-            app_id: Some("pensive".into()),
-            ..Default::default()
-        },
-        |window, cx| {
-            cx.new(|cx| {
-                let mut pensive = Pensive::new(projects, project, window, cx);
-                if settings {
-                    pensive.open_settings(window, cx);
-                }
-                pensive
-            })
-        },
-    )
+    cx.open_window(window_options(WINDOW_SIZE, cx), |window, cx| {
+        cx.new(|cx| {
+            let mut pensive = Pensive::new(projects, project, window, cx);
+            if settings {
+                pensive.open_settings(window, cx);
+            }
+            pensive
+        })
+    })
     .expect("failed to open a window");
 }
 
@@ -744,6 +752,33 @@ mod tests {
             cx.dispatch_action(ViewMocks);
             assert_eq!(source(cx), before, "{id} left its settings behind");
         }
+    }
+
+    #[cfg(feature = "mocks")]
+    #[gpui::test]
+    fn a_demo_starts_on_the_mock_it_names(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            theme::init(cx);
+            crate::init(cx);
+        });
+        let projects = cx.new(|_| model::fixtures::projects());
+        let opened = cx.update(|cx| {
+            crate::open_demo_window(projects.clone(), Some("project/unsaved"), None, cx)
+        });
+        assert_eq!(opened, Ok(()));
+        cx.run_until_parked();
+        let window = cx.update(|cx| cx.windows()[0]);
+        let shown = window
+            .update(cx, |root, _, cx| {
+                let pensive = root.downcast::<Pensive>().unwrap();
+                pensive.read(cx).mocks.as_ref().and_then(MockMode::shown_id)
+            })
+            .unwrap();
+        assert_eq!(shown.as_deref(), Some("project/unsaved"));
+
+        let missing =
+            cx.update(|cx| crate::open_demo_window(projects, Some("project/nope"), None, cx));
+        assert!(missing.unwrap_err().contains("`project/nope`"));
     }
 
     #[cfg(feature = "mocks")]

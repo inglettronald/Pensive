@@ -522,6 +522,12 @@ impl MockMode {
         });
     }
 
+    /// The id of the mock shown, if one is.
+    #[cfg(test)]
+    pub fn shown_id(&self) -> Option<String> {
+        Some(self.shown.as_ref()?.mock.id())
+    }
+
     /// Back to the browser, or out of the mocks when `self` is dropped next.
     pub fn restore(&mut self, cx: &mut App) {
         self.shown = None;
