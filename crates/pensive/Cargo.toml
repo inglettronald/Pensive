@@ -32,6 +32,7 @@ log.workspace = true
 demo = ["ui/mocks", "dep:image", "dep:mock"]
 
 [dev-dependencies]
+anyhow.workspace = true
 mock.workspace = true
 ui = { workspace = true, features = ["mocks"] }
 
