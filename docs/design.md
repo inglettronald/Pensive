@@ -114,6 +114,20 @@ A setting found in the palette carries its control inline, so it can be changed 
 
 Settings: whether the tabs show, which tab Ctrl K opens on, how far back Active looks, background opacity and scrim strength. Blur behind the palette waits on GPUI support.
 
+## Settings
+
+The gear, the palette's Settings command or Ctrl , opens Settings in place of the project, in the same window. Ctrl-click on the gear opens it in a new window, the way Ctrl Enter opens a project in one from the palette. Esc or the project crumb goes back.
+
+A rail of category icons runs down the left edge. The current category is filled and marked by a white bar, and hovering an icon names it. Beside the rail, the list shows the current category's pages on a guide line. Together they're as wide as the project's sidebar, so opening Settings reads as a change of view rather than a new place.
+
+Every setting is in one scroll: a category's heading, then its pages, each a card of rows. The rail and the list follow the scroll. A page becomes current once its heading passes a line near the top, and the list's highlight and the rail's fill slide to it. Clicking the list or the rail scrolls there smoothly. Each category ends with a card that leads to the next.
+
+Rows stop at a reading width, so a control stays near its name in a wide window. A changed setting shows its default and a button that resets it. There's no third level of headings: a page with too many settings becomes two pages.
+
+Search matches names, pages and descriptions. Matches in the category being read come first, then every other category's together. The rail dims categories with no match, and clicking a result shows it in place.
+
+A setting with a preview will get an eye button that opens a drawer under its row, one at a time, drawn with the real components.
+
 ## Project icons
 
 The icon is shown whenever a project is open. First match wins:
