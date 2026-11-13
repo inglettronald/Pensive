@@ -117,7 +117,7 @@ impl Pensive {
         cx.notify();
     }
 
-    #[cfg(feature = "mocks")]
+    #[cfg(any(test, feature = "mocks"))]
     pub(crate) fn settings_view(&self) -> Option<Entity<SettingsView>> {
         Some(self.settings.as_ref()?.0.clone())
     }

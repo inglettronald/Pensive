@@ -14,8 +14,8 @@ use components::{
 };
 use gpui::{
     Animation, AnimationExt, AnyElement, App, Context, Entity, EventEmitter, FocusHandle,
-    Focusable, Pixels, Point, ScrollHandle, SharedString, Subscription, Task, Window, actions,
-    deferred, div, ease_out_quint, point, prelude::*, px,
+    Focusable, Pixels, Point, ScrollEvent, SharedString, Subscription, Task, Window, actions,
+    deferred, div, ease_out_quint, prelude::*, px,
 };
 #[cfg(feature = "mocks")]
 pub(crate) use mocks::mocks;
@@ -28,6 +28,7 @@ use theme::{ActiveTheme, Typeset};
 use crate::{
     clear_after, key_binding, notices,
     setting_control::setting_control,
+    smooth_scroll::SmoothScroll,
     text_input::{Changed, TextInput},
     view_callback, view_callback_with,
 };
@@ -41,9 +42,10 @@ const SIDEBAR: Pixels = px(280.);
 const TRACKING_LINE: Pixels = px(60.);
 /// Rows stop here, so a control stays near its name on a wide window. PEN-40 revisits it.
 const READING_WIDTH: Pixels = px(680.);
-/// A click scrolls to its heading in this many 16 ms steps: 200 ms.
-const SCROLL_STEPS: u32 = 12;
-const SCROLL_STEP: Duration = Duration::from_millis(16);
+/// How long a click takes to glide to its heading.
+const CLICK_GLIDE: Duration = Duration::from_millis(200);
+/// How long a wheel notch takes to glide. A trackpad moves the page as it reports.
+const WHEEL_GLIDE: Duration = Duration::from_millis(150);
 /// When the category changes, its old list fades out, then the new one fades in.
 const LIST_OUT: Duration = Duration::from_millis(100);
 const LIST_IN: Duration = Duration::from_millis(150);
@@ -103,7 +105,7 @@ impl Tool {
 pub(crate) struct SettingsView {
     focus_handle: FocusHandle,
     search: Entity<TextInput>,
-    scroll: ScrollHandle,
+    scroll: SmoothScroll,
     /// The scroll's children as of the last render, which the scroll's bounds describe.
     anchors: Vec<Anchor>,
     current: Spot,
@@ -114,7 +116,6 @@ pub(crate) struct SettingsView {
     /// Where a click scrolled to. It stays current until the wheel moves the page, since a page
     /// near the bottom can't reach the tracking line.
     pinned: Option<Spot>,
-    scrolling: Option<Task<()>>,
     /// A page to show as soon as the scroll has laid it out.
     pending: Option<Spot>,
     /// The category being read, and the scroll position, when a search started.
@@ -138,12 +139,13 @@ impl SettingsView {
             let empty = input.read(cx).text().is_empty();
             match (empty, view.search_from) {
                 (false, None) => {
-                    view.search_from = Some((view.current.category, view.scroll.offset()));
-                    view.scroll.set_offset(Point::default());
+                    let offset = view.scroll.handle().offset();
+                    view.search_from = Some((view.current.category, offset));
+                    view.scroll.jump_to(px(0.));
                 }
                 (true, Some((_, offset))) => {
                     view.search_from = None;
-                    view.scroll.set_offset(offset);
+                    view.scroll.jump_to(offset.y);
                 }
                 _ => {}
             }
@@ -153,13 +155,12 @@ impl SettingsView {
         Self {
             focus_handle: cx.focus_handle(),
             search,
-            scroll: ScrollHandle::new(),
+            scroll: SmoothScroll::new(),
             anchors: Vec::new(),
             current: Spot::START,
             previous: None,
             fading: None,
             pinned: None,
-            scrolling: None,
             pending: None,
             search_from: None,
             hovered: None,
@@ -205,8 +206,9 @@ impl SettingsView {
         if self.pinned.is_some() || self.search_from.is_some() {
             return;
         }
-        let scrolled = -self.scroll.offset().y;
-        let line = self.scroll.bounds().top() + scrolled + TRACKING_LINE;
+        let scroll = self.scroll.handle();
+        let scrolled = -scroll.offset().y;
+        let line = scroll.bounds().top() + scrolled + TRACKING_LINE;
         let pages = self
             .anchors
             .iter()
@@ -219,15 +221,14 @@ impl SettingsView {
         let mut last = None;
         for (index, spot) in pages {
             last = Some(spot);
-            let reached = self
-                .scroll
+            let reached = scroll
                 .bounds_for_item(index)
                 .is_some_and(|bounds| bounds.top() <= line);
             if reached {
                 current = Some(spot);
             }
         }
-        let bottom = self.scroll.max_offset().y;
+        let bottom = scroll.max_offset().y;
         if bottom > px(0.) && scrolled >= bottom - px(1.) {
             current = last;
         }
@@ -238,35 +239,33 @@ impl SettingsView {
 
     /// Scrolls so `anchor` is at the top, and makes `spot` current until the wheel moves.
     fn scroll_to(&mut self, anchor: Anchor, spot: Spot, smooth: bool, cx: &mut Context<Self>) {
+        let scroll = self.scroll.handle();
         let index = self.anchors.iter().position(|known| *known == anchor);
-        let Some(item) = index.and_then(|index| self.scroll.bounds_for_item(index)) else {
+        let Some(item) = index.and_then(|index| scroll.bounds_for_item(index)) else {
             return;
         };
-        let bottom = -self.scroll.max_offset().y;
-        let to = (self.scroll.bounds().top() - item.top()).clamp(bottom, px(0.));
+        let to = scroll.bounds().top() - item.top();
         self.set_current(spot, smooth, cx);
         self.pinned = Some(spot);
-        if !smooth {
-            self.scroll.set_offset(point(px(0.), to));
-            cx.notify();
-            return;
+        if smooth {
+            self.scroll.glide_to(to, CLICK_GLIDE, cx);
+        } else {
+            self.scroll.jump_to(to);
         }
-        let from = self.scroll.offset().y;
-        self.scrolling = Some(cx.spawn(async move |view, cx| {
-            for step in 1..=SCROLL_STEPS {
-                cx.background_executor().timer(SCROLL_STEP).await;
-                let done = step as f32 / SCROLL_STEPS as f32;
-                let eased = 1. - (1. - done).powi(3);
-                let moved = view.update(cx, |view, cx| {
-                    view.scroll
-                        .set_offset(point(px(0.), from + (to - from) * eased));
-                    cx.notify();
-                });
-                if moved.is_err() {
-                    return;
-                }
-            }
-        }));
+        cx.notify();
+    }
+
+    /// A wheel notch glides the page, and a trackpad moves it as it reports. Either way the page
+    /// is back to following the scroll.
+    fn wheel(&mut self, event: &ScrollEvent, window: &mut Window, cx: &mut Context<Self>) {
+        self.pinned = None;
+        let delta = event.delta.pixel_delta(window.line_height()).y;
+        if event.delta.precise() {
+            let offset = self.scroll.handle().offset().y;
+            self.scroll.jump_to(offset + delta);
+        } else {
+            self.scroll.glide_by(delta, WHEEL_GLIDE, cx);
+        }
         cx.notify();
     }
 
@@ -294,7 +293,7 @@ impl SettingsView {
     fn show_pending(&mut self, cx: &mut Context<Self>) {
         let Some(spot) = self.pending else { return };
         let laid_out = self.anchors.contains(&Anchor::Page(spot))
-            && self.scroll.children_count() == self.anchors.len();
+            && self.scroll.handle().children_count() == self.anchors.len();
         if laid_out {
             self.pending = None;
             let anchor = if spot.page == 0 {
@@ -796,12 +795,12 @@ impl Render for SettingsView {
                     .flex_1()
                     .min_w_0()
                     .h_full()
-                    .overflow_y_scroll()
-                    .track_scroll(&self.scroll)
-                    .on_scroll(cx.listener(|view, _, _, _| {
-                        view.pinned = None;
-                        view.scrolling = None;
-                    }))
+                    .debug_selector(|| "settings-page".into())
+                    // Hidden, so the wheel is ours to glide. The tracked handle still offsets the
+                    // children and keeps them clipped.
+                    .overflow_hidden()
+                    .track_scroll(self.scroll.handle())
+                    .on_scroll(cx.listener(Self::wheel))
                     .children(blocks.into_iter().enumerate().map(|(index, (_, block))| {
                         div()
                             .max_w(READING_WIDTH)
@@ -810,5 +809,59 @@ impl Render for SettingsView {
                             .child(block)
                     })),
             )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use gpui::{Modifiers, ScrollDelta, TestAppContext, VisualTestContext, point};
+    use model::fixtures::{self, PENSIVE};
+
+    use super::*;
+    use crate::root::Pensive;
+
+    fn settings_window(cx: &mut TestAppContext) -> (Entity<SettingsView>, &mut VisualTestContext) {
+        cx.update(|cx| {
+            theme::init(cx);
+            crate::init(cx);
+        });
+        let projects = cx.new(|_| fixtures::projects());
+        let (root, cx) =
+            cx.add_window_view(|window, cx| Pensive::new(projects, Some(PENSIVE), window, cx));
+        root.update_in(cx, |pensive, window, cx| pensive.open_settings(window, cx));
+        cx.run_until_parked();
+        let view = root.read_with(cx, |pensive, _| pensive.settings_view().unwrap());
+        (view, cx)
+    }
+
+    fn offset(view: &Entity<SettingsView>, cx: &mut VisualTestContext) -> Pixels {
+        view.read_with(cx, |view, _| view.scroll.handle().offset().y)
+    }
+
+    fn scroll(delta: ScrollDelta, cx: &mut VisualTestContext) {
+        let position = cx.debug_bounds("settings-page").unwrap().center();
+        cx.simulate_mouse_move(position, None, Modifiers::none());
+        cx.simulate_event(ScrollEvent {
+            position,
+            delta,
+            ..Default::default()
+        });
+    }
+
+    #[gpui::test]
+    fn a_wheel_notch_glides_and_a_trackpad_moves_at_once(cx: &mut TestAppContext) {
+        let (view, cx) = settings_window(cx);
+        scroll(ScrollDelta::Lines(point(0., -2.)), cx);
+        cx.executor().advance_clock(WHEEL_GLIDE / 3);
+        let partway = offset(&view, cx);
+        cx.executor().advance_clock(WHEEL_GLIDE);
+        let done = offset(&view, cx);
+        assert!(
+            done < partway && partway < px(0.),
+            "{partway:?} then {done:?}"
+        );
+
+        scroll(ScrollDelta::Pixels(point(px(0.), px(-30.))), cx);
+        assert_eq!(offset(&view, cx), done - px(30.));
     }
 }

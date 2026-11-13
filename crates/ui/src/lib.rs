@@ -10,6 +10,7 @@ mod project;
 mod root;
 mod setting_control;
 mod settings;
+mod smooth_scroll;
 mod text_input;
 mod window_frame;
 
