@@ -234,20 +234,23 @@ pub(crate) fn read_file(worktree: &Path, path: &Path) -> Result<Version> {
 }
 
 /// Replaces the file in one step, so a crash never leaves half of it. A symlink's target is
-/// replaced, so the link survives, and the file keeps its permissions.
+/// replaced, so the link survives, and the file keeps its permissions. A file that's gone is
+/// written as any new file is, with the default permissions.
 pub(crate) fn write_file(worktree: &Path, path: &Path, text: &str) -> Result<()> {
     let link = worktree.join(path);
     let target = fs::canonicalize(&link).unwrap_or(link);
+    let Ok(metadata) = fs::metadata(&target) else {
+        fs::write(&target, text)?;
+        return Ok(());
+    };
     let folder = target
         .parent()
         .with_context(|| format!("{} has no folder", target.display()))?;
     let mut temporary = tempfile::NamedTempFile::new_in(folder)?;
     temporary.write_all(text.as_bytes())?;
-    if let Ok(metadata) = fs::metadata(&target) {
-        temporary
-            .as_file()
-            .set_permissions(metadata.permissions())?;
-    }
+    temporary
+        .as_file()
+        .set_permissions(metadata.permissions())?;
     temporary.as_file().sync_all()?;
     temporary.persist(&target)?;
     Ok(())

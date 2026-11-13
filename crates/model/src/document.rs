@@ -31,9 +31,13 @@ pub struct Document {
     text: Rope,
     /// The file as last read or written, so a save can tell whether something else changed it.
     on_disk: Version,
-    /// Counts edits, so a save or a diff knows which text it was for.
+    /// Counts edits, so a save knows which text it was for.
     revision: usize,
     saved_revision: usize,
+    /// Counts diffs started, so only the newest one lands.
+    diff_generation: usize,
+    /// Counts changes to `on_disk`, so a read of the disk that started before one is dropped.
+    disk_generation: usize,
     /// Set when the file changed on disk since it was read, which stops saving until the
     /// document is reloaded or the file is overwritten.
     conflict: Option<Version>,
@@ -59,15 +63,19 @@ struct Edit {
 
 impl EventEmitter<DocumentEvent> for Document {}
 
-impl Document {
-    /// A document for the file at `path`, read as `versions`, or `None` when either version is
-    /// binary or the file is deleted, since there's no text to edit.
-    pub(crate) fn new(
-        worktree: PathBuf,
-        path: PathBuf,
-        versions: FileVersions,
-        git: Backend<dyn GitBackend>,
-    ) -> Option<Self> {
+/// A file's text and diff, prepared off the UI thread for a [`Document`] to open with.
+pub(crate) struct Contents {
+    base: String,
+    base_lines: Vec<Range<usize>>,
+    text: Rope,
+    on_disk: Version,
+    diff: LineDiff,
+}
+
+impl Contents {
+    /// The file read as `versions`, or `None` when either version is binary or the file is
+    /// deleted, since there's no text to edit. Diffs the whole file, so it's slow on a big one.
+    pub(crate) fn new(versions: FileVersions) -> Option<Self> {
         let base = match versions.old {
             Version::Text(text) => text,
             Version::Missing => String::new(),
@@ -76,19 +84,36 @@ impl Document {
         let Version::Text(text) = versions.new else {
             return None;
         };
-        let diff = LineDiff::new(&base, &text);
-        let base_lines = line_ranges(&base);
         Some(Self {
+            base_lines: line_ranges(&base),
+            diff: LineDiff::new(&base, &text),
+            text: Rope::from_str(&text),
+            on_disk: Version::Text(text),
+            base,
+        })
+    }
+}
+
+impl Document {
+    pub(crate) fn new(
+        worktree: PathBuf,
+        path: PathBuf,
+        contents: Contents,
+        git: Backend<dyn GitBackend>,
+    ) -> Self {
+        Self {
             worktree,
             path,
-            base: base.into(),
-            base_lines,
-            on_disk: Version::Text(text.clone()),
-            text: Rope::from_str(&text),
+            base: contents.base.into(),
+            base_lines: contents.base_lines,
+            on_disk: contents.on_disk,
+            text: contents.text,
             revision: 0,
             saved_revision: 0,
+            diff_generation: 0,
+            disk_generation: 0,
             conflict: None,
-            diff,
+            diff: contents.diff,
             diffing: None,
             undo: Vec::new(),
             redo: Vec::new(),
@@ -97,7 +122,7 @@ impl Document {
             save_again: false,
             save_timer: None,
             git,
-        })
+        }
     }
 
     pub fn path(&self) -> &Path {
@@ -160,11 +185,21 @@ impl Document {
     /// Reverts the last undo step. Returns where the cursor goes: the end of what it restored.
     pub fn undo(&mut self, cx: &mut Context<Self>) -> Option<usize> {
         let step = self.undo.pop()?;
-        let mut cursor = 0;
+        let mut cursor: Option<usize> = None;
         for edit in step.iter().rev() {
             self.apply(edit.start..edit.start + edit.new.len(), &edit.old);
-            cursor = edit.start + edit.old.len();
+            let end = edit.start + edit.old.len();
+            // Text restored at or before the cursor moves it along.
+            let moved = cursor.map(|cursor| {
+                if edit.start <= cursor {
+                    (cursor + edit.old.len()).saturating_sub(edit.new.len())
+                } else {
+                    cursor
+                }
+            });
+            cursor = Some(moved.map_or(end, |moved| moved.max(end)));
         }
+        let cursor = cursor.unwrap_or(0);
         self.redo.push(step);
         self.grouping = false;
         self.changed(cx);
@@ -186,6 +221,11 @@ impl Document {
     }
 
     fn apply(&mut self, range: Range<usize>, text: &str) -> Edit {
+        let on_boundary = |byte| self.text.char_to_byte(self.text.byte_to_char(byte)) == byte;
+        debug_assert!(
+            on_boundary(range.start) && on_boundary(range.end),
+            "edits start and end between characters"
+        );
         let start = self.text.byte_to_char(range.start);
         let end = self.text.byte_to_char(range.end);
         let old = self.text.slice(start..end).to_string();
@@ -198,18 +238,24 @@ impl Document {
         }
     }
 
-    /// Bumps the revision and diffs the new text off the UI thread. A newer edit drops the diff
-    /// still running for an older one.
+    /// Bumps the revision and diffs the new text.
     fn changed(&mut self, cx: &mut Context<Self>) {
         self.revision += 1;
-        let (revision, base, text) = (self.revision, self.base.clone(), self.text.clone());
+        self.rediff(cx);
+    }
+
+    /// Diffs the text off the UI thread. A newer diff drops the one still running.
+    fn rediff(&mut self, cx: &mut Context<Self>) {
+        self.diff_generation += 1;
+        let generation = self.diff_generation;
+        let (base, text) = (self.base.clone(), self.text.clone());
         self.diffing = Some(cx.spawn(async move |this, cx| {
             let diff = cx
                 .background_executor()
                 .spawn(async move { LineDiff::new(&base, &text.to_string()) })
                 .await;
             this.update(cx, |this, cx| {
-                if this.revision == revision {
+                if this.diff_generation == generation {
                     this.diff = diff;
                     cx.notify();
                 }
@@ -262,7 +308,7 @@ impl Document {
                 this.saving = false;
                 match result {
                     Ok(Ok(text)) => {
-                        this.on_disk = Version::Text(text);
+                        this.set_on_disk(Version::Text(text));
                         this.saved_revision = revision;
                         cx.emit(DocumentEvent::Saved);
                     }
@@ -318,22 +364,40 @@ impl Document {
     /// Writes the text even though the file changed on disk.
     pub fn overwrite(&mut self, cx: &mut Context<Self>) {
         if let Some(current) = self.conflict.take() {
-            self.on_disk = current;
+            self.set_on_disk(current);
             self.save(cx);
         }
     }
 
+    /// Marks when the disk was last read or written, for [`Self::refresh`].
+    pub(crate) fn disk_stamp(&self) -> usize {
+        self.disk_generation
+    }
+
     /// Follows the file on disk and a new committed text, as after the changes are read again.
-    /// Edits that aren't saved are kept.
-    pub(crate) fn refresh(&mut self, base: String, on_disk: Version, cx: &mut Context<Self>) {
+    /// Edits that aren't saved are kept. `stamp` is [`Self::disk_stamp`] from before the read, so
+    /// a read that a save or another read overtook doesn't roll the text back.
+    pub(crate) fn refresh(
+        &mut self,
+        stamp: usize,
+        base: String,
+        on_disk: Version,
+        cx: &mut Context<Self>,
+    ) {
         if *self.base != *base {
             self.base_lines = line_ranges(&base);
             self.base = base.into();
-            self.changed(cx);
+            self.rediff(cx);
         }
-        if !self.is_dirty() && !self.saving && on_disk != self.on_disk {
+        let current = stamp == self.disk_generation && !self.saving;
+        if current && !self.is_dirty() && on_disk != self.on_disk {
             self.take_disk_text(on_disk, cx);
         }
+    }
+
+    fn set_on_disk(&mut self, on_disk: Version) {
+        self.on_disk = on_disk;
+        self.disk_generation += 1;
     }
 
     fn take_disk_text(&mut self, on_disk: Version, cx: &mut Context<Self>) {
@@ -346,7 +410,7 @@ impl Document {
             self.edit(0..self.text.len_bytes(), text, cx);
             self.grouping = false;
         }
-        self.on_disk = on_disk;
+        self.set_on_disk(on_disk);
         self.saved_revision = self.revision;
         cx.notify();
     }
@@ -429,6 +493,48 @@ mod tests {
         assert_eq!(text(&document, cx), original);
         document.update(cx, |document, cx| document.redo(cx));
         assert!(text(&document, cx).starts_with("abc"));
+    }
+
+    #[gpui::test]
+    async fn undoing_a_forward_delete_puts_the_cursor_after_it(cx: &mut TestAppContext) {
+        let (document, _) = open(cx).await;
+        let cursor = document.update(cx, |document, cx| {
+            document.edit(0..1, "", cx);
+            document.edit(0..1, "", cx);
+            document.undo(cx)
+        });
+        assert_eq!(cursor, Some(2));
+    }
+
+    #[gpui::test]
+    async fn a_new_committed_text_leaves_the_document_clean(cx: &mut TestAppContext) {
+        let (document, git) = open(cx).await;
+        let disk = on_disk(&git);
+        document.update(cx, |document, cx| {
+            let stamp = document.disk_stamp();
+            document.refresh(stamp, String::new(), Version::Text(disk), cx)
+        });
+        cx.run_until_parked();
+        document.read_with(cx, |document, _| {
+            assert!(!document.is_dirty());
+            assert_eq!(document.diff().changes.len(), 1);
+        });
+    }
+
+    #[gpui::test]
+    async fn a_read_from_before_a_save_doesnt_roll_the_text_back(cx: &mut TestAppContext) {
+        let (document, _) = open(cx).await;
+        let stamp = document.read_with(cx, |document, _| document.disk_stamp());
+        let before = text(&document, cx);
+        document.update(cx, |document, cx| {
+            document.edit(0..0, "saved\n", cx);
+            document.save(cx);
+        });
+        cx.run_until_parked();
+        document.update(cx, |document, cx| {
+            document.refresh(stamp, String::new(), Version::Text(before), cx)
+        });
+        assert!(text(&document, cx).starts_with("saved\n"));
     }
 
     #[gpui::test]

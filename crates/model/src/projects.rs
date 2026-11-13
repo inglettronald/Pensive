@@ -12,7 +12,7 @@ use gpui::{AppContext as _, Context, Entity, SharedString, Subscription, Task};
 
 use crate::{
     Backend, Changes, Document, DocumentEvent, FileDiff, FileKey, GitBackend, Origin, Repository,
-    Source,
+    Source, document::Contents,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -264,15 +264,21 @@ impl Projects {
         }
         let read = self.read_uncommitted(&entry.0, &entry.1, cx);
         cx.spawn(async move |this, cx| {
-            let versions = read.await;
+            let contents = match read.await {
+                Ok(versions) => Ok(cx
+                    .background_executor()
+                    .spawn(async move { Contents::new(versions) })
+                    .await),
+                Err(error) => Err(error),
+            };
             this.update(cx, |this, cx| {
                 this.opening.remove(&entry);
                 let (worktree, path) = entry.clone();
-                let git = this.git.clone();
-                let Some(document) = Document::new(worktree.clone(), path, versions?, git) else {
+                let Some(contents) = contents? else {
                     return Ok(());
                 };
-                let document = cx.new(|_| document);
+                let git = this.git.clone();
+                let document = cx.new(|_| Document::new(worktree.clone(), path, contents, git));
                 let saved = cx.subscribe(&document, move |this, _, event, cx| match event {
                     DocumentEvent::Saved => this.read_changes(worktree.clone(), cx).detach(),
                 });
@@ -314,9 +320,12 @@ impl Projects {
             .documents
             .iter()
             .filter(|((path, _), _)| path == worktree)
-            .map(|((_, path), document)| (path.clone(), document.downgrade()))
+            .map(|((_, path), document)| {
+                let stamp = document.read(cx).disk_stamp();
+                (path.clone(), document.downgrade(), stamp)
+            })
             .collect();
-        for (path, document) in open {
+        for (path, document, stamp) in open {
             let read = self.read_uncommitted(worktree, &path, cx);
             cx.spawn(async move |_, cx| {
                 let Ok(versions) = read.await else {
@@ -327,7 +336,9 @@ impl Projects {
                     _ => String::new(),
                 };
                 document
-                    .update(cx, |document, cx| document.refresh(base, versions.new, cx))
+                    .update(cx, |document, cx| {
+                        document.refresh(stamp, base, versions.new, cx)
+                    })
                     .ok();
             })
             .detach();
