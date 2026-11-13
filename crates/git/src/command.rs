@@ -2,6 +2,7 @@
 
 use std::{
     ffi::OsStr,
+    io::Write as _,
     path::Path,
     process::{Command, Stdio},
 };
@@ -54,9 +55,34 @@ pub(crate) fn command(dir: &Path) -> Command {
 
 /// Runs `git -C dir args` and returns what it printed, or fails with its error output.
 pub(crate) fn git(dir: &Path, args: &[impl AsRef<OsStr>]) -> Result<Vec<u8>> {
-    let output = command(dir)
+    git_with_input(dir, args, None)
+}
+
+/// [`git`], writing `input` to its standard input when there is some. Git's output is read after
+/// the input is written, so it suits commands that read their input before printing much.
+pub(crate) fn git_with_input(
+    dir: &Path,
+    args: &[impl AsRef<OsStr>],
+    input: Option<&[u8]>,
+) -> Result<Vec<u8>> {
+    let mut command = command(dir);
+    command
         .args(args)
-        .output()
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    if input.is_some() {
+        command.stdin(Stdio::piped());
+    }
+    let mut child = command
+        .spawn()
+        .context("couldn't run `git`. Is Git installed?")?;
+    // Dropping stdin closes it, which ends the input.
+    let written = match (input, child.stdin.take()) {
+        (Some(input), Some(mut stdin)) => stdin.write_all(input),
+        _ => Ok(()),
+    };
+    let output = child
+        .wait_with_output()
         .context("couldn't run `git`. Is Git installed?")?;
     if !output.status.success() {
         let args: Vec<_> = args
@@ -70,5 +96,7 @@ pub(crate) fn git(dir: &Path, args: &[impl AsRef<OsStr>]) -> Result<Vec<u8>> {
             String::from_utf8_lossy(&output.stderr).trim()
         );
     }
+    // Checked after Git's own error, which says more when Git stopped reading early.
+    written.context("couldn't write to `git`")?;
     Ok(output.stdout)
 }

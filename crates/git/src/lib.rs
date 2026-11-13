@@ -3,8 +3,14 @@
 mod changes;
 mod command;
 mod parse;
+mod staging;
 
-use std::{collections::HashMap, fs, path::Path, time::SystemTime};
+use std::{
+    collections::HashMap,
+    fs,
+    path::{Path, PathBuf},
+    time::SystemTime,
+};
 
 use anyhow::{Context as _, Result};
 use model::{Branch, Changes, FileKey, FileVersions, GitBackend, Repository, Version, Worktree};
@@ -52,6 +58,10 @@ impl GitBackend for GitCli {
 
     fn write_file(&self, worktree: &Path, path: &Path, text: &str) -> Result<()> {
         changes::write_file(worktree, path, text)
+    }
+
+    fn set_staged(&self, worktree: &Path, paths: &[PathBuf], staged: bool) -> Result<()> {
+        staging::set_staged(worktree, paths, staged)
     }
 }
 
@@ -498,6 +508,82 @@ mod tests {
         assert_eq!(fs::read_to_string(&script).unwrap(), "echo new\n");
         let mode = fs::metadata(&script).unwrap().permissions().mode();
         assert_eq!(mode & 0o777, 0o755);
+    }
+
+    #[test]
+    fn staging_moves_whole_files_into_the_index_and_back() {
+        let repo = Repo::new();
+        repo.write("kept.rs", "a\n");
+        repo.write("gone.rs", "one\ntwo\nthree\n");
+        repo.commit_all("first");
+        repo.write("kept.rs", "a\nb\n");
+        fs::remove_file(repo.path().join("gone.rs")).unwrap();
+        repo.write("new *.rs", "other\n");
+        let paths: Vec<PathBuf> = ["kept.rs", "gone.rs", "new *.rs"].map(PathBuf::from).into();
+        let staging = |repo: &Repo| -> Vec<Staging> {
+            let changes = repo.changes();
+            paths
+                .iter()
+                .map(|path| changes.file(path).unwrap().staging())
+                .collect()
+        };
+
+        GitCli.set_staged(&repo.path(), &paths, true).unwrap();
+        assert_eq!(staging(&repo), [Staging::Staged; 3]);
+
+        GitCli.set_staged(&repo.path(), &paths[..1], false).unwrap();
+        assert_eq!(
+            staging(&repo),
+            [Staging::Unstaged, Staging::Staged, Staging::Staged]
+        );
+
+        GitCli.set_staged(&repo.path(), &paths, false).unwrap();
+        assert_eq!(staging(&repo), [Staging::Unstaged; 3]);
+        let new = repo.changes();
+        let new = new.file(Path::new("new *.rs")).unwrap();
+        assert_eq!(new.worktree, Some(FileStatus::Untracked));
+    }
+
+    #[test]
+    fn a_rename_unstages_with_the_path_it_came_from() {
+        let repo = Repo::new();
+        repo.write("old.rs", "a\nb\nc\n");
+        repo.commit_all("first");
+        repo.run(&["mv", "old.rs", "new.rs"]);
+        let renamed = repo.changes();
+        let renamed = renamed.file(Path::new("new.rs")).unwrap();
+        assert_eq!(renamed.renamed_from.as_deref(), Some(Path::new("old.rs")));
+
+        let paths = ["new.rs", "old.rs"].map(PathBuf::from);
+        GitCli.set_staged(&repo.path(), &paths, false).unwrap();
+        let changes = repo.changes();
+        assert!(
+            changes
+                .uncommitted
+                .iter()
+                .all(|file| file.staging() == Staging::Unstaged)
+        );
+    }
+
+    #[test]
+    fn staging_works_before_the_first_commit() {
+        let repo = Repo::new();
+        repo.write("a.rs", "a\n");
+        let paths = [PathBuf::from("a.rs")];
+        GitCli.set_staged(&repo.path(), &paths, true).unwrap();
+        assert_eq!(repo.changes().uncommitted[0].staging(), Staging::Staged);
+        GitCli.set_staged(&repo.path(), &paths, false).unwrap();
+        assert_eq!(repo.changes().uncommitted[0].staging(), Staging::Unstaged);
+    }
+
+    #[test]
+    fn staging_a_path_git_doesnt_know_fails_with_gits_reason() {
+        let repo = Repo::new();
+        repo.write("a.rs", "a\n");
+        let error = GitCli
+            .set_staged(&repo.path(), &[PathBuf::from("missing.rs")], true)
+            .unwrap_err();
+        assert!(error.to_string().contains("missing.rs"), "{error}");
     }
 
     #[test]
