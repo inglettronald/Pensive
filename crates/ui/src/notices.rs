@@ -184,7 +184,7 @@ impl NoticeOverlay {
 
     fn list(&self, cx: &mut Context<Self>) -> NoticeList {
         let notices = self.notices.read(cx);
-        let as_of = Some(notices.now());
+        let now = notices.now();
         let rows: Vec<NoticeRow> = notices
             .held()
             .into_iter()
@@ -198,7 +198,7 @@ impl NoticeOverlay {
                 )
                 .tag(tag(notice.origin))
                 .count(held.count)
-                .age(age(as_of, held.at));
+                .age(age(now, held.at));
                 match &notice.detail {
                     Some(detail) => row.detail(detail.clone()),
                     None => row,

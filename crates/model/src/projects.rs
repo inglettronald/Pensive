@@ -12,7 +12,7 @@ use gpui::{AppContext as _, Context, Entity, SharedString, Subscription, Task};
 
 use crate::{
     Backend, Changes, Document, DocumentEvent, FileKey, FileVersions, GitBackend, Origin,
-    Repository, Source, document::Contents,
+    Repository, Source, clock, document::Contents,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -78,7 +78,8 @@ pub enum WorkKind {
 /// Every known project, cached so that reading it never runs Git.
 pub struct Projects {
     pub projects: Vec<Project>,
-    /// When this was last refreshed. Ages are measured from here, so views never read the clock.
+    /// The time ages are measured from, fixed in fixtures so mocks don't change. The clock
+    /// otherwise.
     pub as_of: Option<SystemTime>,
     /// Each worktree's changes, by its path, once they've been read.
     changes: HashMap<PathBuf, Changes>,
@@ -116,7 +117,7 @@ impl Projects {
         cx.spawn(async move |this, cx| {
             let repository = read.await?;
             this.update(cx, |this, cx| {
-                let id = this.add(repository, SystemTime::now());
+                let id = this.add(repository, clock::now());
                 cx.notify();
                 id
             })
@@ -125,7 +126,6 @@ impl Projects {
 
     /// Adds `repository` as opened at `opened`, or updates the project already at its root.
     pub(crate) fn add(&mut self, repository: Repository, opened: SystemTime) -> ProjectId {
-        self.as_of = Some(opened);
         let root = &repository.root;
         if let Some(known) = self
             .projects
@@ -370,16 +370,17 @@ impl Projects {
         work
     }
 
-    /// Work that changed within `window` of `as_of`, newest first.
+    pub fn now(&self) -> SystemTime {
+        self.as_of.unwrap_or_else(clock::now)
+    }
+
+    /// Work that changed within `window` of now, newest first.
     pub fn active(&self, window: Duration) -> Vec<Work> {
-        let Some(as_of) = self.as_of else {
-            return Vec::new();
-        };
+        let now = self.now();
         self.work()
             .into_iter()
             .filter(|work| {
-                as_of
-                    .duration_since(work.last_change)
+                now.duration_since(work.last_change)
                     .is_ok_and(|age| age <= window)
             })
             .collect()
@@ -411,6 +412,25 @@ mod tests {
     }
 
     #[test]
+    fn ages_count_from_now_not_from_when_a_project_opened() {
+        let mut projects = Projects::new(Arc::new(FakeGit::default()));
+        let opened = SystemTime::UNIX_EPOCH;
+        let repository = Repository {
+            root: "~/code/old".into(),
+            worktrees: vec![Worktree {
+                path: "~/code/old".into(),
+                branch: Some("main".into()),
+                last_change: opened,
+            }],
+            branches: Vec::new(),
+        };
+        projects.add(repository, opened);
+        let day = Duration::from_secs(24 * 60 * 60);
+        assert!(projects.now() > opened + day);
+        assert!(projects.active(day).is_empty());
+    }
+
+    #[test]
     fn active_leaves_out_work_older_than_the_window() {
         let projects = fixtures::projects();
         let week = Duration::from_secs(7 * 24 * 60 * 60);
@@ -425,7 +445,7 @@ mod tests {
         let repository = FakeGit::default()
             .repository(Path::new("~/Projects/pensive-wt/palette-scopes"))
             .unwrap();
-        let id = projects.add(repository, SystemTime::now());
+        let id = projects.add(repository, SystemTime::UNIX_EPOCH);
         let project = projects.project(id).unwrap();
         assert_eq!(project.repository.root, Path::new("~/Projects/pensive"));
         assert_eq!(project.repository.worktrees.len(), 4);
@@ -439,7 +459,7 @@ mod tests {
             worktrees: Vec::new(),
             branches: Vec::new(),
         };
-        let id = projects.add(repository, SystemTime::now());
+        let id = projects.add(repository, SystemTime::UNIX_EPOCH);
         assert_eq!(projects.projects.len(), 7);
         assert_eq!(projects.project(id).unwrap().name, "new");
     }
