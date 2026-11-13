@@ -1,5 +1,5 @@
-//! The Git and config backends Pensive starts with, which differ between the desktop and the
-//! browser.
+//! The Git and config backends Pensive starts with: the real ones on the desktop, and the sample
+//! ones in the browser and in a demo build.
 
 use std::{path::PathBuf, sync::Arc};
 
@@ -15,36 +15,26 @@ pub struct Startup {
 }
 
 /// The repositories named on the command line, read with the `git` command, and the config
-/// folder in the home folder. A demo build opens the sample projects instead.
-#[cfg(not(target_family = "wasm"))]
+/// folder in the home folder.
+#[cfg(not(any(target_family = "wasm", feature = "demo")))]
 pub fn startup() -> Startup {
     let config = config::ConfigFolder::find();
     if config.is_none() {
         eprintln!("Couldn't find a home folder, so every setting uses its default");
     }
-    let (projects, paths) = projects();
+    // Until Pensive remembers projects, they come from the command line.
+    let paths = std::env::args_os().skip(1).map(PathBuf::from).collect();
     Startup {
-        projects,
+        projects: Projects::new(Arc::new(git::GitCli)),
         paths,
         config: config.map(|folder| Arc::new(folder) as Arc<dyn ConfigBackend>),
     }
 }
 
-/// Until Pensive remembers projects, they come from the command line.
-#[cfg(not(any(target_family = "wasm", feature = "demo")))]
-fn projects() -> (Projects, Vec<PathBuf>) {
-    let paths = std::env::args_os().skip(1).map(PathBuf::from).collect();
-    (Projects::new(Arc::new(git::GitCli)), paths)
-}
-
-#[cfg(all(not(target_family = "wasm"), feature = "demo"))]
-fn projects() -> (Projects, Vec<PathBuf>) {
-    (model::fixtures::projects(), Vec::new())
-}
-
-/// A browser tab has no `git` command or config folder, so it shows the sample projects and
-/// keeps settings until the tab closes.
-#[cfg(target_family = "wasm")]
+/// The sample projects, with settings kept in memory until the app closes. A browser tab has no
+/// `git` command or config folder, and a demo shouldn't read or change the real config, which
+/// mocks would otherwise save their settings into.
+#[cfg(any(target_family = "wasm", feature = "demo"))]
 pub fn startup() -> Startup {
     Startup {
         projects: model::fixtures::projects(),
