@@ -6,8 +6,8 @@
 use gpui::SharedString;
 
 use crate::{
-    Base, Changes, Commit, FileChange, FileDiff, FileKey, FileStatus, FileVersions, Source,
-    Staging, Symbol, SymbolKind, Upstream, Version,
+    Base, Changes, Commit, FileChange, FileKey, FileStatus, FileVersions, Source, Staging, Symbol,
+    SymbolKind, Upstream, Version,
 };
 
 /// Seven uncommitted files, two staged and one partly staged, then two unpushed commits and one
@@ -59,22 +59,6 @@ pub(crate) fn versions(key: &FileKey) -> Option<FileVersions> {
         .into_iter()
         .find(|sample| sample.change.path == key.path)
         .map(|sample| sample.versions)
-}
-
-/// Every sample file's diff, so a cache can start full without reading anything.
-pub(crate) fn diffs() -> Vec<(FileKey, FileDiff)> {
-    [Source::Uncommitted, Source::Commit(OPEN_PALETTE.into())]
-        .into_iter()
-        .flat_map(|source| {
-            samples(&source).into_iter().map(move |sample| {
-                let key = FileKey {
-                    source: source.clone(),
-                    path: sample.change.path,
-                };
-                (key, FileDiff::new(&sample.versions))
-            })
-        })
-        .collect()
 }
 
 const OPEN_PALETTE: &str = "5e35ea9";
@@ -169,14 +153,7 @@ fn uncommitted() -> Vec<Sample> {
         )
         .symbol(SymbolKind::Function, "Pensive::render", (9, 2))
         .symbol(SymbolKind::Function, "mocks", (3, 1))
-        .lines(&[
-            (' ', "        let theme = cx.theme();"),
-            ('+', "        let density = cx.density();"),
-            (' ', "        let root = div()"),
-            ('-', "            .id(\"pensive\")"),
-            ('+', "            .id(\"window\")"),
-            ('+', "            .flex_col()"),
-        ]),
+        .lines(&root()),
         file(
             "docs/design.md",
             FileStatus::Modified,
@@ -258,6 +235,38 @@ fn open_palette() -> Vec<Sample> {
     ]
 }
 
+/// Two changes far enough apart that the unchanged lines between and around them fold.
+fn root() -> Vec<(char, String)> {
+    let unchanged = |lines: std::ops::Range<usize>| {
+        lines.map(|line| (' ', format!("            .child(self.section({line}, cx))")))
+    };
+    let changed = |lines: &[(char, &str)]| {
+        lines
+            .iter()
+            .map(|&(mark, text)| (mark, text.to_owned()))
+            .collect::<Vec<_>>()
+    };
+    let mut lines: Vec<(char, String)> = unchanged(0..30).collect();
+    lines.extend(changed(&[
+        (' ', "        let theme = cx.theme();"),
+        ('+', "        let density = cx.density();"),
+        (' ', "        let root = div()"),
+        ('-', "            .id(\"pensive\")"),
+        ('+', "            .id(\"window\")"),
+        ('+', "            .flex_col()"),
+    ]));
+    lines.extend(unchanged(30..75));
+    lines.extend(changed(&[
+        ('-', "        Mock::new(\"root\", \"landing\", landing),"),
+        (
+            '+',
+            "        Mock::new(\"root\", \"landing\", landing).size(WINDOW),",
+        ),
+    ]));
+    lines.extend(unchanged(75..100));
+    lines
+}
+
 /// The change the canvas draws in the main view.
 const PALETTE_ROW: &[(char, &str)] = &[
     (' ', "pub struct PaletteRow {"),
@@ -318,7 +327,7 @@ fn file(
 trait Build: Sized {
     fn symbol(self, kind: SymbolKind, name: &str, counts: (usize, usize)) -> Self;
     /// Versions from lines marked `+` for added, `-` for removed or a space for unchanged.
-    fn lines(self, lines: &[(char, &str)]) -> Sample;
+    fn lines(self, lines: &[(char, impl AsRef<str>)]) -> Sample;
 
     fn added(self, lines: &[&str]) -> Sample {
         let lines: Vec<_> = lines.iter().map(|&text| ('+', text)).collect();
@@ -342,7 +351,7 @@ impl Build for FileChange {
         self
     }
 
-    fn lines(self, lines: &[(char, &str)]) -> Sample {
+    fn lines(self, lines: &[(char, impl AsRef<str>)]) -> Sample {
         let side = |skip: char, missing: bool| {
             if missing {
                 return Version::Missing;
@@ -351,7 +360,7 @@ impl Build for FileChange {
                 lines
                     .iter()
                     .filter(|(mark, _)| *mark != skip)
-                    .map(|(_, text)| format!("{text}\n"))
+                    .map(|(_, text)| format!("{}\n", text.as_ref()))
                     .collect(),
             )
         };

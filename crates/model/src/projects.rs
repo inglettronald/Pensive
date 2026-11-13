@@ -11,8 +11,8 @@ use anyhow::Result;
 use gpui::{AppContext as _, Context, Entity, SharedString, Subscription, Task};
 
 use crate::{
-    Backend, Changes, Document, DocumentEvent, FileDiff, FileKey, GitBackend, Origin, Repository,
-    Source, document::Contents,
+    Backend, Changes, Document, DocumentEvent, FileKey, FileVersions, GitBackend, Origin,
+    Repository, Source, document::Contents,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -82,15 +82,13 @@ pub struct Projects {
     pub as_of: Option<SystemTime>,
     /// Each worktree's changes, by its path, once they've been read.
     changes: HashMap<PathBuf, Changes>,
-    /// The diffs of files that have been shown, by worktree and file.
-    diffs: HashMap<(PathBuf, FileKey), FileDiff>,
-    /// Diffs being read, so a second request waits for the first.
-    reading: HashSet<(PathBuf, FileKey)>,
-    /// Uncommitted files opened for editing, by worktree and path. They stay open so edits that
-    /// aren't saved survive switching files.
-    documents: HashMap<(PathBuf, PathBuf), Entity<Document>>,
-    /// Documents being opened.
-    opening: HashSet<(PathBuf, PathBuf)>,
+    /// Files that have been shown, by worktree and file. They stay open, so edits that aren't
+    /// saved survive switching files.
+    documents: HashMap<(PathBuf, FileKey), Entity<Document>>,
+    /// Documents being opened, so a second request waits for the first.
+    opening: HashSet<(PathBuf, FileKey)>,
+    /// Files with a binary version, which have no lines to show.
+    binary: HashSet<(PathBuf, FileKey)>,
     git: Backend<dyn GitBackend>,
     _saves: Vec<Subscription>,
 }
@@ -102,10 +100,9 @@ impl Projects {
             projects: Vec::new(),
             as_of: None,
             changes: HashMap::new(),
-            diffs: HashMap::new(),
-            reading: HashSet::new(),
             documents: HashMap::new(),
             opening: HashSet::new(),
+            binary: HashSet::new(),
             git: Backend::new(git, Origin::Git),
             _saves: Vec::new(),
         }
@@ -166,8 +163,8 @@ impl Projects {
     }
 
     /// Reads the changes in the worktree at `worktree` off the UI thread, replacing what's
-    /// cached. Uncommitted files whose diffs are cached, and open documents, are read again,
-    /// since they may have changed too. A commit's diffs never change.
+    /// cached. Open uncommitted files are read again too, since they may have changed. A commit's
+    /// files never change.
     pub fn read_changes(&mut self, worktree: PathBuf, cx: &mut Context<Self>) -> Task<Result<()>> {
         let path = worktree.clone();
         let read = self
@@ -177,15 +174,6 @@ impl Projects {
             let changes = read.await?;
             this.update(cx, |this, cx| {
                 this.insert_changes(worktree.clone(), changes);
-                let stale: Vec<FileKey> = this
-                    .diffs
-                    .keys()
-                    .filter(|(path, key)| *path == worktree && key.source == Source::Uncommitted)
-                    .map(|(_, key)| key.clone())
-                    .collect();
-                for key in stale {
-                    this.read_diff(worktree.clone(), key, cx).detach();
-                }
                 this.refresh_documents(&worktree, cx);
                 cx.notify();
             })
@@ -196,73 +184,33 @@ impl Projects {
         self.changes.insert(worktree, changes);
     }
 
-    /// The diff of the file `key` names, once read. A stale one stays until its update arrives.
-    pub fn diff(&self, worktree: &Path, key: &FileKey) -> Option<&FileDiff> {
-        self.diffs.get(&(worktree.to_path_buf(), key.clone()))
+    /// The file `key` names, once [`Self::open_document`] has read it.
+    pub fn document(&self, worktree: &Path, key: &FileKey) -> Option<&Entity<Document>> {
+        self.documents.get(&(worktree.to_path_buf(), key.clone()))
     }
 
-    /// Reads both versions of the file `key` names and diffs them, off the UI thread. Does
-    /// nothing while the same file is already being read, or when the changes don't list it.
-    pub fn read_diff(
+    /// Whether the file `key` names turned out to be binary when it was opened.
+    pub fn is_binary(&self, worktree: &Path, key: &FileKey) -> bool {
+        self.binary.contains(&(worktree.to_path_buf(), key.clone()))
+    }
+
+    /// Reads both versions of the file `key` names, off the UI thread, as a document: editable
+    /// when it's uncommitted, read-only in a commit. Does nothing when it's open, being opened or
+    /// binary.
+    pub fn open_document(
         &mut self,
         worktree: PathBuf,
         key: FileKey,
         cx: &mut Context<Self>,
     ) -> Task<Result<()>> {
-        let Some(file) = self
-            .changes(&worktree)
-            .and_then(|changes| changes.find(&key))
-        else {
-            return Task::ready(Ok(()));
-        };
-        let renamed_from = file.renamed_from.clone();
         let entry = (worktree, key);
-        if !self.reading.insert(entry.clone()) {
+        if self.documents.contains_key(&entry)
+            || self.binary.contains(&entry)
+            || !self.opening.insert(entry.clone())
+        {
             return Task::ready(Ok(()));
         }
-        let (path, key) = entry.clone();
-        let title = format!("Couldn't read {}", key.path.display());
-        let read = self.git.call(
-            title,
-            move |git| {
-                let versions = git.versions(&path, &key, renamed_from.as_deref())?;
-                Ok(FileDiff::new(&versions))
-            },
-            cx,
-        );
-        cx.spawn(async move |this, cx| {
-            let diff = read.await;
-            this.update(cx, |this, cx| {
-                this.reading.remove(&entry);
-                if let Ok(diff) = &diff {
-                    this.diffs.insert(entry, diff.clone());
-                    cx.notify();
-                }
-            })?;
-            diff.map(|_| ())
-        })
-    }
-
-    /// The open document for the uncommitted file at `path`, once [`Self::open_document`] has
-    /// read it.
-    pub fn document(&self, worktree: &Path, path: &Path) -> Option<&Entity<Document>> {
-        self.documents
-            .get(&(worktree.to_path_buf(), path.to_path_buf()))
-    }
-
-    /// Reads the uncommitted file at `path` for editing, off the UI thread. Does nothing when it's
-    /// open or being opened. A binary or deleted file never opens, since it has no text to edit.
-    pub fn open_document(
-        &mut self,
-        worktree: PathBuf,
-        path: PathBuf,
-        cx: &mut Context<Self>,
-    ) -> Task<Result<()>> {
-        let entry = (worktree, path);
-        if self.documents.contains_key(&entry) || !self.opening.insert(entry.clone()) {
-            return Task::ready(Ok(()));
-        }
-        let read = self.read_uncommitted(&entry.0, &entry.1, cx);
+        let read = self.read_versions(&entry.0, &entry.1, cx);
         cx.spawn(async move |this, cx| {
             let contents = match read.await {
                 Ok(versions) => Ok(cx
@@ -273,12 +221,14 @@ impl Projects {
             };
             this.update(cx, |this, cx| {
                 this.opening.remove(&entry);
-                let (worktree, path) = entry.clone();
+                let (worktree, key) = entry.clone();
                 let Some(contents) = contents? else {
+                    this.binary.insert(entry);
+                    cx.notify();
                     return Ok(());
                 };
                 let git = this.git.clone();
-                let document = cx.new(|_| Document::new(worktree.clone(), path, contents, git));
+                let document = cx.new(|_| Document::new(worktree.clone(), key, contents, git));
                 let saved = cx.subscribe(&document, move |this, _, event, cx| match event {
                     DocumentEvent::Saved => this.read_changes(worktree.clone(), cx).detach(),
                 });
@@ -290,23 +240,19 @@ impl Projects {
         })
     }
 
-    /// Both versions of the uncommitted file at `path`.
-    fn read_uncommitted(
+    /// Both versions of the file `key` names, following a rename the changes list.
+    fn read_versions(
         &self,
         worktree: &Path,
-        path: &Path,
+        key: &FileKey,
         cx: &mut Context<Self>,
-    ) -> Task<Result<crate::FileVersions>> {
+    ) -> Task<Result<FileVersions>> {
         let renamed_from = self
             .changes(worktree)
-            .and_then(|changes| changes.file(path))
+            .and_then(|changes| changes.find(key))
             .and_then(|file| file.renamed_from.clone());
-        let key = FileKey {
-            source: Source::Uncommitted,
-            path: path.to_path_buf(),
-        };
-        let worktree = worktree.to_path_buf();
-        let title = format!("Couldn't open {}", path.display());
+        let (worktree, key) = (worktree.to_path_buf(), key.clone());
+        let title = format!("Couldn't open {}", key.path.display());
         self.git.call(
             title,
             move |git| git.versions(&worktree, &key, renamed_from.as_deref()),
@@ -314,40 +260,29 @@ impl Projects {
         )
     }
 
-    /// Reads each open document in `worktree` again, for the documents to follow the disk.
+    /// Reads each open uncommitted file in `worktree` again, for its document to follow the disk.
     fn refresh_documents(&mut self, worktree: &Path, cx: &mut Context<Self>) {
         let open: Vec<_> = self
             .documents
             .iter()
-            .filter(|((path, _), _)| path == worktree)
-            .map(|((_, path), document)| {
+            .filter(|((path, key), _)| path == worktree && key.source == Source::Uncommitted)
+            .map(|((_, key), document)| {
                 let stamp = document.read(cx).disk_stamp();
-                (path.clone(), document.downgrade(), stamp)
+                (key.clone(), document.downgrade(), stamp)
             })
             .collect();
-        for (path, document, stamp) in open {
-            let read = self.read_uncommitted(worktree, &path, cx);
+        for (key, document, stamp) in open {
+            let read = self.read_versions(worktree, &key, cx);
             cx.spawn(async move |_, cx| {
                 let Ok(versions) = read.await else {
                     return;
                 };
-                let base = match versions.old {
-                    crate::Version::Text(text) => text,
-                    _ => String::new(),
-                };
                 document
-                    .update(cx, |document, cx| {
-                        document.refresh(stamp, base, versions.new, cx)
-                    })
+                    .update(cx, |document, cx| document.refresh(stamp, versions, cx))
                     .ok();
             })
             .detach();
         }
-    }
-
-    #[cfg(feature = "fixtures")]
-    pub(crate) fn insert_diff(&mut self, worktree: PathBuf, key: FileKey, diff: FileDiff) {
-        self.diffs.insert((worktree, key), diff);
     }
 
     /// Stages or unstages one file in the cached changes. Git's index follows once a backend

@@ -1,13 +1,10 @@
-//! A changed file's two versions, and the hunks between them with the words that changed.
+//! A changed file's two versions, the lines that changed between them, and the words that
+//! changed on lines that pair up.
 
 use std::ops::Range;
 
 use imara_diff::{Algorithm, Diff, InternedInput, sources::lines};
 
-use crate::{Hunk, HunkLine, LineChange};
-
-/// Unchanged lines shown around each change, as many as `git diff` shows.
-const CONTEXT: usize = 3;
 /// How far into a file Git looks for a NUL byte before calling it binary.
 const BINARY_PROBE: usize = 8000;
 
@@ -29,15 +26,6 @@ impl Version {
         }
         String::from_utf8(bytes).map_or(Self::Binary, Self::Text)
     }
-
-    /// The text, empty when the file is missing, or `None` when it's binary.
-    fn text(&self) -> Option<&str> {
-        match self {
-            Self::Missing => Some(""),
-            Self::Binary => None,
-            Self::Text(text) => Some(text),
-        }
-    }
 }
 
 /// A file before and after a change.
@@ -45,23 +33,6 @@ impl Version {
 pub struct FileVersions {
     pub old: Version,
     pub new: Version,
-}
-
-/// What the main view shows for a file.
-#[derive(Clone, Debug)]
-pub enum FileDiff {
-    Text(Vec<Hunk>),
-    /// Either side is binary, so there are no lines to compare.
-    Binary,
-}
-
-impl FileDiff {
-    pub fn new(versions: &FileVersions) -> Self {
-        match (versions.old.text(), versions.new.text()) {
-            (Some(old), Some(new)) => Self::Text(hunks(old, new)),
-            _ => Self::Binary,
-        }
-    }
 }
 
 /// Which lines changed between two texts, as runs of old lines replaced by new ones, in order.
@@ -94,14 +65,6 @@ impl LineDiff {
     }
 }
 
-/// The lines of `text` without their line endings, the way [`LineDiff`] counts them.
-pub fn text_lines(text: &str) -> Vec<&str> {
-    line_ranges(text)
-        .into_iter()
-        .map(|range| &text[range])
-        .collect()
-}
-
 /// The byte range of each line of `text`, without its line ending.
 pub(crate) fn line_ranges(text: &str) -> Vec<Range<usize>> {
     let mut start = 0;
@@ -112,88 +75,6 @@ pub(crate) fn line_ranges(text: &str) -> Vec<Range<usize>> {
             range
         })
         .collect()
-}
-
-/// The changed lines between `old` and `new`, each run with up to three unchanged lines around
-/// it. Runs whose context would meet share one hunk, as in `git diff`.
-fn hunks(old: &str, new: &str) -> Vec<Hunk> {
-    let diff = LineDiff::new(old, new);
-    let (old, new) = (text_lines(old), text_lines(new));
-    let mut groups: Vec<&[ChangedLines]> = Vec::new();
-    let mut start = 0;
-    for (index, pair) in diff.changes.windows(2).enumerate() {
-        if pair[1].old.start - pair[0].old.end > 2 * CONTEXT {
-            groups.push(&diff.changes[start..=index]);
-            start = index + 1;
-        }
-    }
-    if start < diff.changes.len() {
-        groups.push(&diff.changes[start..]);
-    }
-    groups.iter().map(|group| hunk(group, &old, &new)).collect()
-}
-
-/// One hunk from changes that lie within each other's context.
-fn hunk(group: &[ChangedLines], old: &[&str], new: &[&str]) -> Hunk {
-    let (first, last) = (&group[0], &group[group.len() - 1]);
-    let lead = CONTEXT.min(first.old.start).min(first.new.start);
-    let trail = CONTEXT
-        .min(old.len() - last.old.end)
-        .min(new.len() - last.new.end);
-    let old_range = first.old.start - lead..last.old.end + trail;
-    let new_range = first.new.start - lead..last.new.end + trail;
-
-    let mut lines = Vec::new();
-    let context = |lines: &mut Vec<HunkLine>, from: usize, to: usize| {
-        lines.extend((from..to).map(|index| HunkLine {
-            change: LineChange::Context(index + 1),
-            text: new[index].to_string().into(),
-            changed: Vec::new(),
-        }));
-    };
-    let mut position = new_range.start;
-    for change in group {
-        context(&mut lines, position, change.new.start);
-        let removed = &old[change.old.clone()];
-        let added = &new[change.new.clone()];
-        let mut words: Vec<_> = removed
-            .iter()
-            .zip(added)
-            .map(|(removed, added)| changed_words(removed, added))
-            .collect();
-        lines.extend(removed.iter().enumerate().map(|(index, text)| {
-            HunkLine {
-                change: LineChange::Removed,
-                text: text.to_string().into(),
-                changed: words
-                    .get(index)
-                    .map(|(old, _)| old.clone())
-                    .unwrap_or_default(),
-            }
-        }));
-        lines.extend(added.iter().enumerate().map(|(index, text)| {
-            HunkLine {
-                change: LineChange::Added(change.new.start + index + 1),
-                text: text.to_string().into(),
-                changed: words
-                    .get_mut(index)
-                    .map(|(_, new)| std::mem::take(new))
-                    .unwrap_or_default(),
-            }
-        }));
-        position = change.new.end;
-    }
-    context(&mut lines, position, new_range.end);
-
-    Hunk {
-        header: format!(
-            "@@ -{} +{} @@",
-            header_range(&old_range),
-            header_range(&new_range)
-        )
-        .into(),
-        lines,
-    }
 }
 
 /// The byte ranges of the words that differ between two lines that pair up, on each side. When
@@ -289,31 +170,15 @@ fn without_newline(line: &str) -> &str {
         .unwrap_or(line)
 }
 
-/// A side of a hunk header the way Git writes it: an empty range names the line before it.
-fn header_range(lines: &Range<usize>) -> String {
-    if lines.is_empty() {
-        format!("{},0", lines.start)
-    } else {
-        format!("{},{}", lines.start + 1, lines.len())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn diff(old: &str, new: &str) -> Vec<Hunk> {
-        hunks(old, new)
-    }
-
-    fn marks(hunk: &Hunk) -> String {
-        hunk.lines
-            .iter()
-            .map(|line| match line.change {
-                LineChange::Context(_) => ' ',
-                LineChange::Added(_) => '+',
-                LineChange::Removed => '-',
-            })
+    fn changes(old: &str, new: &str) -> Vec<(Range<usize>, Range<usize>)> {
+        LineDiff::new(old, new)
+            .changes
+            .into_iter()
+            .map(|change| (change.old, change.new))
             .collect()
     }
 
@@ -322,59 +187,39 @@ mod tests {
     }
 
     #[test]
-    fn a_change_gets_three_lines_of_context_each_side() {
+    fn a_replaced_line_is_one_change() {
         let old = numbered(20);
         let new = old.replace("line 10\n", "line ten\n");
-        let hunks = diff(&old, &new);
-        assert_eq!(hunks.len(), 1);
-        assert_eq!(hunks[0].header, "@@ -7,7 +7,7 @@");
-        assert_eq!(marks(&hunks[0]), "   -+   ");
-        assert_eq!(hunks[0].lines[0].change, LineChange::Context(7));
-        assert_eq!(hunks[0].lines[4].change, LineChange::Added(10));
+        assert_eq!(changes(&old, &new), [(9..10, 9..10)]);
     }
 
     #[test]
-    fn nearby_changes_share_a_hunk_and_distant_ones_dont() {
-        let old = numbered(40);
-        let near = old.replace("line 10\n", "x\n").replace("line 17\n", "y\n");
-        assert_eq!(diff(&old, &near).len(), 1);
-        let far = old.replace("line 10\n", "x\n").replace("line 18\n", "y\n");
-        assert_eq!(diff(&old, &far).len(), 2);
-    }
-
-    #[test]
-    fn a_new_file_is_one_hunk_of_added_lines() {
-        let hunks = diff("", "a\nb\n");
-        assert_eq!(hunks[0].header, "@@ -0,0 +1,2 @@");
-        assert_eq!(marks(&hunks[0]), "++");
-    }
-
-    #[test]
-    fn identical_text_has_no_hunks() {
-        assert!(diff("same\n", "same\n").is_empty());
+    fn a_new_file_is_all_added_and_identical_text_has_no_changes() {
+        assert_eq!(changes("", "a\nb\n"), [(0..0, 0..2)]);
+        assert!(changes("same\n", "same\n").is_empty());
     }
 
     #[test]
     fn paired_lines_mark_only_the_words_that_changed() {
-        let hunks = diff("    .h(px(28.))\n", "    .h(density.row_height)\n");
-        let lines = &hunks[0].lines;
-        assert_eq!(&lines[0].text[lines[0].changed[0].clone()], "px(28.)");
-        assert_eq!(
-            &lines[1].text[lines[1].changed[0].clone()],
-            "density.row_height"
-        );
+        let (old, new) = ("    .h(px(28.))", "    .h(density.row_height)");
+        let (old_words, new_words) = changed_words(old, new);
+        assert_eq!(&old[old_words[0].clone()], "px(28.)");
+        assert_eq!(&new[new_words[0].clone()], "density.row_height");
     }
 
     #[test]
     fn a_line_with_nothing_in_common_marks_no_words() {
-        let hunks = diff("alpha\n", "beta\n");
-        assert!(hunks[0].lines.iter().all(|line| line.changed.is_empty()));
+        assert_eq!(changed_words("alpha", "beta"), (Vec::new(), Vec::new()));
     }
 
     #[test]
-    fn crlf_endings_stay_out_of_the_text() {
-        let hunks = diff("a\r\n", "b\r\n");
-        assert_eq!(hunks[0].lines[0].text, "a");
+    fn line_ranges_leave_out_line_endings() {
+        let text = "a\r\nbc\n";
+        let lines: Vec<_> = line_ranges(text)
+            .into_iter()
+            .map(|range| &text[range])
+            .collect();
+        assert_eq!(lines, ["a", "bc"]);
     }
 
     #[test]

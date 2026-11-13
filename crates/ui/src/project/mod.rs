@@ -20,7 +20,7 @@ use gpui::{
 use model::{Changes, FileChange, FileKey, Notice, ProjectId, Projects, Source, Staging};
 use strum::VariantArray;
 
-use crate::{clear_after, key_binding, text_input::TextInput};
+use crate::{clear_after, editor::Editor, key_binding, text_input::TextInput};
 
 #[cfg(feature = "mocks")]
 pub(crate) use mocks::mocks;
@@ -58,6 +58,15 @@ impl FileLayout {
             FileLayout::List => IconName::List,
             FileLayout::Tree => IconName::ListTree,
             FileLayout::Symbols => IconName::Braces,
+        }
+    }
+
+    /// The name its segment's tooltip shows.
+    fn label(self) -> &'static str {
+        match self {
+            FileLayout::List => "List",
+            FileLayout::Tree => "Tree",
+            FileLayout::Symbols => "Symbols",
         }
     }
 }
@@ -104,13 +113,20 @@ pub struct ProjectView {
     /// What the control used last had to say, until the task clears it.
     notice: Option<(Control, Notice, Task<()>)>,
     message: Entity<TextInput>,
+    /// Shows the selected file.
+    editor: Entity<Editor>,
     focus_handle: FocusHandle,
-    _subscription: Subscription,
+    _subscriptions: [Subscription; 2],
 }
 
 impl ProjectView {
     /// The view on `project`'s main worktree. Its changes are read the first time it's shown.
-    pub fn new(projects: Entity<Projects>, project: ProjectId, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        projects: Entity<Projects>,
+        project: ProjectId,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let message = cx.new(|cx| {
             let mut input = TextInput::new(cx);
             input.set_placeholder("Commit message", cx);
@@ -135,8 +151,12 @@ impl ProjectView {
             if this.selected.is_none() {
                 this.select_first(cx);
             }
+            this.show_selected(cx);
             cx.notify()
         });
+        let editor = cx.new(|cx| Editor::new(window, cx));
+        // The header shows whether the file has unsaved edits.
+        let editing = cx.observe(&editor, |_, _, cx| cx.notify());
         let mut view = Self {
             projects,
             worktree,
@@ -153,8 +173,9 @@ impl ProjectView {
             copied: None,
             notice: None,
             message,
+            editor,
             focus_handle: cx.focus_handle(),
-            _subscription: subscription,
+            _subscriptions: [subscription, editing],
         };
         view.select_first(cx);
         view
@@ -253,6 +274,44 @@ impl ProjectView {
         cx.notify();
     }
 
+    /// Selects the `index`th uncommitted file, as clicking it does.
+    #[cfg(feature = "mocks")]
+    pub fn select_uncommitted(&mut self, index: usize, cx: &mut Context<Self>) {
+        if let Some(file) = self.changes(cx).uncommitted.get(index) {
+            let key = FileKey {
+                source: Source::Uncommitted,
+                path: file.path.clone(),
+            };
+            self.select(key, None, cx);
+        }
+    }
+
+    /// Shows the selected file in `mode`, as its switcher does.
+    #[cfg(feature = "mocks")]
+    pub fn set_editor_mode(&mut self, mode: crate::editor::Mode, cx: &mut Context<Self>) {
+        self.editor
+            .update(cx, |editor, cx| editor.set_mode(mode, cx));
+    }
+
+    /// Focuses the editor and types `text` at the start of the selected file once it's open.
+    #[cfg(feature = "mocks")]
+    pub fn type_when_open(
+        &mut self,
+        text: &'static str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        window.focus(&self.editor.focus_handle(cx), cx);
+        let mut typed = false;
+        cx.observe(&self.editor, move |_, editor, cx| {
+            if !typed && editor.read(cx).document().is_some() {
+                typed = true;
+                editor.update(cx, |editor, cx| editor.type_at(0, text, cx));
+            }
+        })
+        .detach();
+    }
+
     /// Picks the `index`th symbol of the selected file, as clicking it in the symbol layout does.
     #[cfg(feature = "mocks")]
     pub fn select_symbol(&mut self, index: usize, cx: &mut Context<Self>) {
@@ -261,20 +320,31 @@ impl ProjectView {
         }
     }
 
-    /// Shows the file `key` names, reading its diff unless it's cached.
+    /// Shows the file `key` names, opening it unless it's open.
     fn select(&mut self, key: FileKey, symbol: Option<usize>, cx: &mut Context<Self>) {
         let worktree = self.worktree.clone();
-        if self.projects.read(cx).diff(&worktree, &key).is_none() {
-            // A failure leaves the main view empty, and Projects reports it.
-            self.projects
-                .update(cx, |projects, cx| {
-                    projects.read_diff(worktree, key.clone(), cx)
-                })
-                .detach();
-        }
+        // A failure leaves the main view empty, and Projects reports it.
+        self.projects
+            .update(cx, |projects, cx| {
+                projects.open_document(worktree, key.clone(), cx)
+            })
+            .detach();
         self.selected = Some(key);
         self.selected_symbol = symbol;
+        self.show_selected(cx);
         cx.notify();
+    }
+
+    /// Puts the selected file's document in the editor, once it's open.
+    fn show_selected(&mut self, cx: &mut Context<Self>) {
+        let document = self.selected.as_ref().and_then(|key| {
+            self.projects
+                .read(cx)
+                .document(&self.worktree, key)
+                .cloned()
+        });
+        self.editor
+            .update(cx, |editor, cx| editor.set_document(document, cx));
     }
 
     fn toggle_folded(&mut self, key: FileKey, cx: &mut Context<Self>) {

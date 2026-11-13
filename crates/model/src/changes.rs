@@ -1,9 +1,6 @@
 //! A worktree's uncommitted files and its branch's commits, with how far it is from its upstream.
 
-use std::{
-    ops::Range,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 use gpui::SharedString;
 
@@ -46,29 +43,6 @@ pub struct Symbol {
     pub name: SharedString,
     pub added: usize,
     pub removed: usize,
-}
-
-/// What happened to a line, with its number in the new file where it has one.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum LineChange {
-    Context(usize),
-    Added(usize),
-    Removed,
-}
-
-#[derive(Clone, Debug)]
-pub struct HunkLine {
-    pub change: LineChange,
-    pub text: SharedString,
-    /// Byte ranges of the words that changed, when the line pairs with one on the other side.
-    pub changed: Vec<Range<usize>>,
-}
-
-#[derive(Clone, Debug)]
-pub struct Hunk {
-    /// A line shown above the hunk to introduce it, such as the line ranges it covers.
-    pub header: SharedString,
-    pub lines: Vec<HunkLine>,
 }
 
 #[derive(Clone, Debug)]

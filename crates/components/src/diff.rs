@@ -2,8 +2,10 @@
 
 use std::ops::Range;
 
-use gpui::{App, HighlightStyle, SharedString, StyledText, Window, div, prelude::*, px};
-use theme::{ActiveTheme, Typeset};
+use gpui::{
+    AnyElement, App, HighlightStyle, Hsla, SharedString, StyledText, Window, div, prelude::*, px,
+};
+use theme::{ActiveTheme, ThemeColors, Typeset};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LineKind {
@@ -73,62 +75,95 @@ impl RenderOnce for Diff {
     fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
         let theme = cx.theme();
         let colors = &theme.colors;
-        let code = cx.density().code;
         div()
             .flex()
             .flex_col()
             .py_1()
             .font_family(theme.fonts.code.clone())
-            .typeset(code)
+            .typeset(cx.density().code)
             .text_color(colors.text)
             .whitespace_nowrap()
             .children(self.lines.into_iter().map(|line| {
-                let hue = match line.kind {
-                    LineKind::Added => Some(colors.diff_added),
-                    LineKind::Removed => Some(colors.diff_removed),
-                    LineKind::Context | LineKind::Hunk => None,
-                };
                 let word = HighlightStyle {
-                    background_color: hue.map(|hue| hue.opacity(0.28)),
+                    background_color: line.kind.hue(colors).map(|hue| hue.opacity(0.28)),
                     ..Default::default()
                 };
                 let text = StyledText::new(line.text)
                     .with_highlights(line.changed.into_iter().map(|range| (range, word)));
-                div()
-                    .flex()
-                    .h(code.line_height)
-                    .when(line.kind == LineKind::Hunk, |row| {
-                        row.text_color(colors.text_faint)
-                    })
-                    .child(
-                        div()
-                            .flex_none()
-                            .w(px(44.))
-                            .pr_2()
-                            .text_right()
-                            .text_color(if line.kind == LineKind::Added {
-                                colors.diff_added
-                            } else {
-                                colors.diff_line_number
-                            })
-                            .children(line.number.map(|number| number.to_string())),
-                    )
-                    .child(
-                        div()
-                            .flex_none()
-                            .w(px(2.))
-                            .when_some(hue, |bar, hue| bar.bg(hue)),
-                    )
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .pl_3()
-                            .overflow_hidden()
-                            .when_some(hue, |code, hue| code.bg(hue.opacity(0.08)))
-                            .child(text),
-                    )
+                DiffRow::new(line.kind, line.number, text)
             }))
+    }
+}
+
+impl LineKind {
+    /// The meaning hue of an added or removed line.
+    pub fn hue(self, colors: &ThemeColors) -> Option<Hsla> {
+        match self {
+            LineKind::Added => Some(colors.diff_added),
+            LineKind::Removed => Some(colors.diff_removed),
+            LineKind::Context | LineKind::Hunk => None,
+        }
+    }
+}
+
+/// One line of a diff around content the caller draws: its new-file number, an edge bar, and a
+/// faint fill when it's added or removed. It's one code line tall.
+#[derive(IntoElement)]
+pub struct DiffRow {
+    kind: LineKind,
+    number: Option<usize>,
+    content: AnyElement,
+}
+
+impl DiffRow {
+    pub fn new(kind: LineKind, number: Option<usize>, content: impl IntoElement) -> Self {
+        Self {
+            kind,
+            number,
+            content: content.into_any_element(),
+        }
+    }
+}
+
+impl RenderOnce for DiffRow {
+    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let colors = &cx.theme().colors;
+        let hue = self.kind.hue(colors);
+        div()
+            .flex()
+            .w_full()
+            .h(cx.density().code.line_height)
+            .when(self.kind == LineKind::Hunk, |row| {
+                row.text_color(colors.text_faint)
+            })
+            .child(
+                div()
+                    .flex_none()
+                    .w(px(44.))
+                    .pr_2()
+                    .text_right()
+                    .text_color(if self.kind == LineKind::Added {
+                        colors.diff_added
+                    } else {
+                        colors.diff_line_number
+                    })
+                    .children(self.number.map(|number| number.to_string())),
+            )
+            .child(
+                div()
+                    .flex_none()
+                    .w(px(2.))
+                    .when_some(hue, |bar, hue| bar.bg(hue)),
+            )
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .pl_3()
+                    .overflow_hidden()
+                    .when_some(hue, |code, hue| code.bg(hue.opacity(0.08)))
+                    .child(self.content),
+            )
     }
 }
 

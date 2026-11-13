@@ -2,8 +2,8 @@
 //! ellipsis.
 
 use gpui::{
-    App, Bounds, Hsla, SharedString, Window, canvas, div, fill, linear_color_stop, linear_gradient,
-    point, prelude::*, px, size,
+    App, Bounds, Hsla, Pixels, SharedString, Window, canvas, div, fill, linear_color_stop,
+    linear_gradient, point, prelude::*, px, size,
 };
 use theme::{ActiveTheme, ThemeColors};
 
@@ -58,30 +58,44 @@ impl RenderOnce for FadeText {
                         line.width > bounds.size.width
                     },
                     move |bounds, overflows, window, _| {
-                        if !overflows {
-                            return;
+                        if overflows {
+                            paint_fade(bounds, Edge::End, background, window);
                         }
-                        let width = px(FADE).min(bounds.size.width);
-                        let fade = Bounds::new(
-                            point(bounds.right() - width, bounds.top()),
-                            size(width, bounds.size.height),
-                        );
-                        window.paint_quad(fill(
-                            fade,
-                            linear_gradient(
-                                90.,
-                                linear_color_stop(background.opacity(0.), 0.),
-                                // Solid a few pixels early, so no sliver of a glyph shows at the
-                                // edge.
-                                linear_color_stop(background, 0.85),
-                            ),
-                        ));
                     },
                 )
                 .absolute()
                 .inset_0(),
             )
     }
+}
+
+/// Which edge of a box text runs past.
+pub(crate) enum Edge {
+    Start,
+    End,
+}
+
+/// Paints `background` over the last stretch of `bounds` toward `edge`, from clear to solid.
+pub(crate) fn paint_fade(
+    bounds: Bounds<Pixels>,
+    edge: Edge,
+    background: Hsla,
+    window: &mut Window,
+) {
+    let width = px(FADE).min(bounds.size.width);
+    let (left, angle) = match edge {
+        Edge::Start => (bounds.left(), 270.),
+        Edge::End => (bounds.right() - width, 90.),
+    };
+    window.paint_quad(fill(
+        Bounds::new(point(left, bounds.top()), size(width, bounds.size.height)),
+        linear_gradient(
+            angle,
+            linear_color_stop(background.opacity(0.), 0.),
+            // Solid a few pixels early, so no sliver of a glyph shows at the edge.
+            linear_color_stop(background, 0.85),
+        ),
+    ));
 }
 
 #[cfg(feature = "mocks")]
