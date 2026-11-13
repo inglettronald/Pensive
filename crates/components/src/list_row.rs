@@ -8,7 +8,7 @@ use gpui::{
 };
 use theme::{ActiveTheme, Typeset};
 
-use crate::{Callback, Icon, IconName, callback};
+use crate::{Callback, Icon, IconName, OnClick as _, callback};
 
 /// The width of a disclosure arrow. A leading mark is centered in the same width, so arrows,
 /// marks and guides share one center line.
@@ -257,9 +257,7 @@ impl RenderOnce for ListRow {
                     .mt_0p5()
                     .child(deferred(below).priority(1))
             }))
-            .when_some(self.on_click, |row, handler| {
-                row.on_click(move |_, window, cx| handler((), window, cx))
-            })
+            .on_click_callback(self.on_click)
             .when_some(self.on_hover, |row, handler| {
                 row.on_hover(move |hovered, window, cx| handler(*hovered, window, cx))
             })

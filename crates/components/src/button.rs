@@ -4,7 +4,7 @@ use gpui::{App, ElementId, FontWeight, Hsla, SharedString, Window, div, prelude:
 use strum::{IntoStaticStr, VariantArray};
 use theme::{ActiveTheme, ThemeColors, Typeset};
 
-use crate::{Callback, Icon, IconName, callback};
+use crate::{Callback, Icon, IconName, OnClick as _, callback};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, VariantArray, IntoStaticStr)]
 pub enum ButtonStyle {
@@ -179,9 +179,7 @@ impl RenderOnce for Button {
                                     .child(keys),
                             )
                     })
-                    .when_some(self.on_click, |button, handler| {
-                        button.on_click(move |_, window, cx| handler((), window, cx))
-                    })
+                    .on_click_callback(self.on_click)
             })
     }
 }
