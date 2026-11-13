@@ -1,0 +1,1 @@
+# This crate does I/O, so it drops the rules in the root clippy.toml.

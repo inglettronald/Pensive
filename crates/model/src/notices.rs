@@ -5,7 +5,7 @@ use std::{cmp::Reverse, time::SystemTime};
 
 use gpui::{App, AppContext, Context, Entity, Global};
 
-use crate::{Notice, Severity};
+use crate::{Notice, Severity, clock};
 
 /// A warning or error the user hasn't dismissed. A repeat counts here instead of adding a row.
 #[derive(Clone, Debug)]
@@ -25,19 +25,6 @@ pub struct Notices {
     /// The time ages are measured from, fixed in fixtures so mocks don't change. The clock
     /// otherwise.
     pub as_of: Option<SystemTime>,
-}
-
-/// `SystemTime::now` panics in a browser, so there it reads the browser's clock.
-fn clock() -> SystemTime {
-    #[cfg(target_family = "wasm")]
-    {
-        let since = web_time::SystemTime::now()
-            .duration_since(web_time::UNIX_EPOCH)
-            .unwrap_or_default();
-        SystemTime::UNIX_EPOCH + since
-    }
-    #[cfg(not(target_family = "wasm"))]
-    SystemTime::now()
 }
 
 struct GlobalNotices(Entity<Notices>);
@@ -93,7 +80,7 @@ impl Notices {
     }
 
     pub fn now(&self) -> SystemTime {
-        self.as_of.unwrap_or_else(clock)
+        self.as_of.unwrap_or_else(clock::now)
     }
 
     /// Errors first, then warnings, newest first within each.

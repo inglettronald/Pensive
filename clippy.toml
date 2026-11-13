@@ -1,0 +1,29 @@
+# Only `git`, `config` and `pensive` do I/O, and each has its own clippy.toml that drops these
+# rules. Every other crate goes through a model, so any view can render from mock data. See the
+# rules in docs/architecture.md.
+
+disallowed-methods = [
+    { path = "std::fs::read", reason = "read files through a model's backend" },
+    { path = "std::fs::read_to_string", reason = "read files through a model's backend" },
+    { path = "std::fs::read_dir", reason = "read files through a model's backend" },
+    { path = "std::fs::metadata", reason = "read files through a model's backend" },
+    { path = "std::fs::write", reason = "write files through a model's backend" },
+    { path = "std::fs::create_dir_all", reason = "write files through a model's backend" },
+    { path = "std::fs::remove_file", reason = "write files through a model's backend" },
+    { path = "std::fs::rename", reason = "write files through a model's backend" },
+    { path = "std::env::var", reason = "read the environment in pensive and pass the value in" },
+    { path = "std::env::var_os", reason = "read the environment in pensive and pass the value in" },
+    { path = "std::env::vars", reason = "read the environment in pensive and pass the value in" },
+    { path = "std::env::args", reason = "read the command line in pensive and pass it in" },
+    { path = "std::env::args_os", reason = "read the command line in pensive and pass it in" },
+    { path = "std::env::current_dir", reason = "read the environment in pensive and pass the value in" },
+    { path = "std::process::Command::new", reason = "run commands in a backend crate, such as git" },
+    { path = "std::time::SystemTime::now", reason = "panics in a browser; read a model's now()" },
+    { path = "std::time::Instant::now", reason = "panics in a browser; use GPUI's executor timers" },
+    { path = "std::thread::spawn", reason = "threads don't exist in the browser build; use cx.background_spawn" },
+]
+
+disallowed-types = [
+    { path = "std::fs::File", reason = "read and write files through a model's backend" },
+    { path = "std::net::TcpStream", reason = "network calls go through a model's backend" },
+]

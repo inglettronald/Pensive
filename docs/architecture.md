@@ -21,7 +21,7 @@ Every crate except `git` and `config` also depends on `gpui`.
 
 ## Rules
 
-- Views can trigger I/O but never perform it. Git, the filesystem, the clock, the network, environment variables and randomness go through a model. That way any view can render from mock data.
+- Views can trigger I/O but never perform it. Git, the filesystem, the clock, the network, environment variables and randomness go through a model. That way any view can render from mock data. Clippy enforces this: the root `clippy.toml` disallows the standard library's file, environment, process and clock calls, and `git`, `config` and `pensive` each have their own `clippy.toml` that drops those rules.
 - Each crate declares the settings it reads, and code reads and changes a setting through its declaration.
 - Components never see models. They render from the props they're given.
 - Backends implement traits defined in `model`. `ui` never depends on a backend crate, so only `pensive` sees both sides.

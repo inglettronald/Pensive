@@ -2,6 +2,7 @@
 
 mod backend;
 mod changes;
+mod clock;
 mod config;
 mod diff;
 mod document;
