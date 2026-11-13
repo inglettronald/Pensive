@@ -25,22 +25,6 @@ pub fn init(backend: Arc<dyn ConfigBackend>, cx: &mut App) {
             warn("Theme problem", problems, cx);
             apply_theme(cx);
         }
-        ConfigEvent::Problem(problem) => {
-            // Most read "What failed: why". The part before the colon is the title.
-            let (title, detail) = match problem.split_once(": ") {
-                Some((title, detail)) => (title.to_string(), Some(detail.to_string().into())),
-                None => (problem.clone(), None),
-            };
-            report(
-                Notice {
-                    severity: Severity::Error,
-                    origin: Origin::Config,
-                    title: title.into(),
-                    detail,
-                },
-                cx,
-            );
-        }
     })
     .detach();
     cx.observe_global::<Settings>({
@@ -66,18 +50,12 @@ fn apply_theme(cx: &mut App) {
 /// repeat.
 fn warn(title: &'static str, problems: impl IntoIterator<Item = String>, cx: &mut App) {
     for problem in problems {
-        report(
-            Notice {
-                severity: Severity::Warning,
-                origin: Origin::Config,
-                title: title.into(),
-                detail: Some(problem.into()),
-            },
-            cx,
-        );
+        let notice = Notice {
+            severity: Severity::Warning,
+            origin: Origin::Config,
+            title: title.into(),
+            detail: Some(problem.into()),
+        };
+        Notices::post(notice, cx);
     }
-}
-
-fn report(notice: Notice, cx: &mut App) {
-    Notices::global(cx).update(cx, |notices, cx| notices.report(notice, cx));
 }

@@ -7,6 +7,8 @@ use anyhow::Result;
 use futures::{StreamExt, channel::mpsc};
 use gpui::{Context, EventEmitter};
 
+use crate::{Backend, Notice, Notices, Origin, Severity};
+
 /// Calls block, so models run them off the UI thread.
 pub trait ConfigBackend: Send + Sync + Debug {
     /// The text of `settings.toml`, empty when there's no file.
@@ -25,15 +27,13 @@ pub enum ConfigEvent {
     SettingsRead,
     /// `themes` holds new files from disk.
     ThemesRead,
-    /// A file couldn't be read, written or watched.
-    Problem(String),
 }
 
 /// The settings and theme files as last read from the config folder or written to it.
 pub struct ConfigFiles {
     pub settings: String,
     pub themes: Vec<(String, String)>,
-    backend: Arc<dyn ConfigBackend>,
+    backend: Backend<dyn ConfigBackend>,
     /// Settings text waiting to be written. One write runs at a time.
     unsaved: Option<String>,
     saving: bool,
@@ -48,7 +48,7 @@ impl ConfigFiles {
         Self {
             settings: String::new(),
             themes: Vec::new(),
-            backend,
+            backend: Backend::new(backend, Origin::Config),
             unsaved: None,
             saving: false,
             watching: None,
@@ -59,15 +59,25 @@ impl ConfigFiles {
     /// so no event is missed.
     pub fn load(&mut self, cx: &mut Context<Self>) {
         let (changed, mut changes) = mpsc::unbounded();
-        match self.backend.watch(Box::new(move || {
-            changed.unbounded_send(()).ok();
-        })) {
-            Ok(watching) => self.watching = Some(watching),
-            Err(error) => cx.emit(ConfigEvent::Problem(format!(
-                "Settings won't reload while Pensive runs: {error:#}"
-            ))),
-        }
+        let watch = self.backend.call(
+            "Settings won't reload while Pensive runs",
+            move |backend| {
+                backend.watch(Box::new(move || {
+                    changed.unbounded_send(()).ok();
+                }))
+            },
+            cx,
+        );
         cx.spawn(async move |this, cx| {
+            let Ok(watching) = watch.await else {
+                return;
+            };
+            if this
+                .update(cx, |this, _| this.watching = Some(watching))
+                .is_err()
+            {
+                return;
+            }
             while changes.next().await.is_some() {
                 // One save can be several events. Wait for the rest, then read once.
                 cx.background_executor()
@@ -85,43 +95,42 @@ impl ConfigFiles {
 
     /// Reads the files again, off the UI thread.
     pub fn reload(&mut self, cx: &mut Context<Self>) {
-        let backend = self.backend.clone();
-        let read = cx
-            .background_executor()
-            .spawn(async move { (backend.read_settings(), backend.read_themes()) });
+        let settings = self.backend.call(
+            "Couldn't read settings.toml",
+            |backend| backend.read_settings(),
+            cx,
+        );
+        let themes = self.backend.call(
+            "Couldn't read the themes",
+            |backend| backend.read_themes(),
+            cx,
+        );
         cx.spawn(async move |this, cx| {
-            let (settings, themes) = read.await;
+            let (settings, themes) = (settings.await.ok(), themes.await.ok());
             this.update(cx, |this, cx| this.read(settings, themes, cx))
                 .ok();
         })
         .detach();
     }
 
+    /// Keeps what was read, leaving out a file whose read failed.
     fn read(
         &mut self,
-        settings: Result<String>,
-        themes: Result<Vec<(String, String)>>,
+        settings: Option<String>,
+        themes: Option<Vec<(String, String)>>,
         cx: &mut Context<Self>,
     ) {
-        match settings {
-            Ok(settings) if settings != self.settings => {
-                self.settings = settings;
-                cx.emit(ConfigEvent::SettingsRead);
-            }
-            Ok(_) => {}
-            Err(error) => cx.emit(ConfigEvent::Problem(format!(
-                "Couldn't read settings.toml: {error:#}"
-            ))),
+        if let Some(settings) = settings
+            && settings != self.settings
+        {
+            self.settings = settings;
+            cx.emit(ConfigEvent::SettingsRead);
         }
-        match themes {
-            Ok(themes) if themes != self.themes => {
-                self.themes = themes;
-                cx.emit(ConfigEvent::ThemesRead);
-            }
-            Ok(_) => {}
-            Err(error) => cx.emit(ConfigEvent::Problem(format!(
-                "Couldn't read the themes: {error:#}"
-            ))),
+        if let Some(themes) = themes
+            && themes != self.themes
+        {
+            self.themes = themes;
+            cx.emit(ConfigEvent::ThemesRead);
         }
     }
 
@@ -141,33 +150,38 @@ impl ConfigFiles {
 
     fn write_unsaved(&self, cx: &mut Context<Self>) {
         cx.spawn(async move |this, cx| {
-            while let Ok(Some((text, last_read, backend))) = this.update(cx, |this, _| {
+            while let Ok(Some((text, write))) = this.update(cx, |this, cx| {
                 let text = this.unsaved.take();
                 if text.is_none() {
                     this.saving = false;
                 }
-                Some((text?, this.settings.clone(), this.backend.clone()))
+                let text = text?;
+                let (last_read, written) = (this.settings.clone(), text.clone());
+                let write = this.backend.call(
+                    "Couldn't save settings.toml",
+                    move |backend| write_if_unchanged(backend, &last_read, &written),
+                    cx,
+                );
+                Some((text, write))
             }) {
-                let written = text.clone();
-                let result = cx
-                    .background_executor()
-                    .spawn(async move { write_if_unchanged(&*backend, &last_read, &written) })
-                    .await;
+                let result = write.await;
                 let updated = this.update(cx, |this, cx| match result {
                     Ok(None) => this.settings = text,
                     Ok(Some(on_disk)) => {
                         this.unsaved = None;
                         this.settings = on_disk;
-                        cx.emit(ConfigEvent::Problem(
-                            "settings.toml changed on disk, so the change made in Pensive \
-                             wasn't saved"
+                        let notice = Notice {
+                            severity: Severity::Error,
+                            origin: Origin::Config,
+                            title: "settings.toml changed on disk, so the change made in \
+                                    Pensive wasn't saved"
                                 .into(),
-                        ));
+                            detail: None,
+                        };
+                        Notices::post(notice, cx);
                         cx.emit(ConfigEvent::SettingsRead);
                     }
-                    Err(error) => cx.emit(ConfigEvent::Problem(format!(
-                        "Couldn't save settings.toml: {error:#}"
-                    ))),
+                    Err(_) => {}
                 });
                 if updated.is_err() {
                     break;
@@ -215,7 +229,6 @@ mod tests {
                 events.borrow_mut().push(match event {
                     ConfigEvent::SettingsRead => "settings read".into(),
                     ConfigEvent::ThemesRead => "themes read".into(),
-                    ConfigEvent::Problem(problem) => problem.clone(),
                 })
             })
             .detach();

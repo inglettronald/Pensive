@@ -61,6 +61,11 @@ impl Notices {
         cx.set_global(GlobalNotices(notices));
     }
 
+    /// Reports `notice` to the app's notices.
+    pub fn post(notice: Notice, cx: &mut App) {
+        Self::global(cx).update(cx, |notices, cx| notices.report(notice, cx));
+    }
+
     /// Successes toast and fade. Warnings only go to the held list, so a noisy source can't take
     /// over the screen. Errors do both.
     pub fn report(&mut self, notice: Notice, cx: &mut Context<Self>) {

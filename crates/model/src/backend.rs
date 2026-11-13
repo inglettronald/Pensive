@@ -49,9 +49,7 @@ impl<B: ?Sized + Send + Sync + 'static> Backend<B> {
             let result = running.await;
             if let Err(error) = &result {
                 let notice = Notice::failed(title, origin, error);
-                cx.update(|cx| {
-                    Notices::global(cx).update(cx, |notices, cx| notices.report(notice, cx))
-                });
+                cx.update(|cx| Notices::post(notice, cx));
             }
             result
         })
