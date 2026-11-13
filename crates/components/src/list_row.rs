@@ -10,8 +10,11 @@ use theme::{ActiveTheme, Typeset};
 
 use crate::{Callback, Icon, IconName, callback};
 
+/// The width of a disclosure arrow. A leading mark is centered in the same width, so arrows,
+/// marks and guides share one center line.
+const MARK: Pixels = px(12.);
 /// How far each level of a tree moves in: one disclosure arrow's width.
-const INDENT: Pixels = px(12.);
+const INDENT: Pixels = MARK;
 /// Where a guide sits in its indent column: under the parent's arrow.
 const GUIDE_OFFSET: Pixels = px(5.5);
 
@@ -206,7 +209,7 @@ impl RenderOnce for ListRow {
                     } else {
                         IconName::ChevronRight
                     })
-                    .size(px(12.))
+                    .size(MARK)
                     .color(colors.text_faint),
                 );
                 match self.on_disclosure.clone() {
@@ -220,12 +223,14 @@ impl RenderOnce for ListRow {
                 }
             }))
             .children(self.leading.map(|leading| {
-                div()
-                    .flex()
-                    .flex_none()
-                    .items_center()
-                    .w(Self::SLOT)
-                    .child(leading)
+                div().flex_none().w(Self::SLOT).child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .w(MARK)
+                        .child(leading),
+                )
             }))
             .child(
                 div()
@@ -294,27 +299,34 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
                     ],
                 )
                 .section(
-                    "Tree with guides",
-                    [(
-                        "Folders, files and a symbol",
-                        column(vec![
-                            ListRow::new("d", "crates/ui/src").disclosure(true).muted(),
-                            ListRow::new("e", "palette")
-                                .depth(1)
-                                .disclosure(true)
-                                .muted(),
-                            file("f", "fuzzy.rs", RingFill::Empty).depth(2),
-                            file("g", "root.rs", RingFill::Empty)
-                                .depth(1)
-                                .disclosure(true),
-                            ListRow::new("h", "Pensive::render")
-                                .depth(2)
-                                .compact()
-                                .code()
-                                .leading(crate::Icon::new(IconName::Braces).size(px(12.)))
-                                .trailing(DiffStat::new(9, 2)),
-                        ]),
-                    )],
+                    "Nested, with guides",
+                    [
+                        (
+                            "Folders and files",
+                            column(vec![
+                                ListRow::new("d", "crates/ui/src").disclosure(true).muted(),
+                                ListRow::new("e", "palette")
+                                    .depth(1)
+                                    .disclosure(true)
+                                    .muted(),
+                                file("f", "fuzzy.rs", RingFill::Empty).depth(2),
+                                file("g", "root.rs", RingFill::Empty).depth(1),
+                            ]),
+                        ),
+                        (
+                            "A file's symbols",
+                            column(vec![
+                                file("h", "root.rs", RingFill::Empty).disclosure(true),
+                                ListRow::new("i", "Pensive::render")
+                                    .depth(1)
+                                    .indent(ListRow::SLOT)
+                                    .compact()
+                                    .code()
+                                    .leading(crate::Icon::new(IconName::Braces).size(px(12.)))
+                                    .trailing(DiffStat::new(9, 2)),
+                            ]),
+                        ),
+                    ],
                 )
                 .section(
                     "With a tooltip below",
@@ -323,7 +335,7 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
                         div()
                             .h(px(64.))
                             .child(column(vec![
-                                file("i", "row.rs", RingFill::Full).hovered(true).below(
+                                file("j", "row.rs", RingFill::Full).hovered(true).below(
                                     Tooltip::new("crates/components/src/palette/row.rs")
                                         .shortcut("Copy", "Ctrl Shift C"),
                                 ),

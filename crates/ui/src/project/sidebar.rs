@@ -296,6 +296,7 @@ impl ProjectView {
             .id(sha.clone())
             .flex()
             .gap_1p5()
+            .ml_1()
             .px_1()
             .rounded(density.radius_md)
             .hover(|title| title.bg(colors.surface_raised))
@@ -365,11 +366,11 @@ impl ProjectView {
                     .flex_col()
                     .flex_1()
                     .min_w_0()
-                    .ml_1()
                     .child(title)
                     .when(open, |body| {
                         body.children(commit.description.clone().map(|description| {
                             div()
+                                .ml_1()
                                 .px_1()
                                 .pb_1p5()
                                 .typeset(density.small)

@@ -80,9 +80,9 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
                     [
                         ("Fetch", IconName::RefreshCw),
                         ("Settings", IconName::Settings),
-                        ("Minimize", IconName::Minus),
-                        ("Maximize", IconName::Square),
-                        ("Close", IconName::X),
+                        ("Minimize", IconName::WindowMinimize),
+                        ("Maximize", IconName::WindowMaximize),
+                        ("Close", IconName::WindowClose),
                     ]
                     .map(|(label, icon)| (label, IconButton::new(label, icon).into_any_element())),
                 )

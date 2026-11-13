@@ -71,7 +71,9 @@ impl RenderOnce for FadeText {
                             linear_gradient(
                                 90.,
                                 linear_color_stop(background.opacity(0.), 0.),
-                                linear_color_stop(background, 1.),
+                                // Solid a few pixels early, so no sliver of a glyph shows at the
+                                // edge.
+                                linear_color_stop(background, 0.85),
                             ),
                         ));
                     },

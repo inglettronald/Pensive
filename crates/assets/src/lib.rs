@@ -10,8 +10,8 @@ macro_rules! bundled {
     };
 }
 
-/// Pensive's logo, and Lucide icons (ISC license, `assets/icons/LICENSE`) at the version named
-/// in each file.
+/// Pensive's logo, Lucide icons (ISC license, `assets/icons/LICENSE`) at the version named in
+/// each file, and the window controls, drawn for Pensive.
 const FILES: &[(&str, &[u8])] = bundled![
     "logo.svg",
     "icons/archive.svg",
@@ -34,14 +34,15 @@ const FILES: &[(&str, &[u8])] = bundled![
     "icons/hash.svg",
     "icons/list.svg",
     "icons/list-tree.svg",
-    "icons/minus.svg",
     "icons/plus.svg",
     "icons/refresh-cw.svg",
     "icons/search-x.svg",
     "icons/search.svg",
     "icons/settings.svg",
-    "icons/square.svg",
     "icons/triangle-alert.svg",
+    "icons/window-close.svg",
+    "icons/window-maximize.svg",
+    "icons/window-minimize.svg",
     "icons/x.svg",
 ];
 
