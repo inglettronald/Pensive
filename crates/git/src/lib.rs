@@ -459,6 +459,37 @@ mod tests {
     }
 
     #[test]
+    fn a_file_has_no_old_version_before_the_first_commit_or_in_a_root_commit() {
+        let repo = Repo::new();
+        repo.write("a.rs", "a\n");
+        let before = repo.versions(&uncommitted("a.rs"), None);
+        assert!(matches!(before.old, Version::Missing));
+        repo.commit_all("first");
+        let sha = repo.changes().commits[0].sha.to_string();
+        let key = FileKey {
+            source: Source::Commit(sha.into()),
+            path: "a.rs".into(),
+        };
+        let root = repo.versions(&key, None);
+        assert!(matches!(root.old, Version::Missing));
+        assert!(matches!(root.new, Version::Text(_)));
+    }
+
+    #[test]
+    fn a_revision_git_cant_list_fails_instead_of_reading_as_missing() {
+        let repo = Repo::new();
+        repo.write("a.rs", "a\n");
+        repo.commit_all("first");
+        // A blob's id names an object that exists, but ls-tree can't list it.
+        let blob = String::from_utf8(git(&repo.path(), &["rev-parse", "HEAD:a.rs"]).unwrap());
+        let key = FileKey {
+            source: Source::Commit(blob.unwrap().trim().to_owned().into()),
+            path: "a.rs".into(),
+        };
+        assert!(GitCli.versions(&repo.path(), &key, None).is_err());
+    }
+
+    #[test]
     fn writing_a_file_replaces_its_text_and_reads_back() {
         let repo = Repo::new();
         repo.write("a.rs", "old\n");
