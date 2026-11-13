@@ -89,12 +89,17 @@ pub(crate) fn status_paths(output: &[u8]) -> Vec<PathBuf> {
         .collect()
 }
 
-pub(crate) const UNCOMMITTED: &[&str] =
-    &["status", "--porcelain=v2", "-z", "--untracked-files=all"];
+pub(crate) const UNCOMMITTED: &[&str] = &[
+    "status",
+    "--porcelain=v2",
+    "-z",
+    "--untracked-files=all",
+    "--find-renames",
+];
 
 /// Reads `UNCOMMITTED`: each changed file, with no line counts yet.
 pub(crate) fn uncommitted(output: &[u8]) -> Vec<FileChange> {
-    let mut files = Vec::new();
+    let mut files: Vec<FileChange> = Vec::new();
     let mut fields = output.split(|&byte| byte == 0);
     while let Some(entry) = fields.next() {
         let (kind, rest) = (entry.first(), entry.get(2..).unwrap_or_default());
@@ -120,7 +125,16 @@ pub(crate) fn uncommitted(output: &[u8]) -> Vec<FileChange> {
             Some(b'u') => {
                 nth_rest(rest, 9).map(|path| file(path, None, None, Some(FileStatus::Conflicted)))
             }
-            Some(b'?') => Some(file(rest, None, None, Some(FileStatus::Untracked))),
+            Some(b'?') => {
+                // `git rm --cached` lists a file as deleted and untracked both. It's one file.
+                let path = path_from(rest);
+                if let Some(deleted) = files.iter_mut().find(|file| file.path == path) {
+                    deleted.worktree = Some(FileStatus::Untracked);
+                    None
+                } else {
+                    Some(file(rest, None, None, Some(FileStatus::Untracked)))
+                }
+            }
             _ => None,
         };
         files.extend(file);
@@ -229,12 +243,11 @@ pub(crate) const LOG: &[&str] = &[
     "-M",
     "--raw",
     "--numstat",
-    "--format=%x1e%H%x1f%h%x1f%s%x1f%b",
+    "--format=%x1e%H%x1f%s%x1f%b",
 ];
 
 pub(crate) struct LoggedCommit {
     pub sha: String,
-    pub short_sha: String,
     pub title: String,
     pub description: Option<String>,
     pub files: Vec<FileChange>,
@@ -257,12 +270,10 @@ pub(crate) fn log(output: &[u8]) -> Vec<LoggedCommit> {
                     .into()
             };
             let sha: Option<String> = text();
-            let short_sha = text()?;
             let title = text()?;
             let description: Option<String> = text().filter(|body: &String| !body.is_empty());
             Some(LoggedCommit {
                 sha: sha?,
-                short_sha,
                 title,
                 description,
                 files: logged_files(record.get(header_end + 1..).unwrap_or_default()),
@@ -275,6 +286,7 @@ pub(crate) fn log(output: &[u8]) -> Vec<LoggedCommit> {
 /// or copy its old and new paths, followed by the `--numstat` entries for the same files.
 fn logged_files(entries: &[u8]) -> Vec<FileChange> {
     let mut files: Vec<FileChange> = Vec::new();
+    let mut by_path = HashMap::new();
     let mut fields = entries.split(|&byte| byte == 0);
     while let Some(field) = fields.next() {
         let field = field.trim_ascii_start();
@@ -290,12 +302,13 @@ fn logged_files(entries: &[u8]) -> Vec<FileChange> {
                 break;
             };
             let from = from.filter(|_| letter == b'R');
+            by_path.insert(path_from(path), files.len());
             files.push(file(path, from, status(letter), None));
         } else if let Some(((added, removed), path)) = numstat(field, &mut fields)
-            && let Some(file) = files.iter_mut().find(|file| file.path == path)
+            && let Some(&index) = by_path.get(&path)
         {
-            file.added = added;
-            file.removed = removed;
+            files[index].added = added;
+            files[index].removed = removed;
         }
     }
     files
@@ -380,6 +393,15 @@ mod tests {
     }
 
     #[test]
+    fn uncommitted_lists_a_file_removed_from_the_index_once() {
+        let output = b"1 D. N... 100644 000000 100644 aaaa 0000 f.rs ? f.rs ";
+        let files = uncommitted(output);
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].index, Some(FileStatus::Deleted));
+        assert_eq!(files[0].worktree, Some(FileStatus::Untracked));
+    }
+
+    #[test]
     fn line_counts_reads_renames_and_binary_files() {
         let output = b"3\t1\tsrc/a.rs\0\
             0\t0\t\0old.rs\0new.rs\0\
@@ -392,17 +414,17 @@ mod tests {
 
     #[test]
     fn log_reads_each_commit_with_its_files() {
-        let output = b"\x1eaaaa\x1fa1\x1fsecond\x1fbody line\n\0\n\
+        let output = b"\x1eaaaa\x1fsecond\x1fbody line\n\0\n\
             :100644 100644 587be6b 587be6b R100\0g\0h\0\
             :100644 100644 1111111 2222222 M\0f\0\
             0\t0\t\0g\0h\0\
             2\t1\tf\0\
-            \x1ebbbb\x1fb2\x1ffirst\x1f\0\n\
+            \x1ebbbb\x1ffirst\x1f\0\n\
             :000000 100644 0000000 de98044 A\0f\0\
             3\t0\tf\0";
         let commits = log(output);
         assert_eq!(commits.len(), 2);
-        assert_eq!(commits[0].short_sha, "a1");
+        assert_eq!(commits[0].sha, "aaaa");
         assert_eq!(commits[0].description.as_deref(), Some("body line"));
         assert_eq!(commits[1].description, None);
         let second = &commits[0].files;

@@ -395,6 +395,40 @@ mod tests {
     }
 
     #[test]
+    fn a_local_base_behind_its_remote_lends_no_commits() {
+        let repo = Repo::new();
+        repo.write("a.rs", "a\n");
+        repo.commit_all("on main");
+        repo.run(&["checkout", "-q", "-b", "feat"]);
+        repo.commit_all_empty("fetched to origin/main");
+        repo.run(&["update-ref", "refs/remotes/origin/main", "HEAD"]);
+        repo.run(&[
+            "symbolic-ref",
+            "refs/remotes/origin/HEAD",
+            "refs/remotes/origin/main",
+        ]);
+        repo.commit_all_empty("on feat");
+        let titles: Vec<_> = repo
+            .changes()
+            .commits
+            .iter()
+            .map(|commit| commit.title.to_string())
+            .collect();
+        assert_eq!(titles, ["on feat"]);
+    }
+
+    #[test]
+    fn a_file_removed_from_the_index_is_listed_once_as_untracked() {
+        let repo = Repo::new();
+        repo.write("a.rs", "a\nb\n");
+        repo.commit_all("on main");
+        repo.run(&["rm", "-q", "--cached", "a.rs"]);
+        let changes = repo.changes();
+        assert_eq!(changes.uncommitted.len(), 1);
+        assert_eq!(changes.uncommitted[0].worktree, Some(FileStatus::Untracked));
+    }
+
+    #[test]
     fn the_base_branch_itself_has_no_base() {
         let repo = Repo::new();
         repo.write("a.rs", "a\n");

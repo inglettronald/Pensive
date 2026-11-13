@@ -153,6 +153,7 @@ pub struct FileKey {
 
 #[derive(Clone, Debug)]
 pub struct Commit {
+    /// In full, since a short one can become ambiguous.
     pub sha: SharedString,
     pub title: SharedString,
     pub description: Option<SharedString>,
@@ -160,6 +161,11 @@ pub struct Commit {
     pub pushed: bool,
     /// Each file's change sits on its `index` side, so it shows as staged: all of it is in.
     pub files: Vec<FileChange>,
+}
+
+/// How a commit's `sha` shows.
+pub fn short_sha(sha: &str) -> &str {
+    sha.get(..7).unwrap_or(sha)
 }
 
 /// The branch this one started from.

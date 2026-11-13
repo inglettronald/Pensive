@@ -2,7 +2,7 @@
 
 use components::{Breadcrumb, Diff, DiffLine, DiffStat, Icon, IconName};
 use gpui::{AnyElement, Context, div, prelude::*, px};
-use model::{FileChange, FileDiff, Hunk, LineChange, Source};
+use model::{FileChange, FileDiff, Hunk, LineChange, Source, short_sha};
 use theme::{ActiveTheme, Typeset};
 
 use super::ProjectView;
@@ -98,7 +98,7 @@ impl ProjectView {
                         div()
                             .font_family(theme.fonts.code.clone())
                             .text_color(colors.text_muted)
-                            .child(sha.clone()),
+                            .child(short_sha(sha).to_owned()),
                     )
                     .into_any_element(),
             );

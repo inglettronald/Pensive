@@ -14,7 +14,7 @@ mod projects;
 pub use backend::Backend;
 pub use changes::{
     Base, Changes, Commit, FileChange, FileKey, FileStatus, Hunk, HunkLine, LineChange, Source,
-    Staging, Symbol, SymbolKind, Upstream,
+    Staging, Symbol, SymbolKind, Upstream, short_sha,
 };
 pub use config::{ConfigBackend, ConfigEvent, ConfigFiles};
 pub use diff::{FileDiff, FileVersions, Version};

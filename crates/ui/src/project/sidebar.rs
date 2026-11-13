@@ -6,7 +6,7 @@ use components::{
     StatusRing, TimelineLine, TimelineNode, TimelineRow,
 };
 use gpui::{AnyElement, App, Context, SharedString, Window, deferred, div, prelude::*, px};
-use model::{Changes, Commit, Staging};
+use model::{Changes, Commit, Staging, short_sha};
 use strum::VariantArray;
 use theme::{ActiveTheme, Typeset};
 
@@ -347,7 +347,7 @@ impl ProjectView {
                     .typeset(density.small)
                     .line_height(density.body.line_height)
                     .text_color(colors.text_faint)
-                    .child(commit.sha.clone()),
+                    .child(short_sha(&commit.sha).to_owned()),
             );
 
         TimelineRow::new()

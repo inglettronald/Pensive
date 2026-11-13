@@ -3,7 +3,9 @@
 use std::{collections::HashSet, ffi::OsString, fs, io, path::Path};
 
 use anyhow::{Context as _, Result};
-use model::{Base, Changes, Commit, FileChange, FileKey, FileVersions, Source, Upstream, Version};
+use model::{
+    Base, Changes, Commit, FileChange, FileKey, FileStatus, FileVersions, Source, Upstream, Version,
+};
 
 use crate::{command::git, parse};
 
@@ -38,18 +40,23 @@ pub(crate) fn changes(worktree: &Path) -> Result<Changes> {
         None => None,
     };
     let limit = format!("--max-count={MAX_COMMITS}");
-    let range = match &base {
-        Some((_, reference)) => format!("{reference}..{head}"),
-        None => head,
-    };
-    let args = [parse::LOG, &[&limit, &range, "--"]].concat();
+    let mut range = vec![limit, head];
+    if let Some((_, references)) = &base {
+        range.extend(references.iter().map(|reference| format!("^{reference}")));
+    }
+    range.push("--".to_owned());
+    let args = [
+        parse::LOG,
+        &range.iter().map(String::as_str).collect::<Vec<_>>(),
+    ]
+    .concat();
     let commits = parse::log(&git(worktree, &args)?)
         .into_iter()
         .map(|logged| Commit {
             pushed: unpushed
                 .as_ref()
                 .is_some_and(|unpushed| !unpushed.contains(&logged.sha)),
-            sha: logged.short_sha.into(),
+            sha: logged.sha.into(),
             title: logged.title.into(),
             description: logged.description.map(Into::into),
             files: logged.files,
@@ -79,8 +86,12 @@ fn uncommitted(worktree: &Path, has_head: bool) -> Result<Vec<FileChange>> {
     )?);
     for file in &mut files {
         (file.added, file.removed) = match counts.get(&file.path) {
-            Some(&count) => count,
-            None => (untracked_lines(&worktree.join(&file.path)), 0),
+            Some(&count)
+                if file.index.is_some() || file.worktree != Some(FileStatus::Untracked) =>
+            {
+                count
+            }
+            _ => (untracked_lines(&worktree.join(&file.path)), 0),
         };
     }
     Ok(files)
@@ -142,14 +153,14 @@ fn tracking(worktree: &Path, branch: &str) -> Result<Option<Tracking>> {
     }))
 }
 
-/// The branch this one started from, as its name and the ref to compare with, or `None` on that
-/// branch itself. It's the remote's default branch, or failing that `main` or `master`, and the
-/// local branch is preferred over the remote one, since that's what a merge would land on.
+/// The branch this one started from, as its name and the refs whose commits aren't this branch's,
+/// or `None` on that branch itself. It's the remote's default branch, or failing that `main` or
+/// `master`. Both its local and remote refs count, since either may be behind the other.
 fn base(
     worktree: &Path,
     branch: Option<&str>,
     tracking: Option<&Tracking>,
-) -> Result<Option<(String, String)>> {
+) -> Result<Option<(String, Vec<String>)>> {
     let remote = tracking.map_or("origin", |tracking| tracking.remote.as_str());
     let remote_head = format!("refs/remotes/{remote}/HEAD");
     let default = text(git(worktree, &["symbolic-ref", "-q", &remote_head]).ok())
@@ -171,8 +182,10 @@ fn base(
     if branch == Some(name.as_str()) {
         return Ok(None);
     }
-    let reference = resolve(worktree, &format!("refs/heads/{name}")).unwrap_or(remote_ref);
-    Ok(Some((name, reference)))
+    let mut references = vec![remote_ref];
+    references.extend(resolve(worktree, &format!("refs/heads/{name}")));
+    references.dedup();
+    Ok(Some((name, references)))
 }
 
 /// `reference` if it exists.
@@ -191,14 +204,8 @@ pub(crate) fn versions(
     Ok(match &key.source {
         Source::Uncommitted => FileVersions {
             old: blob(worktree, "HEAD", old_path)?,
-            new: match fs::read(worktree.join(&key.path)) {
-                Ok(bytes) => Version::from_bytes(bytes),
-                Err(error) if error.kind() == io::ErrorKind::NotFound => Version::Missing,
-                Err(error) => {
-                    return Err(error)
-                        .with_context(|| format!("couldn't read {}", key.path.display()));
-                }
-            },
+            new: on_disk(&worktree.join(&key.path))
+                .with_context(|| format!("couldn't read {}", key.path.display()))?,
         },
         Source::Commit(sha) => FileVersions {
             old: blob(worktree, &format!("{sha}^"), old_path)?,
@@ -207,33 +214,47 @@ pub(crate) fn versions(
     })
 }
 
+/// The file at `path` in the worktree. A submodule or nested repository is a folder, with no text
+/// of its own, so it's missing.
+fn on_disk(path: &Path) -> io::Result<Version> {
+    if path.is_dir() {
+        return Ok(Version::Missing);
+    }
+    match fs::read(path) {
+        Ok(bytes) => Ok(Version::from_bytes(bytes)),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(Version::Missing),
+        Err(error) => Err(error),
+    }
+}
+
 /// The file at `path` in commit `revision`, as checkout would write it, so its line endings
-/// match the worktree's.
+/// match the worktree's. A submodule there is a commit, not a file, so it's missing.
 fn blob(worktree: &Path, revision: &str, path: &Path) -> Result<Version> {
-    let mut object = OsString::from(format!("{revision}:"));
-    object.push(path);
-    let found = git(
+    let listed = git(
         worktree,
         &[
-            OsString::from("rev-parse"),
-            "-q".into(),
-            "--verify".into(),
-            object,
+            OsString::from("ls-tree"),
+            "-z".into(),
+            "--full-tree".into(),
+            "--format=%(objecttype) %(objectname)".into(),
+            revision.into(),
+            "--".into(),
+            path.into(),
         ],
     );
-    let Some(id) = text(found.ok()) else {
+    let id = listed.ok().and_then(|listed| {
+        let entry = listed.split(|&byte| byte == 0).next()?;
+        let id = entry.strip_prefix(b"blob ")?;
+        Some(OsString::from(String::from_utf8_lossy(id).into_owned()))
+    });
+    let Some(id) = id else {
         return Ok(Version::Missing);
     };
     let mut path_arg = OsString::from("--path=");
     path_arg.push(path);
     let content = git(
         worktree,
-        &[
-            OsString::from("cat-file"),
-            "--filters".into(),
-            path_arg,
-            id.into(),
-        ],
+        &[OsString::from("cat-file"), "--filters".into(), path_arg, id],
     )?;
     Ok(Version::from_bytes(content))
 }
