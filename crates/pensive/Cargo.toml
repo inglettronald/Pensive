@@ -32,6 +32,7 @@ log.workspace = true
 demo = ["ui/mocks", "dep:image", "dep:mock"]
 
 [dev-dependencies]
+gpui = { workspace = true, features = ["test-support"] }
 mock.workspace = true
 ui = { workspace = true, features = ["mocks"] }
 

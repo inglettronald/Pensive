@@ -510,7 +510,46 @@ impl Render for PaletteView {
 
 #[cfg(test)]
 mod tests {
+    use gpui::{TestAppContext, VisualTestContext};
+    use model::fixtures;
+
     use super::*;
+
+    /// The palette alone in a window, on the sample projects, with its input focused.
+    fn palette_window(cx: &mut TestAppContext) -> (Entity<PaletteView>, &mut VisualTestContext) {
+        crate::test_support::init(cx);
+        let projects = cx.new(|_| fixtures::projects());
+        let (view, cx) = cx.add_window_view(|_, cx| PaletteView::new(projects, cx));
+        view.update_in(cx, |view, window, cx| {
+            window.focus(&view.focus_handle(cx), cx)
+        });
+        cx.run_until_parked();
+        (view, cx)
+    }
+
+    #[gpui::test]
+    fn arrow_keys_move_the_selection_and_wrap(cx: &mut TestAppContext) {
+        let (view, cx) = palette_window(cx);
+        let selected = |cx: &mut VisualTestContext| view.read_with(cx, |view, _| view.selected);
+        cx.simulate_keystrokes("down down up");
+        assert_eq!(selected(cx), 1);
+        cx.simulate_keystrokes("up up");
+        let count = view.update(cx, |view, cx| view.results(cx).into_items().count());
+        assert_eq!(selected(cx), count - 1);
+    }
+
+    #[gpui::test]
+    fn tab_and_shift_tab_cycle_the_tabs(cx: &mut TestAppContext) {
+        let (view, cx) = palette_window(cx);
+        let tab = |cx: &mut VisualTestContext| view.read_with(cx, |view, _| view.tab);
+        let first = tab(cx);
+        cx.simulate_keystrokes("tab");
+        assert_ne!(tab(cx), first);
+        cx.simulate_keystrokes("shift-tab");
+        assert_eq!(tab(cx), first);
+        cx.simulate_keystrokes("shift-tab");
+        assert_eq!(tab(cx), *Tab::ALL.last().unwrap());
+    }
 
     #[test]
     fn a_typed_keyword_becomes_a_chip_and_keeps_the_rest() {

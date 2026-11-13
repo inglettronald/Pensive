@@ -1234,10 +1234,7 @@ mod tests {
         path: &str,
         cx: &'a mut TestAppContext,
     ) -> (Entity<Editor>, Arc<FakeGit>, &'a mut VisualTestContext) {
-        cx.update(|cx| {
-            theme::init(cx);
-            crate::init(cx);
-        });
+        crate::test_support::init(cx);
         let git = Arc::new(FakeGit::default());
         let projects = cx.new(|_| Projects::new(git.clone()));
         let key = FileKey {

@@ -613,28 +613,11 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
 
 #[cfg(test)]
 mod tests {
-    use gpui::{Modifiers, Pixels, Point, TestAppContext, VisualTestContext, point};
-    use model::fixtures::{self, PENSIVE};
+    use gpui::{TestAppContext, VisualTestContext, point};
+    use model::fixtures::HARBOR;
 
     use super::*;
-
-    /// A window on pensive, laid out and idle.
-    fn pensive_window(cx: &mut TestAppContext) -> (Entity<Pensive>, &mut VisualTestContext) {
-        cx.update(|cx| {
-            theme::init(cx);
-            crate::init(cx);
-        });
-        let projects = cx.new(|_| fixtures::projects());
-        let (view, cx) =
-            cx.add_window_view(|window, cx| Pensive::new(projects, Some(PENSIVE), window, cx));
-        cx.run_until_parked();
-        (view, cx)
-    }
-
-    fn click(cx: &mut VisualTestContext, position: Point<Pixels>) {
-        cx.simulate_mouse_move(position, None, Modifiers::none());
-        cx.simulate_click(position, Modifiers::none());
-    }
+    use crate::test_support::{click, pensive_window};
 
     fn palette_open(view: &Entity<Pensive>, cx: &mut VisualTestContext) -> bool {
         view.read_with(cx, |pensive, _| pensive.palette_open)
@@ -662,6 +645,17 @@ mod tests {
             cx.simulate_keystrokes("escape");
             assert!(!palette_open(&view, cx));
         }
+    }
+
+    #[gpui::test]
+    fn typing_a_project_and_pressing_enter_opens_it(cx: &mut TestAppContext) {
+        let (view, cx) = pensive_window(cx);
+        cx.dispatch_action(OpenPalette);
+        cx.simulate_input("harbor");
+        cx.simulate_keystrokes("enter");
+        assert!(!palette_open(&view, cx));
+        let project = view.read_with(cx, |pensive, _| pensive.project_id());
+        assert_eq!(project, Some(HARBOR));
     }
 
     #[gpui::test]

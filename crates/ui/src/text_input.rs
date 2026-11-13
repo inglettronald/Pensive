@@ -718,3 +718,60 @@ impl Focusable for TextInput {
         self.focus_handle.clone()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use gpui::{TestAppContext, VisualTestContext};
+
+    use super::*;
+    use crate::test_support::secondary;
+
+    fn input_window(cx: &mut TestAppContext) -> (Entity<TextInput>, &mut VisualTestContext) {
+        crate::test_support::init(cx);
+        let (input, cx) = cx.add_window_view(|_, cx| TextInput::new(cx));
+        input.update_in(cx, |input, window, cx| {
+            window.focus(&input.focus_handle(cx), cx)
+        });
+        (input, cx)
+    }
+
+    fn text(input: &Entity<TextInput>, cx: &mut VisualTestContext) -> String {
+        input.read_with(cx, |input, _| input.text().to_string())
+    }
+
+    #[gpui::test]
+    fn select_all_cut_and_paste_go_through_the_clipboard(cx: &mut TestAppContext) {
+        let (input, cx) = input_window(cx);
+        cx.simulate_input("pensive");
+        cx.simulate_keystrokes(&format!("{} {}", secondary("a"), secondary("x")));
+        assert_eq!(text(&input, cx), "");
+        let copied = cx.read_from_clipboard().and_then(|item| item.text());
+        assert_eq!(copied.as_deref(), Some("pensive"));
+
+        cx.simulate_keystrokes(&format!("{} {}", secondary("v"), secondary("v")));
+        assert_eq!(text(&input, cx), "pensivepensive");
+    }
+
+    #[gpui::test]
+    fn arrows_backspace_and_delete_edit_around_the_cursor(cx: &mut TestAppContext) {
+        let (input, cx) = input_window(cx);
+        cx.simulate_input("abcd");
+        cx.simulate_keystrokes("left left backspace");
+        assert_eq!(text(&input, cx), "acd");
+        cx.simulate_keystrokes("delete");
+        assert_eq!(text(&input, cx), "ad");
+        cx.simulate_keystrokes("home");
+        cx.simulate_input("x");
+        cx.simulate_keystrokes("end");
+        cx.simulate_input("y");
+        assert_eq!(text(&input, cx), "xady");
+    }
+
+    #[gpui::test]
+    fn a_pasted_line_break_becomes_a_space(cx: &mut TestAppContext) {
+        let (input, cx) = input_window(cx);
+        cx.write_to_clipboard(ClipboardItem::new_string("one\ntwo".into()));
+        cx.simulate_keystrokes(&secondary("v"));
+        assert_eq!(text(&input, cx), "one two");
+    }
+}
