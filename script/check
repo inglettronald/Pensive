@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Runs the checks CI runs and prints one line for each, then the output of any that failed.
+set -uo pipefail
+
+cd "$(dirname "$0")/.."
+log_dir=$(mktemp -d)
+trap 'rm -rf "$log_dir"' EXIT
+
+failed=()
+step() {
+  local name=$1
+  shift
+  if "$@" >"$log_dir/$name" 2>&1; then
+    echo "ok      $name"
+  else
+    echo "FAILED  $name"
+    failed+=("$name")
+  fi
+}
+
+step fmt cargo fmt --check
+step clippy cargo clippy --all-targets --all-features -- -D warnings
+step test cargo test --no-fail-fast
+
+for name in "${failed[@]}"; do
+  echo
+  echo "── $name, last 40 lines ──"
+  tail -n 40 "$log_dir/$name"
+done
+[ ${#failed[@]} -eq 0 ]
