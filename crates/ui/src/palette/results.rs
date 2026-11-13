@@ -2,19 +2,16 @@
 
 use std::{ops::Range, time::Duration};
 
-use components::{
-    IconName, KeyHint, Leading, PaletteEntry, SegmentedControl, Select, Toggle, TrailingText,
-};
-use gpui::{IntoElement, SharedString};
+use components::{IconName, KeyHint, Leading, PaletteEntry, TrailingText};
+use gpui::SharedString;
 use model::{Project, ProjectId, Projects, Work, WorkKind};
 use settings::{AnySetting, ControlState};
 
-use crate::age::age;
+use crate::{age::age, fuzzy::Fuzzy, setting_control::setting_control};
 
 use super::{
     Action, Keyword, Tab,
     commands::{Command, Listed, commands},
-    fuzzy::Fuzzy,
     options::days_label,
 };
 
@@ -34,7 +31,7 @@ pub(crate) struct Query<'a> {
     pub active_days: u32,
 }
 
-/// A setting, the section it's listed under, and what its control shows now.
+/// A setting, the category it's listed under, and what its control shows now.
 pub(crate) struct SettingRow {
     pub section: &'static str,
     pub setting: &'static dyn AnySetting,
@@ -534,26 +531,10 @@ fn project_item(query: &Query, project: &Project, matches: Vec<Range<usize>>) ->
 fn setting_item(row: &SettingRow, matches: Vec<Range<usize>>) -> Item {
     let setting = row.setting;
     let id = setting.key();
-    let change = KeyHint::new("←→", "Change");
-    let (control, hint) = match &row.state {
-        ControlState::Toggle(on) => (
-            Toggle::new(id, *on)
-                .on_change(move |_, _, cx| setting.step(1, cx))
-                .into_any_element(),
-            KeyHint::new("Enter", "Toggle"),
-        ),
-        ControlState::Segmented { labels, selected } => (
-            SegmentedControl::new(id, labels.clone(), *selected)
-                .on_select(move |index, _, cx| setting.choose(index, cx))
-                .into_any_element(),
-            change,
-        ),
-        ControlState::Select { label } => (
-            Select::new(id, label.clone())
-                .on_click(move |_, cx| setting.step(1, cx))
-                .into_any_element(),
-            change,
-        ),
+    let control = setting_control(setting, &row.state);
+    let hint = match &row.state {
+        ControlState::Toggle(_) => KeyHint::new("Enter", "Toggle"),
+        _ => KeyHint::new("←→", "Change"),
     };
     Item {
         entry: PaletteEntry::new(setting.name())
@@ -680,7 +661,7 @@ mod tests {
         let rows: Vec<SettingRow> = [&SHOW_TABS as &dyn AnySetting, &SCRIM, &ACTIVE_DAYS]
             .into_iter()
             .map(|setting| SettingRow {
-                section: "Palette",
+                section: "Command palette",
                 setting,
                 state: ControlState::Toggle(true),
             })
@@ -690,8 +671,8 @@ mod tests {
             settings: &rows,
             ..query(&projects, Tab::All, Some(&keyword), text)
         };
-        assert_eq!(labels(results(&search(""))), ["Palette (3)"]);
-        assert_eq!(labels(results(&search("scrim"))), ["Palette (1)"]);
+        assert_eq!(labels(results(&search(""))), ["Command palette (3)"]);
+        assert_eq!(labels(results(&search("scrim"))), ["Command palette (1)"]);
         let first = results(&search("scrim")).into_items().next().unwrap();
         assert_eq!(first.action, Action::Step("palette.scrim"));
     }

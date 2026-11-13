@@ -1,4 +1,4 @@
-//! Fuzzy matching for the palette's query, returning the matched letters as byte ranges.
+//! Fuzzy matching for a search, returning the matched letters as byte ranges.
 
 use std::ops::Range;
 

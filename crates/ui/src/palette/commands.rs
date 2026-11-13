@@ -150,7 +150,7 @@ pub(crate) fn commands(current_branch: Option<&SharedString>) -> Vec<(Listed, Co
                 "Settings",
                 Some("Ctrl ,"),
                 "Pensive",
-                Action::None,
+                Action::OpenSettings,
             ),
         ),
     ]);

@@ -99,6 +99,10 @@ fn render_headless<V: Render>(
     cx.update(theme::init);
     let window = cx.open_window(size, build_root)?;
     cx.run_until_parked();
+    // The app draws again on the next frame, and some views finish setting up there once their
+    // first layout is measured, such as scrolling to a heading. The mock draws that frame too.
+    cx.update_window(window.into(), |_, window, cx| window.draw(cx).clear(cx))?;
+    cx.run_until_parked();
     cx.capture_screenshot(window.into()).map(Some)
 }
 

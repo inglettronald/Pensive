@@ -1,7 +1,6 @@
 //! The command palette's view: the query, tab, keyword and selection, and what the keys do.
 
 mod commands;
-mod fuzzy;
 mod options;
 mod results;
 
@@ -120,6 +119,7 @@ pub(crate) enum Action {
     ClearKeyword,
     /// Flips the setting with this key, or moves it to its next choice.
     Step(&'static str),
+    OpenSettings,
     /// Not wired up yet.
     None,
 }
@@ -129,6 +129,7 @@ pub enum PaletteEvent {
         project: ProjectId,
         new_window: bool,
     },
+    OpenSettings,
     Dismiss,
 }
 
@@ -243,8 +244,8 @@ impl PaletteView {
             .try_global::<Settings>()
             .into_iter()
             .flat_map(Settings::declared)
-            .map(|(section, setting)| SettingRow {
-                section,
+            .map(|(page, setting)| SettingRow {
+                section: page.category,
                 setting,
                 state: setting.state(cx),
             })
@@ -340,6 +341,7 @@ impl PaletteView {
             }
             Action::ClearKeyword => self.set_keyword(None, cx),
             Action::Step(key) => self.step_setting(key, 1, cx),
+            Action::OpenSettings => cx.emit(PaletteEvent::OpenSettings),
             Action::None => {}
         }
     }

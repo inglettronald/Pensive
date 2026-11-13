@@ -6,6 +6,19 @@ use serde::{Serialize, de::DeserializeOwned};
 
 use crate::Settings;
 
+/// Where a setting is listed: a category, such as Appearance, and a page within it, such as Fonts.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Page {
+    pub category: &'static str,
+    pub name: &'static str,
+}
+
+impl Page {
+    pub const fn new(category: &'static str, name: &'static str) -> Self {
+        Self { category, name }
+    }
+}
+
 /// A setting, declared as a `static` in the crate that reads it.
 pub struct Setting<T: 'static> {
     /// Its dotted path in `settings.toml`, like `palette.show_tabs`.
@@ -69,6 +82,25 @@ impl<T: Clone + PartialEq + Serialize + DeserializeOwned + Sync> Setting<T> {
         Settings::update_global(cx, |settings, _| settings.edit(self.key, value));
     }
 
+    /// What a control shows for `value`: a choice's label, On or Off, or the value as written.
+    fn label(&self, value: &T, cx: &App) -> SharedString {
+        if let Control::Toggle = self.control {
+            return if as_bool(value) { "On" } else { "Off" }.into();
+        }
+        match self
+            .choices(cx)
+            .into_iter()
+            .find(|choice| choice.value == *value)
+        {
+            Some(choice) => choice.label,
+            None => match toml::Value::try_from(value) {
+                Ok(toml::Value::String(text)) => text.into(),
+                Ok(value) => value.to_string().into(),
+                Err(_) => SharedString::default(),
+            },
+        }
+    }
+
     fn choices(&self, cx: &App) -> Vec<Choice<T>> {
         match self.control {
             Control::Toggle => Vec::new(),
@@ -87,6 +119,10 @@ pub trait AnySetting: Sync {
     fn step(&self, step: isize, cx: &mut App);
     /// Picks the choice at `index`.
     fn choose(&self, index: usize, cx: &mut App);
+    /// The default's label, when the setting holds something else.
+    fn changed_from(&self, cx: &App) -> Option<SharedString>;
+    /// Goes back to the default, which removes the key from the file.
+    fn reset(&self, cx: &mut App);
     /// Whether `value` can be this setting's value, and why not.
     fn check(&self, value: &toml::Value) -> Result<(), String>;
 }
@@ -115,14 +151,7 @@ impl<T: Clone + PartialEq + Serialize + DeserializeOwned + Sync> AnySetting for 
                 selected,
             },
             Control::Select(_) => ControlState::Select {
-                label: match selected {
-                    Some(index) => choices[index].label.clone(),
-                    None => match toml::Value::try_from(value) {
-                        Ok(toml::Value::String(text)) => text.into(),
-                        Ok(value) => value.to_string().into(),
-                        Err(_) => SharedString::default(),
-                    },
-                },
+                label: self.label(&value, cx),
             },
         }
     }
@@ -149,6 +178,14 @@ impl<T: Clone + PartialEq + Serialize + DeserializeOwned + Sync> AnySetting for 
         if let Some(choice) = self.choices(cx).into_iter().nth(index) {
             self.set(choice.value, cx);
         }
+    }
+
+    fn changed_from(&self, cx: &App) -> Option<SharedString> {
+        (self.get(cx) != self.default).then(|| self.label(&self.default, cx))
+    }
+
+    fn reset(&self, cx: &mut App) {
+        self.set(self.default.clone(), cx);
     }
 
     fn check(&self, value: &toml::Value) -> Result<(), String> {
