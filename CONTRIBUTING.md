@@ -82,9 +82,10 @@ Then point your debugger at `target/debug-deps/pensive` (`pensive.exe` on Window
 
 ## Before opening a pull request
 
-CI rejects formatting differences and any compiler or clippy warning. To run the same checks locally:
+CI rejects formatting differences, any compiler or clippy warning, and failing tests. To run the same checks locally:
 
 ```sh
 cargo fmt --check
-cargo clippy --all-targets -- -D warnings
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test
 ```
