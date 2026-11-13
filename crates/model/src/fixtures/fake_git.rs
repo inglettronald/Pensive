@@ -1,5 +1,5 @@
 //! A `GitBackend` that answers from the sample repositories instead of running Git, and keeps
-//! saved files in memory.
+//! saved files and staging in memory.
 
 use std::{
     collections::HashMap,
@@ -16,6 +16,8 @@ pub struct FakeGit {
     repositories: Vec<Repository>,
     /// Files written in pensive's main worktree, by path, over the samples.
     saved: Mutex<HashMap<PathBuf, String>>,
+    /// Files staged or unstaged in pensive's main worktree, by path, over the samples.
+    staged: Mutex<HashMap<PathBuf, bool>>,
 }
 
 impl Default for FakeGit {
@@ -26,6 +28,7 @@ impl Default for FakeGit {
                 .map(|(repository, _)| repository)
                 .collect(),
             saved: Mutex::default(),
+            staged: Mutex::default(),
         }
     }
 }
@@ -56,14 +59,18 @@ impl GitBackend for FakeGit {
             })
     }
 
-    /// The sample changes in pensive's main worktree, and none in any other sample worktree.
+    /// The sample changes in pensive's main worktree, as staged since, and none in any other
+    /// sample worktree.
     fn changes(&self, worktree: &Path) -> Result<Changes> {
         self.repository(worktree)?;
-        Ok(if worktree == Path::new(super::PENSIVE_ROOT) {
-            super::changes()
-        } else {
-            Changes::default()
-        })
+        if worktree != Path::new(super::PENSIVE_ROOT) {
+            return Ok(Changes::default());
+        }
+        let mut changes = super::changes();
+        for (path, staged) in self.staged.lock().expect("not poisoned").iter() {
+            changes.set_staged(path, *staged);
+        }
+        Ok(changes)
     }
 
     fn versions(
@@ -100,6 +107,15 @@ impl GitBackend for FakeGit {
             .lock()
             .expect("not poisoned")
             .insert(path.to_path_buf(), text.to_owned());
+        Ok(())
+    }
+
+    fn set_staged(&self, worktree: &Path, paths: &[PathBuf], staged: bool) -> Result<()> {
+        let mut staging = self.staged.lock().expect("not poisoned");
+        for path in paths {
+            Self::sample_root(worktree, path)?;
+            staging.insert(path.clone(), staged);
+        }
         Ok(())
     }
 }

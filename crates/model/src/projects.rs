@@ -91,6 +91,9 @@ pub struct Projects {
     /// Files with a binary version, which have no lines to show.
     binary: HashSet<(PathBuf, FileKey)>,
     git: Backend<dyn GitBackend>,
+    /// The last write to Git's index. The next one waits for it, since two writes at once would
+    /// both need the index's lock.
+    staging: Option<Task<()>>,
     _saves: Vec<Subscription>,
 }
 
@@ -105,6 +108,7 @@ impl Projects {
             opening: HashSet::new(),
             binary: HashSet::new(),
             git: Backend::new(git, Origin::Git),
+            staging: None,
             _saves: Vec::new(),
         }
     }
@@ -285,8 +289,9 @@ impl Projects {
         }
     }
 
-    /// Stages or unstages one file in the cached changes. Git's index follows once a backend
-    /// writes it.
+    /// Stages all of the uncommitted file at `path`, or unstages it. The cached changes show it
+    /// at once. Then Git's index is written, after any write before it, and the changes are read
+    /// again, so they end up as Git has them even when the write fails.
     pub fn set_staged(
         &mut self,
         worktree: &Path,
@@ -294,18 +299,72 @@ impl Projects {
         staged: bool,
         cx: &mut Context<Self>,
     ) {
-        if let Some(changes) = self.changes.get_mut(worktree) {
-            changes.set_staged(path, staged);
-            cx.notify();
-        }
+        self.write_staging(worktree, vec![path.to_path_buf()], staged, cx);
     }
 
-    /// [`Self::set_staged`] for every file.
+    /// [`Self::set_staged`] for every uncommitted file.
     pub fn set_all_staged(&mut self, worktree: &Path, staged: bool, cx: &mut Context<Self>) {
-        if let Some(changes) = self.changes.get_mut(worktree) {
-            changes.set_all_staged(staged);
-            cx.notify();
+        let paths = self.changes(worktree).map_or_else(Vec::new, |changes| {
+            changes
+                .uncommitted
+                .iter()
+                .map(|file| file.path.clone())
+                .collect()
+        });
+        self.write_staging(worktree, paths, staged, cx);
+    }
+
+    fn write_staging(
+        &mut self,
+        worktree: &Path,
+        paths: Vec<PathBuf>,
+        staged: bool,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(changes) = self.changes.get_mut(worktree) else {
+            return;
+        };
+        let mut pathspecs = Vec::new();
+        for path in paths {
+            changes.set_staged(&path, staged);
+            // A rename is staged or unstaged with the path it came from.
+            if let Some(from) = changes
+                .file(&path)
+                .and_then(|file| file.renamed_from.clone())
+            {
+                pathspecs.push(from);
+            }
+            pathspecs.push(path);
         }
+        cx.notify();
+
+        let title = if staged {
+            "Couldn't stage"
+        } else {
+            "Couldn't unstage"
+        };
+        let worktree = worktree.to_path_buf();
+        let previous = self.staging.take();
+        self.staging = Some(cx.spawn(async move |this, cx| {
+            if let Some(previous) = previous {
+                previous.await;
+            }
+            let path = worktree.clone();
+            let Ok(write) = this.update(cx, |this, cx| {
+                this.git.call(
+                    title,
+                    move |git| git.set_staged(&path, &pathspecs, staged),
+                    cx,
+                )
+            }) else {
+                return;
+            };
+            // The backend reports a write Git refused. The read shows what Git has either way.
+            write.await.ok();
+            if let Ok(read) = this.update(cx, |this, cx| this.read_changes(worktree, cx)) {
+                read.await.ok();
+            }
+        }));
     }
 
     pub fn project(&self, id: ProjectId) -> Option<&Project> {
@@ -395,7 +454,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        Notices,
+        Notices, Staging,
         fixtures::{self, FakeGit, HARBOR},
     };
 
@@ -495,6 +554,44 @@ mod tests {
             // FakeGit has no such repository, which is a gap in the samples, not a Git failure.
             assert_eq!(held[0].notice.origin, Origin::Fixture);
         });
+    }
+
+    #[gpui::test]
+    async fn staging_is_written_to_git_and_survives_the_next_read(cx: &mut TestAppContext) {
+        let root = PathBuf::from(fixtures::PENSIVE_ROOT);
+        let projects = cx.new(|_| Projects::new(Arc::new(FakeGit::default())));
+        let staging = |cx: &mut TestAppContext, path: &Path| {
+            projects.read_with(cx, |projects, _| {
+                projects
+                    .changes(&root)
+                    .unwrap()
+                    .file(path)
+                    .unwrap()
+                    .staging()
+            })
+        };
+        projects
+            .update(cx, |projects, cx| projects.read_changes(root.clone(), cx))
+            .await
+            .unwrap();
+        let path = projects.read_with(cx, |projects, _| {
+            let changes = projects.changes(&root).unwrap();
+            let unstaged = changes.uncommitted.iter();
+            let mut unstaged = unstaged.filter(|file| file.staging() == Staging::Unstaged);
+            unstaged.next().unwrap().path.clone()
+        });
+
+        projects.update(cx, |projects, cx| {
+            projects.set_staged(&root, &path, true, cx)
+        });
+        assert_eq!(staging(cx, &path), Staging::Staged);
+        cx.run_until_parked();
+        // Saving a file reads the changes again, as here.
+        projects
+            .update(cx, |projects, cx| projects.read_changes(root.clone(), cx))
+            .await
+            .unwrap();
+        assert_eq!(staging(cx, &path), Staging::Staged);
     }
 
     #[gpui::test]
