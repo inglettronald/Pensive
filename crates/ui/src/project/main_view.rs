@@ -2,19 +2,19 @@
 
 use components::{Breadcrumb, Diff, DiffLine, DiffStat, Icon, IconName};
 use gpui::{AnyElement, Context, div, prelude::*, px};
-use model::{FileChange, LineChange};
+use model::{FileChange, FileDiff, Hunk, LineChange, Source, short_sha};
 use theme::{ActiveTheme, Typeset};
 
-use super::{ProjectView, Source};
+use super::ProjectView;
 
 impl ProjectView {
     pub(super) fn render_main_view(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let colors = &cx.theme().colors;
         let density = cx.density();
-        let selected = self
-            .selected
-            .as_ref()
-            .and_then(|key| Some((key.source.clone(), self.file(key, cx)?)));
+        let selected = self.selected.as_ref().and_then(|key| {
+            let diff = self.projects.read(cx).diff(&self.worktree, key).cloned();
+            Some((key.source.clone(), self.file(key, cx)?, diff))
+        });
         div()
             .flex()
             .flex_col()
@@ -22,7 +22,7 @@ impl ProjectView {
             .min_w_0()
             .bg(colors.surface_app)
             .map(|view| match selected {
-                Some((source, file)) => view
+                Some((source, file, diff)) => view
                     .child(
                         div()
                             .flex()
@@ -51,7 +51,20 @@ impl ProjectView {
                             .flex_1()
                             .min_h_0()
                             .overflow_y_scroll()
-                            .child(Diff::new(diff_lines(&file))),
+                            .map(|body| match diff {
+                                Some(FileDiff::Text(hunks)) => {
+                                    body.child(Diff::new(diff_lines(&hunks)))
+                                }
+                                Some(FileDiff::Binary) => body.child(
+                                    div()
+                                        .p_3()
+                                        .typeset(density.small)
+                                        .text_color(colors.text_faint)
+                                        .child("Binary file"),
+                                ),
+                                // Still being read.
+                                None => body,
+                            }),
                     ),
                 None => view.items_center().justify_center().child(
                     div()
@@ -85,7 +98,7 @@ impl ProjectView {
                         div()
                             .font_family(theme.fonts.code.clone())
                             .text_color(colors.text_muted)
-                            .child(sha.clone()),
+                            .child(short_sha(sha).to_owned()),
                     )
                     .into_any_element(),
             );
@@ -120,9 +133,9 @@ impl ProjectView {
     }
 }
 
-fn diff_lines(file: &FileChange) -> Vec<DiffLine> {
+fn diff_lines(hunks: &[Hunk]) -> Vec<DiffLine> {
     let mut lines = Vec::new();
-    for hunk in &file.hunks {
+    for hunk in hunks {
         lines.push(DiffLine::hunk(hunk.header.clone()));
         for line in &hunk.lines {
             let diff_line = match line.change {

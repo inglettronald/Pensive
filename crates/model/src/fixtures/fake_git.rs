@@ -4,7 +4,7 @@ use std::path::Path;
 
 use anyhow::Result;
 
-use crate::{Changes, FixtureGap, GitBackend, Repository};
+use crate::{Changes, FileKey, FileVersions, FixtureGap, GitBackend, Repository};
 
 #[derive(Debug)]
 pub struct FakeGit {
@@ -46,5 +46,18 @@ impl GitBackend for FakeGit {
         } else {
             Changes::default()
         })
+    }
+
+    fn versions(
+        &self,
+        worktree: &Path,
+        key: &FileKey,
+        _renamed_from: Option<&Path>,
+    ) -> Result<FileVersions> {
+        let missing = || FixtureGap(format!("{} has no sample versions", key.path.display()));
+        if worktree != Path::new(super::PENSIVE_ROOT) {
+            return Err(missing().into());
+        }
+        super::changes::versions(key).ok_or_else(|| missing().into())
     }
 }

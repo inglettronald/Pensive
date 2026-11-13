@@ -1,6 +1,7 @@
 //! How Pensive starts `git`: in a clean environment, with no prompts and no console window.
 
 use std::{
+    ffi::OsStr,
     path::Path,
     process::{Command, Stdio},
 };
@@ -52,12 +53,16 @@ pub(crate) fn command(dir: &Path) -> Command {
 }
 
 /// Runs `git -C dir args` and returns what it printed, or fails with its error output.
-pub(crate) fn git(dir: &Path, args: &[&str]) -> Result<Vec<u8>> {
+pub(crate) fn git(dir: &Path, args: &[impl AsRef<OsStr>]) -> Result<Vec<u8>> {
     let output = command(dir)
         .args(args)
         .output()
         .context("couldn't run `git`. Is Git installed?")?;
     if !output.status.success() {
+        let args: Vec<_> = args
+            .iter()
+            .map(|arg| arg.as_ref().to_string_lossy())
+            .collect();
         bail!(
             "`git {}` failed in {}: {}",
             args.join(" "),

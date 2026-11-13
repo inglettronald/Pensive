@@ -84,7 +84,6 @@ pub struct FileChange {
     pub added: usize,
     pub removed: usize,
     pub symbols: Vec<Symbol>,
-    pub hunks: Vec<Hunk>,
 }
 
 impl FileChange {
@@ -138,8 +137,23 @@ impl FileChange {
     }
 }
 
+/// Which list a file is in.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum Source {
+    Uncommitted,
+    Commit(SharedString),
+}
+
+/// A file in one of a worktree's lists, by its path.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct FileKey {
+    pub source: Source,
+    pub path: PathBuf,
+}
+
 #[derive(Clone, Debug)]
 pub struct Commit {
+    /// In full, since a short one can become ambiguous.
     pub sha: SharedString,
     pub title: SharedString,
     pub description: Option<SharedString>,
@@ -147,6 +161,11 @@ pub struct Commit {
     pub pushed: bool,
     /// Each file's change sits on its `index` side, so it shows as staged: all of it is in.
     pub files: Vec<FileChange>,
+}
+
+/// How a commit's `sha` shows.
+pub fn short_sha(sha: &str) -> &str {
+    sha.get(..7).unwrap_or(sha)
 }
 
 /// The branch this one started from.
@@ -223,6 +242,15 @@ impl Changes {
 
     pub fn commit(&self, sha: &str) -> Option<&Commit> {
         self.commits.iter().find(|commit| commit.sha == sha)
+    }
+
+    /// The file `key` names, in the uncommitted list or its commit.
+    pub fn find(&self, key: &FileKey) -> Option<&FileChange> {
+        let files = match &key.source {
+            Source::Uncommitted => &self.uncommitted,
+            Source::Commit(sha) => &self.commit(sha)?.files,
+        };
+        files.iter().find(|file| file.path == key.path)
     }
 }
 

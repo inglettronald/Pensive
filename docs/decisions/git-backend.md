@@ -28,7 +28,7 @@ Git will say which files changed, and Pensive will diff their contents.
 - A file is binary if `git check-attr` says `.gitattributes` marks it so, or if its first 8,000 bytes hold a NUL byte, the same test Git uses.
 - For each text file, the backend will return both versions, and Pensive will diff them in process with a crate such as imara-diff, which Zed and gix both use.
 
-Both versions go through Git's filters first. Without them, LFS pointers, `core.autocrlf` line endings and clean and smudge filters would show as whole-file changes. The committed side comes from `git cat-file --batch --filters`, and the worktree side goes through the clean filter. A patch built from smudged content wouldn't apply with `git apply --cached`, because the index holds clean content.
+Both versions go through Git's filters first. Without them, LFS pointers, `core.autocrlf` line endings and clean and smudge filters would show as whole-file changes. Both versions are compared as checkout writes them: the committed side comes from `git cat-file --filters`, and the worktree side is read as it is. That's the form the editor saves, so a diff never shows filter output as a change. Staging part of a file will need the clean form instead, since `git apply --cached` takes a patch against the index.
 
 Parsing `git diff` would match the terminal exactly and honor the user's diff settings, but it costs more for a review client:
 

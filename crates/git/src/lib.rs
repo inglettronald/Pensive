@@ -1,12 +1,13 @@
 //! A `GitBackend` that runs the `git` command line.
 
+mod changes;
 mod command;
 mod parse;
 
 use std::{collections::HashMap, fs, path::Path, time::SystemTime};
 
-use anyhow::{Context as _, Result, bail};
-use model::{Branch, Changes, GitBackend, Repository, Worktree};
+use anyhow::{Context as _, Result};
+use model::{Branch, Changes, FileKey, FileVersions, GitBackend, Repository, Worktree};
 
 use crate::{command::git, parse::ListedWorktree};
 
@@ -33,10 +34,16 @@ impl GitBackend for GitCli {
     }
 
     fn changes(&self, worktree: &Path) -> Result<Changes> {
-        bail!(
-            "reading changes from Git isn't built yet, so {} shows none",
-            worktree.display()
-        )
+        changes::changes(worktree)
+    }
+
+    fn versions(
+        &self,
+        worktree: &Path,
+        key: &FileKey,
+        renamed_from: Option<&Path>,
+    ) -> Result<FileVersions> {
+        changes::versions(worktree, key, renamed_from)
     }
 }
 
@@ -95,6 +102,7 @@ mod tests {
         time::{Duration, UNIX_EPOCH},
     };
 
+    use model::{FileStatus, Source, Staging, Version};
     use tempfile::TempDir;
 
     use super::*;
@@ -112,6 +120,9 @@ mod tests {
             fs::create_dir(repo.path()).unwrap();
             fs::write(repo.dir.path().join("gitconfig"), "").unwrap();
             repo.run(&["init", "-q", "--initial-branch=main"]);
+            // The backend reads this machine's config, and Git for Windows turns on CRLF
+            // checkouts system-wide. The repository's own setting wins.
+            repo.run(&["config", "core.autocrlf", "false"]);
             repo
         }
 
@@ -151,6 +162,37 @@ mod tests {
 
         fn read(&self) -> Repository {
             GitCli.repository(&self.path()).unwrap()
+        }
+
+        fn write(&self, name: &str, text: &str) {
+            let path = self.path().join(name);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, text).unwrap();
+        }
+
+        /// Stages everything and commits it.
+        fn commit_all(&self, message: &str) {
+            self.run(&["add", "-A"]);
+            self.run(&["commit", "-q", "-m", message]);
+        }
+
+        fn commit_all_empty(&self, message: &str) {
+            self.run(&["commit", "-q", "--allow-empty", "-m", message]);
+        }
+
+        fn changes(&self) -> Changes {
+            GitCli.changes(&self.path()).unwrap()
+        }
+
+        fn versions(&self, key: &FileKey, renamed_from: Option<&Path>) -> FileVersions {
+            GitCli.versions(&self.path(), key, renamed_from).unwrap()
+        }
+    }
+
+    fn uncommitted(path: &str) -> FileKey {
+        FileKey {
+            source: Source::Uncommitted,
+            path: path.into(),
         }
     }
 
@@ -250,6 +292,162 @@ mod tests {
         let repository = Repo::new().read();
         assert_eq!(repository.worktrees[0].branch.as_deref(), Some("main"));
         assert!(repository.branches.is_empty());
+    }
+
+    #[test]
+    fn uncommitted_files_have_their_status_and_line_counts() {
+        let repo = Repo::new();
+        repo.write("kept.rs", "a\nb\nc\n");
+        repo.commit_all("first");
+        repo.write("kept.rs", "a\nB\nc\nd\n");
+        repo.run(&["add", "kept.rs"]);
+        repo.write("kept.rs", "a\nB\nc\nd\ne\n");
+        repo.write("new folder/notes.md", "one\ntwo\n");
+        let changes = repo.changes();
+        let kept = changes.file(Path::new("kept.rs")).unwrap();
+        assert_eq!(kept.staging(), Staging::Partly);
+        assert_eq!((kept.added, kept.removed), (3, 1));
+        let notes = changes.file(Path::new("new folder/notes.md")).unwrap();
+        assert_eq!(notes.worktree, Some(FileStatus::Untracked));
+        assert_eq!((notes.added, notes.removed), (2, 0));
+    }
+
+    #[test]
+    fn versions_of_an_uncommitted_file_are_head_and_the_worktree() {
+        let repo = Repo::new();
+        repo.write("kept.rs", "old\n");
+        repo.commit_all("first");
+        repo.write("kept.rs", "new\n");
+        repo.write("added.rs", "added\n");
+        let kept = repo.versions(&uncommitted("kept.rs"), None);
+        assert_eq!(kept.old, Version::Text("old\n".into()));
+        assert_eq!(kept.new, Version::Text("new\n".into()));
+        let added = repo.versions(&uncommitted("added.rs"), None);
+        assert_eq!(added.old, Version::Missing);
+        fs::remove_file(repo.path().join("kept.rs")).unwrap();
+        assert_eq!(
+            repo.versions(&uncommitted("kept.rs"), None).new,
+            Version::Missing
+        );
+    }
+
+    #[test]
+    fn a_branch_lists_its_own_commits_newest_first() {
+        let repo = Repo::new();
+        repo.write("a.rs", "a\n");
+        repo.commit_all("on main");
+        repo.run(&["checkout", "-q", "-b", "feat"]);
+        repo.write("a.rs", "a\nb\n");
+        repo.commit_all("first on feat");
+        repo.run(&["mv", "a.rs", "b.rs"]);
+        repo.commit_all("rename");
+        let changes = repo.changes();
+        assert_eq!(changes.base.unwrap().branch, "main");
+        let titles: Vec<_> = changes
+            .commits
+            .iter()
+            .map(|commit| commit.title.to_string())
+            .collect();
+        assert_eq!(titles, ["rename", "first on feat"]);
+        let renamed = &changes.commits[0].files[0];
+        assert_eq!(renamed.index, Some(FileStatus::Renamed));
+        assert_eq!(renamed.renamed_from.as_deref(), Some(Path::new("a.rs")));
+        assert_eq!(
+            (
+                changes.commits[1].files[0].added,
+                changes.commits[1].files[0].removed
+            ),
+            (1, 0)
+        );
+
+        let key = FileKey {
+            source: Source::Commit(changes.commits[1].sha.clone()),
+            path: "a.rs".into(),
+        };
+        let versions = repo.versions(&key, None);
+        assert_eq!(versions.old, Version::Text("a\n".into()));
+        assert_eq!(versions.new, Version::Text("a\nb\n".into()));
+    }
+
+    #[test]
+    fn commits_the_upstream_has_are_pushed() {
+        let repo = Repo::new();
+        repo.write("a.rs", "a\n");
+        repo.commit_all("on main");
+        repo.run(&["checkout", "-q", "-b", "feat"]);
+        repo.commit_all_empty("pushed");
+        repo.run(&[
+            "config",
+            "remote.origin.url",
+            "https://example.com/repo.git",
+        ]);
+        repo.run(&[
+            "config",
+            "remote.origin.fetch",
+            "+refs/heads/*:refs/remotes/origin/*",
+        ]);
+        repo.run(&["config", "branch.feat.remote", "origin"]);
+        repo.run(&["config", "branch.feat.merge", "refs/heads/feat"]);
+        repo.run(&["update-ref", "refs/remotes/origin/feat", "HEAD"]);
+        repo.commit_all_empty("not pushed");
+        let changes = repo.changes();
+        let pushed: Vec<_> = changes.commits.iter().map(|commit| commit.pushed).collect();
+        assert_eq!(pushed, [false, true]);
+        let upstream = changes.upstream.unwrap();
+        assert_eq!((upstream.remote.as_ref(), upstream.behind), ("origin", 0));
+    }
+
+    #[test]
+    fn a_local_base_behind_its_remote_lends_no_commits() {
+        let repo = Repo::new();
+        repo.write("a.rs", "a\n");
+        repo.commit_all("on main");
+        repo.run(&["checkout", "-q", "-b", "feat"]);
+        repo.commit_all_empty("fetched to origin/main");
+        repo.run(&["update-ref", "refs/remotes/origin/main", "HEAD"]);
+        repo.run(&[
+            "symbolic-ref",
+            "refs/remotes/origin/HEAD",
+            "refs/remotes/origin/main",
+        ]);
+        repo.commit_all_empty("on feat");
+        let titles: Vec<_> = repo
+            .changes()
+            .commits
+            .iter()
+            .map(|commit| commit.title.to_string())
+            .collect();
+        assert_eq!(titles, ["on feat"]);
+    }
+
+    #[test]
+    fn a_file_removed_from_the_index_is_listed_once_as_untracked() {
+        let repo = Repo::new();
+        repo.write("a.rs", "a\nb\n");
+        repo.commit_all("on main");
+        repo.run(&["rm", "-q", "--cached", "a.rs"]);
+        let changes = repo.changes();
+        assert_eq!(changes.uncommitted.len(), 1);
+        assert_eq!(changes.uncommitted[0].worktree, Some(FileStatus::Untracked));
+    }
+
+    #[test]
+    fn the_base_branch_itself_has_no_base() {
+        let repo = Repo::new();
+        repo.write("a.rs", "a\n");
+        repo.commit_all("on main");
+        let changes = repo.changes();
+        assert!(changes.base.is_none());
+        assert_eq!(changes.commits.len(), 1);
+    }
+
+    #[test]
+    fn a_repository_without_commits_lists_its_files() {
+        let repo = Repo::new();
+        repo.write("a.rs", "a\n");
+        let changes = repo.changes();
+        assert_eq!(changes.uncommitted.len(), 1);
+        assert!(changes.commits.is_empty());
     }
 
     #[test]
