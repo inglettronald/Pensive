@@ -46,6 +46,8 @@ const READING_WIDTH: Pixels = px(680.);
 const CLICK_GLIDE: Duration = Duration::from_millis(200);
 /// How long a wheel notch takes to glide. A trackpad moves the page as it reports.
 const WHEEL_GLIDE: Duration = Duration::from_millis(150);
+/// How long the list's highlight and the rail's fill take to slide, with a frame to spare.
+const SLIDE: Duration = Duration::from_millis(170);
 /// When the category changes, its old list fades out, then the new one fades in.
 const LIST_OUT: Duration = Duration::from_millis(100);
 const LIST_IN: Duration = Duration::from_millis(150);
@@ -86,6 +88,14 @@ enum Anchor {
     Other,
 }
 
+/// What to show once every page is laid out again, such as after a search.
+#[derive(Clone, Copy)]
+enum Pending {
+    Spot(Spot),
+    /// Where the page was scrolled to before the search.
+    Offset(Pixels),
+}
+
 /// The buttons at the rail's foot, which have nothing behind them yet.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Tool {
@@ -109,15 +119,16 @@ pub(crate) struct SettingsView {
     /// The scroll's children as of the last render, which the scroll's bounds describe.
     anchors: Vec<Anchor>,
     current: Spot,
-    /// Where the current page was before, which the list and the rail slide from.
-    previous: Option<Spot>,
+    /// Where the current page was before, which the list and the rail slide from, until the
+    /// slide is over.
+    previous: Option<(Spot, Task<()>)>,
     /// The category whose list is fading out.
     fading: Option<(usize, Task<()>)>,
     /// Where a click scrolled to. It stays current until the wheel moves the page, since a page
     /// near the bottom can't reach the tracking line.
     pinned: Option<Spot>,
-    /// A page to show as soon as the scroll has laid it out.
-    pending: Option<Spot>,
+    /// What to show as soon as the scroll has laid every page out again.
+    pending: Option<Pending>,
     /// The category being read, and the scroll position, when a search started.
     search_from: Option<(usize, Point<Pixels>)>,
     hovered: Option<usize>,
@@ -145,7 +156,7 @@ impl SettingsView {
                 }
                 (true, Some((_, offset))) => {
                     view.search_from = None;
-                    view.scroll.jump_to(offset.y);
+                    view.pending = Some(Pending::Offset(offset.y));
                 }
                 _ => {}
             }
@@ -196,7 +207,8 @@ impl SettingsView {
             let gone = clear_after(LIST_OUT + LIST_IN, |view: &mut Self| view.fading = None, cx);
             self.fading = Some((self.current.category, gone));
         }
-        self.previous = Some(self.current);
+        let done = clear_after(SLIDE, |view: &mut Self| view.previous = None, cx);
+        self.previous = Some((self.current, done));
         self.current = spot;
     }
 
@@ -285,26 +297,38 @@ impl SettingsView {
     fn show_after_search(&mut self, spot: Spot, cx: &mut Context<Self>) {
         self.search_from = None;
         self.search.update(cx, |input, cx| input.set_text("", cx));
-        self.pending = Some(spot);
+        self.pending = Some(Pending::Spot(spot));
         cx.notify();
     }
 
-    /// Shows the pending page once the scroll's last layout had every page in it.
+    /// Shows what's pending once the scroll's last layout had every page in it, so its bounds
+    /// and how far it can scroll are the full page's.
     fn show_pending(&mut self, cx: &mut Context<Self>) {
-        let Some(spot) = self.pending else { return };
-        let laid_out = self.anchors.contains(&Anchor::Page(spot))
-            && self.scroll.handle().children_count() == self.anchors.len();
-        if laid_out {
-            self.pending = None;
-            let anchor = if spot.page == 0 {
-                Anchor::Category(spot.category)
-            } else {
-                Anchor::Page(spot)
-            };
-            self.scroll_to(anchor, spot, false, cx);
-        } else {
-            // Not laid out yet: render again once it is.
+        let Some(pending) = self.pending else { return };
+        let laid_out = self.scroll.handle().children_count() == self.anchors.len()
+            && self
+                .anchors
+                .iter()
+                .any(|anchor| matches!(anchor, Anchor::Page(_)));
+        if !laid_out {
+            // Render again once it is.
             cx.notify();
+            return;
+        }
+        self.pending = None;
+        match pending {
+            Pending::Spot(spot) => {
+                let anchor = if spot.page == 0 {
+                    Anchor::Category(spot.category)
+                } else {
+                    Anchor::Page(spot)
+                };
+                self.scroll_to(anchor, spot, false, cx);
+            }
+            Pending::Offset(offset) => {
+                self.scroll.jump_to(offset);
+                cx.notify();
+            }
         }
     }
 
@@ -376,8 +400,9 @@ impl SettingsView {
         Rail::new(items, selected)
             .previous(
                 self.previous
+                    .as_ref()
                     .filter(|_| hits.is_none())
-                    .map(|spot| spot.category),
+                    .map(|(spot, _)| spot.category),
             )
             .hovered(self.hovered)
             .tools([
@@ -442,8 +467,9 @@ impl SettingsView {
             let selected = (current.category == category).then_some(current.page);
             let previous = self
                 .previous
-                .filter(|spot| spot.category == category)
-                .map(|spot| spot.page);
+                .as_ref()
+                .filter(|(spot, _)| spot.category == category)
+                .map(|(spot, _)| spot.page);
             div()
                 .flex()
                 .flex_col()
@@ -491,6 +517,7 @@ impl SettingsView {
         };
         let total = (LIST_OUT + LIST_IN).as_secs_f32();
         let out_share = LIST_OUT.as_secs_f32() / total;
+        let ease = ease_out_quint();
         div()
             .relative()
             .child(
@@ -506,8 +533,11 @@ impl SettingsView {
             )
             .child(div().child(list(to, cx)).with_animation(
                 ("list-in", from * 1000 + to),
-                Animation::new(LIST_OUT + LIST_IN).with_easing(ease_out_quint()),
-                move |layer, delta| layer.opacity(((delta - out_share) / (1. - out_share)).max(0.)),
+                Animation::new(LIST_OUT + LIST_IN),
+                move |layer, delta| {
+                    let fading_in = ((delta - out_share) / (1. - out_share)).max(0.);
+                    layer.opacity(ease(fading_in))
+                },
             ))
             .into_any_element()
     }
@@ -786,7 +816,14 @@ impl Render for SettingsView {
                             .min_w_0()
                             .pt_2p5()
                             .child(search_field)
-                            .child(list),
+                            .child(
+                                div()
+                                    .id("settings-list")
+                                    .flex_1()
+                                    .min_h_0()
+                                    .overflow_y_scroll()
+                                    .child(list),
+                            ),
                     ),
             )
             .child(
@@ -863,5 +900,26 @@ mod tests {
 
         scroll(ScrollDelta::Pixels(point(px(0.), px(-30.))), cx);
         assert_eq!(offset(&view, cx), done - px(30.));
+    }
+
+    #[gpui::test]
+    fn clearing_a_search_goes_back_to_where_the_page_was(cx: &mut TestAppContext) {
+        let (view, cx) = settings_window(cx);
+        scroll(ScrollDelta::Pixels(point(px(0.), px(-300.))), cx);
+        let before = offset(&view, cx);
+        assert!(before < px(0.));
+
+        let search = view.read_with(cx, |view, _| view.search.clone());
+        search.update(cx, |input, cx| input.set_text("show", cx));
+        cx.run_until_parked();
+        assert_eq!(offset(&view, cx), px(0.));
+
+        view.update_in(cx, |view, window, cx| view.dismiss(&Dismiss, window, cx));
+        // The page is put back once every page is laid out again, a frame or two later.
+        for _ in 0..3 {
+            cx.update(|window, _| window.refresh());
+            cx.run_until_parked();
+        }
+        assert_eq!(offset(&view, cx), before);
     }
 }

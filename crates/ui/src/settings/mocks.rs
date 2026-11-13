@@ -5,7 +5,7 @@ use mock::Mock;
 use model::fixtures::{self, PENSIVE};
 use theme::DensityPreset;
 
-use super::{SettingsView, Spot};
+use super::{Pending, SettingsView, Spot};
 use crate::root::Pensive;
 
 /// The Command palette category, second on the rail.
@@ -35,7 +35,7 @@ fn untouched(_: &mut SettingsView, _: &mut Context<SettingsView>) {}
 impl SettingsView {
     /// Shows `category` as soon as it's laid out, without scrolling there.
     fn jump_to(&mut self, category: usize, cx: &mut Context<Self>) {
-        self.pending = Some(Spot { category, page: 0 });
+        self.pending = Some(Pending::Spot(Spot { category, page: 0 }));
         cx.notify();
     }
 

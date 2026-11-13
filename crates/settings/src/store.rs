@@ -21,8 +21,8 @@ impl Global for Settings {}
 
 impl Settings {
     /// Adds `settings` to the ones the palette and the settings view list, on `page`. Call it
-    /// before loading the file, so their keys are known. A key that's already declared is left
-    /// where it is, so declaring twice, as a mock does in a running app, lists it once.
+    /// before loading the file, so their keys are known. Declaring the same setting again, as a
+    /// mock does in a running app, lists it once. Two settings can't share a key.
     pub fn declare(
         page: Page,
         settings: impl IntoIterator<Item = &'static dyn AnySetting>,
@@ -30,8 +30,13 @@ impl Settings {
     ) {
         let store = cx.default_global::<Settings>();
         for setting in settings {
-            if store.find(setting.key()).is_none() {
-                store.declared.push((page, setting));
+            match store.find(setting.key()) {
+                Some(known) => debug_assert!(
+                    std::ptr::addr_eq(known, setting),
+                    "two settings are declared with the key `{}`",
+                    setting.key()
+                ),
+                None => store.declared.push((page, setting)),
             }
         }
     }

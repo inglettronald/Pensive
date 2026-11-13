@@ -92,7 +92,8 @@ impl TitleBar {
         self
     }
 
-    /// Fills the gear, and names Settings after the project in place of the branch.
+    /// Fills the gear, and names Settings after the project in place of the branch, or alone
+    /// with no project.
     pub fn settings_open(mut self, open: bool) -> Self {
         self.settings_open = open;
         self
@@ -132,6 +133,16 @@ impl RenderOnce for TitleBar {
                 .hover(|crumb| crumb.bg(colors.surface_raised))
         };
 
+        let mut settings = self.settings_open.then(|| {
+            crumb("settings-crumb")
+                .child(
+                    div()
+                        .typeset(density.body)
+                        .text_color(colors.text_strong)
+                        .child("Settings"),
+                )
+                .into_any_element()
+        });
         let location = self.project.map(|project| {
             let name = crumb("project")
                 .child(
@@ -155,16 +166,6 @@ impl RenderOnce for TitleBar {
                 .when_some(self.on_project, |crumb, handler| {
                     crumb.on_click(move |_, window, cx| handler((), window, cx))
                 });
-            let settings = self.settings_open.then(|| {
-                crumb("settings-crumb")
-                    .child(
-                        div()
-                            .typeset(density.body)
-                            .text_color(colors.text_strong)
-                            .child("Settings"),
-                    )
-                    .into_any_element()
-            });
             let branch = project
                 .branch
                 .filter(|_| !self.settings_open)
@@ -190,12 +191,13 @@ impl RenderOnce for TitleBar {
             Breadcrumb::new(
                 std::iter::once(name.into_any_element())
                     .chain(branch.map(IntoElement::into_any_element))
-                    .chain(settings),
+                    .chain(settings.take()),
             )
             .chevron_size(px(14.))
             .into_any_element()
         });
-        let location = self.location.or(location);
+        // With no project, Settings stands alone.
+        let location = self.location.or(location).or(settings);
 
         let palette = self.on_palette.map(|handler| {
             div()

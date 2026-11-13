@@ -110,10 +110,7 @@ impl Pensive {
     /// Back to the project, or to the landing screen and its palette.
     fn close_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.settings = None;
-        match &self.project {
-            Some((_, view)) => window.focus(&view.focus_handle(cx), cx),
-            None => self.open_palette(None, window, cx),
-        }
+        self.focus_content(window, cx);
         cx.notify();
     }
 
@@ -170,12 +167,21 @@ impl Pensive {
     }
 
     fn close_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some((_, view)) = &self.project else {
+        if self.project.is_none() {
             return;
-        };
+        }
         self.palette_open = false;
-        window.focus(&view.focus_handle(cx), cx);
+        self.focus_content(window, cx);
         cx.notify();
+    }
+
+    /// Focuses what the window shows: Settings, the project, or the landing screen's palette.
+    fn focus_content(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        match (&self.settings, &self.project) {
+            (Some((view, _)), _) => window.focus(&view.focus_handle(cx), cx),
+            (None, Some((_, view))) => window.focus(&view.focus_handle(cx), cx),
+            (None, None) => self.open_palette(None, window, cx),
+        }
     }
 
     fn on_palette_event(
@@ -270,10 +276,7 @@ impl Pensive {
     #[cfg(feature = "mocks")]
     fn back_from_mocks(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.leave_mocks(cx);
-        match &self.project {
-            Some((_, view)) => window.focus(&view.focus_handle(cx), cx),
-            None => self.open_palette(None, window, cx),
-        }
+        self.focus_content(window, cx);
     }
 
     #[cfg(feature = "mocks")]
@@ -331,7 +334,7 @@ impl Pensive {
             return if has_project {
                 title_bar.on_project(back).on_palette(open(None))
             } else {
-                title_bar.location(settings_crumb(cx))
+                title_bar
             };
         }
         if has_project {
@@ -372,16 +375,6 @@ impl Pensive {
                     .child("Ctrl K brings this palette back from anywhere in Pensive"),
             )
     }
-}
-
-/// The title bar's location while Settings is open with no project.
-fn settings_crumb(cx: &App) -> impl IntoElement {
-    let density = cx.density();
-    div()
-        .px_1p5()
-        .typeset(density.body)
-        .text_color(cx.theme().colors.text_strong)
-        .child("Settings")
 }
 
 /// Opens a window on `project`, or on the landing screen.
@@ -718,6 +711,16 @@ mod tests {
 
         cx.dispatch_action(OpenSettings);
         assert!(settings_open(cx));
+
+        // The palette over Settings gives focus back to Settings, not the hidden project.
+        cx.dispatch_action(OpenPalette);
+        cx.simulate_keystrokes("escape");
+        assert!(settings_open(cx));
+        let settings_focused = cx.update(|window, cx| {
+            let (settings, _) = view.read(cx).settings.as_ref().unwrap();
+            settings.focus_handle(cx).contains_focused(window, cx)
+        });
+        assert!(settings_focused);
     }
 
     #[cfg(feature = "mocks")]

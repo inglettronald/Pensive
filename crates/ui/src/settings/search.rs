@@ -82,6 +82,15 @@ pub(crate) fn search(outline: &[Category], query: &str, current: usize) -> Hits 
     hits.here.sort_by_key(|hit| std::cmp::Reverse(hit.score));
     hits.elsewhere
         .sort_by_key(|hit| std::cmp::Reverse(hit.score));
+    // Each other category's matches stay together, the category with the best match first.
+    let mut order: Vec<usize> = Vec::new();
+    for hit in &hits.elsewhere {
+        if !order.contains(&hit.category) {
+            order.push(hit.category);
+        }
+    }
+    hits.elsewhere
+        .sort_by_key(|hit| order.iter().position(|category| *category == hit.category));
     hits
 }
 
@@ -143,6 +152,17 @@ mod tests {
         assert_eq!(names(&hits.here), ["Toasts"]);
         assert!(names(&hits.elsewhere).contains(&"Tabs"));
         assert!(!names(&hits.elsewhere).contains(&"Toasts"));
+    }
+
+    #[test]
+    fn each_other_category_stays_together() {
+        let mut outline = outline();
+        outline[2].pages[0].settings.push(&THEME);
+        let hits = search(&outline, "t", 0);
+        let categories: Vec<usize> = hits.elsewhere.iter().map(|hit| hit.category).collect();
+        let mut grouped = categories.clone();
+        grouped.dedup();
+        assert_eq!(grouped.len(), 2, "{categories:?}");
     }
 
     #[test]
