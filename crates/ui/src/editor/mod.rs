@@ -17,7 +17,7 @@ use gpui::{
 };
 use model::{Document, Rope, changed_words};
 use serde::{Deserialize, Serialize};
-use settings::{AnySetting, Choice, Control, Setting, Settings};
+use settings::{AnySetting, Choice, Control, Page, Setting, Settings};
 use theme::{ActiveTheme, Typeset};
 
 use crate::key_binding;
@@ -165,7 +165,7 @@ pub(crate) static SAVE: Setting<SaveMode> = Setting {
 
 pub(crate) fn declare_settings(cx: &mut App) {
     let settings: [&'static dyn AnySetting; 1] = [&SAVE];
-    Settings::declare("Editor", settings, cx);
+    Settings::declare(Page::new("Editor", "Saving"), settings, cx);
 }
 
 pub struct Editor {
