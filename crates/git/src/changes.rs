@@ -1,6 +1,12 @@
 //! A worktree's uncommitted files and its branch's commits, and the two versions of one file.
 
-use std::{collections::HashSet, ffi::OsString, fs, io, path::Path};
+use std::{
+    collections::HashSet,
+    ffi::OsString,
+    fs,
+    io::{self, Write as _},
+    path::Path,
+};
 
 use anyhow::{Context as _, Result};
 use model::{
@@ -204,8 +210,7 @@ pub(crate) fn versions(
     Ok(match &key.source {
         Source::Uncommitted => FileVersions {
             old: blob(worktree, "HEAD", old_path)?,
-            new: on_disk(&worktree.join(&key.path))
-                .with_context(|| format!("couldn't read {}", key.path.display()))?,
+            new: read_file(worktree, &key.path)?,
         },
         Source::Commit(sha) => FileVersions {
             old: blob(worktree, &format!("{sha}^"), old_path)?,
@@ -216,15 +221,36 @@ pub(crate) fn versions(
 
 /// The file at `path` in the worktree. A submodule or nested repository is a folder, with no text
 /// of its own, so it's missing.
-fn on_disk(path: &Path) -> io::Result<Version> {
-    if path.is_dir() {
+pub(crate) fn read_file(worktree: &Path, path: &Path) -> Result<Version> {
+    let full = worktree.join(path);
+    if full.is_dir() {
         return Ok(Version::Missing);
     }
-    match fs::read(path) {
+    match fs::read(full) {
         Ok(bytes) => Ok(Version::from_bytes(bytes)),
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(Version::Missing),
-        Err(error) => Err(error),
+        Err(error) => Err(error).with_context(|| format!("couldn't read {}", path.display())),
     }
+}
+
+/// Replaces the file in one step, so a crash never leaves half of it. A symlink's target is
+/// replaced, so the link survives, and the file keeps its permissions.
+pub(crate) fn write_file(worktree: &Path, path: &Path, text: &str) -> Result<()> {
+    let link = worktree.join(path);
+    let target = fs::canonicalize(&link).unwrap_or(link);
+    let folder = target
+        .parent()
+        .with_context(|| format!("{} has no folder", target.display()))?;
+    let mut temporary = tempfile::NamedTempFile::new_in(folder)?;
+    temporary.write_all(text.as_bytes())?;
+    if let Ok(metadata) = fs::metadata(&target) {
+        temporary
+            .as_file()
+            .set_permissions(metadata.permissions())?;
+    }
+    temporary.as_file().sync_all()?;
+    temporary.persist(&target)?;
+    Ok(())
 }
 
 /// The file at `path` in commit `revision`, as checkout would write it, so its line endings

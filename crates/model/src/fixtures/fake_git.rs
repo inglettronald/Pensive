@@ -1,14 +1,21 @@
-//! A `GitBackend` that answers from the sample repositories instead of running Git.
+//! A `GitBackend` that answers from the sample repositories instead of running Git, and keeps
+//! saved files in memory.
 
-use std::path::Path;
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+    sync::Mutex,
+};
 
 use anyhow::Result;
 
-use crate::{Changes, FileKey, FileVersions, FixtureGap, GitBackend, Repository};
+use crate::{Changes, FileKey, FileVersions, FixtureGap, GitBackend, Repository, Source, Version};
 
 #[derive(Debug)]
 pub struct FakeGit {
     repositories: Vec<Repository>,
+    /// Files written in pensive's main worktree, by path, over the samples.
+    saved: Mutex<HashMap<PathBuf, String>>,
 }
 
 impl Default for FakeGit {
@@ -18,6 +25,17 @@ impl Default for FakeGit {
                 .into_iter()
                 .map(|(repository, _)| repository)
                 .collect(),
+            saved: Mutex::default(),
+        }
+    }
+}
+
+impl FakeGit {
+    fn sample_root(worktree: &Path, path: &Path) -> Result<()> {
+        if worktree == Path::new(super::PENSIVE_ROOT) {
+            Ok(())
+        } else {
+            Err(FixtureGap(format!("{} has no sample versions", path.display())).into())
         }
     }
 }
@@ -54,10 +72,34 @@ impl GitBackend for FakeGit {
         key: &FileKey,
         _renamed_from: Option<&Path>,
     ) -> Result<FileVersions> {
-        let missing = || FixtureGap(format!("{} has no sample versions", key.path.display()));
-        if worktree != Path::new(super::PENSIVE_ROOT) {
-            return Err(missing().into());
+        Self::sample_root(worktree, &key.path)?;
+        let mut versions = super::changes::versions(key)
+            .ok_or_else(|| FixtureGap(format!("{} has no sample versions", key.path.display())))?;
+        if key.source == Source::Uncommitted {
+            versions.new = self.read_file(worktree, &key.path)?;
         }
-        super::changes::versions(key).ok_or_else(|| missing().into())
+        Ok(versions)
+    }
+
+    /// A saved file, or else the sample's new version, or else missing.
+    fn read_file(&self, worktree: &Path, path: &Path) -> Result<Version> {
+        Self::sample_root(worktree, path)?;
+        if let Some(text) = self.saved.lock().expect("not poisoned").get(path) {
+            return Ok(Version::Text(text.clone()));
+        }
+        let key = FileKey {
+            source: Source::Uncommitted,
+            path: path.to_path_buf(),
+        };
+        Ok(super::changes::versions(&key).map_or(Version::Missing, |versions| versions.new))
+    }
+
+    fn write_file(&self, worktree: &Path, path: &Path, text: &str) -> Result<()> {
+        Self::sample_root(worktree, path)?;
+        self.saved
+            .lock()
+            .expect("not poisoned")
+            .insert(path.to_path_buf(), text.to_owned());
+        Ok(())
     }
 }

@@ -9,6 +9,4 @@ repository.workspace = true
 [dependencies]
 anyhow.workspace = true
 model.workspace = true
-
-[dev-dependencies]
 tempfile.workspace = true

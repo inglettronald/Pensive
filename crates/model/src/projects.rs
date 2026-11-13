@@ -8,9 +8,12 @@ use std::{
 };
 
 use anyhow::Result;
-use gpui::{Context, SharedString, Task};
+use gpui::{AppContext as _, Context, Entity, SharedString, Subscription, Task};
 
-use crate::{Backend, Changes, FileDiff, FileKey, GitBackend, Origin, Repository, Source};
+use crate::{
+    Backend, Changes, Document, DocumentEvent, FileDiff, FileKey, GitBackend, Origin, Repository,
+    Source,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ProjectId(pub usize);
@@ -73,7 +76,6 @@ pub enum WorkKind {
 }
 
 /// Every known project, cached so that reading it never runs Git.
-#[derive(Clone, Debug)]
 pub struct Projects {
     pub projects: Vec<Project>,
     /// When this was last refreshed. Ages are measured from here, so views never read the clock.
@@ -84,7 +86,13 @@ pub struct Projects {
     diffs: HashMap<(PathBuf, FileKey), FileDiff>,
     /// Diffs being read, so a second request waits for the first.
     reading: HashSet<(PathBuf, FileKey)>,
+    /// Uncommitted files opened for editing, by worktree and path. They stay open so edits that
+    /// aren't saved survive switching files.
+    documents: HashMap<(PathBuf, PathBuf), Entity<Document>>,
+    /// Documents being opened.
+    opening: HashSet<(PathBuf, PathBuf)>,
     git: Backend<dyn GitBackend>,
+    _saves: Vec<Subscription>,
 }
 
 impl Projects {
@@ -96,7 +104,10 @@ impl Projects {
             changes: HashMap::new(),
             diffs: HashMap::new(),
             reading: HashSet::new(),
+            documents: HashMap::new(),
+            opening: HashSet::new(),
             git: Backend::new(git, Origin::Git),
+            _saves: Vec::new(),
         }
     }
 
@@ -155,8 +166,8 @@ impl Projects {
     }
 
     /// Reads the changes in the worktree at `worktree` off the UI thread, replacing what's
-    /// cached. Uncommitted files whose diffs are cached are read again, since they may have
-    /// changed too. A commit's diffs never change.
+    /// cached. Uncommitted files whose diffs are cached, and open documents, are read again,
+    /// since they may have changed too. A commit's diffs never change.
     pub fn read_changes(&mut self, worktree: PathBuf, cx: &mut Context<Self>) -> Task<Result<()>> {
         let path = worktree.clone();
         let read = self
@@ -175,6 +186,7 @@ impl Projects {
                 for key in stale {
                     this.read_diff(worktree.clone(), key, cx).detach();
                 }
+                this.refresh_documents(&worktree, cx);
                 cx.notify();
             })
         })
@@ -229,6 +241,97 @@ impl Projects {
             })?;
             diff.map(|_| ())
         })
+    }
+
+    /// The open document for the uncommitted file at `path`, once [`Self::open_document`] has
+    /// read it.
+    pub fn document(&self, worktree: &Path, path: &Path) -> Option<&Entity<Document>> {
+        self.documents
+            .get(&(worktree.to_path_buf(), path.to_path_buf()))
+    }
+
+    /// Reads the uncommitted file at `path` for editing, off the UI thread. Does nothing when it's
+    /// open or being opened. A binary or deleted file never opens, since it has no text to edit.
+    pub fn open_document(
+        &mut self,
+        worktree: PathBuf,
+        path: PathBuf,
+        cx: &mut Context<Self>,
+    ) -> Task<Result<()>> {
+        let entry = (worktree, path);
+        if self.documents.contains_key(&entry) || !self.opening.insert(entry.clone()) {
+            return Task::ready(Ok(()));
+        }
+        let read = self.read_uncommitted(&entry.0, &entry.1, cx);
+        cx.spawn(async move |this, cx| {
+            let versions = read.await;
+            this.update(cx, |this, cx| {
+                this.opening.remove(&entry);
+                let (worktree, path) = entry.clone();
+                let git = this.git.clone();
+                let Some(document) = Document::new(worktree.clone(), path, versions?, git) else {
+                    return Ok(());
+                };
+                let document = cx.new(|_| document);
+                let saved = cx.subscribe(&document, move |this, _, event, cx| match event {
+                    DocumentEvent::Saved => this.read_changes(worktree.clone(), cx).detach(),
+                });
+                this._saves.push(saved);
+                this.documents.insert(entry, document);
+                cx.notify();
+                Ok(())
+            })?
+        })
+    }
+
+    /// Both versions of the uncommitted file at `path`.
+    fn read_uncommitted(
+        &self,
+        worktree: &Path,
+        path: &Path,
+        cx: &mut Context<Self>,
+    ) -> Task<Result<crate::FileVersions>> {
+        let renamed_from = self
+            .changes(worktree)
+            .and_then(|changes| changes.file(path))
+            .and_then(|file| file.renamed_from.clone());
+        let key = FileKey {
+            source: Source::Uncommitted,
+            path: path.to_path_buf(),
+        };
+        let worktree = worktree.to_path_buf();
+        let title = format!("Couldn't open {}", path.display());
+        self.git.call(
+            title,
+            move |git| git.versions(&worktree, &key, renamed_from.as_deref()),
+            cx,
+        )
+    }
+
+    /// Reads each open document in `worktree` again, for the documents to follow the disk.
+    fn refresh_documents(&mut self, worktree: &Path, cx: &mut Context<Self>) {
+        let open: Vec<_> = self
+            .documents
+            .iter()
+            .filter(|((path, _), _)| path == worktree)
+            .map(|((_, path), document)| (path.clone(), document.downgrade()))
+            .collect();
+        for (path, document) in open {
+            let read = self.read_uncommitted(worktree, &path, cx);
+            cx.spawn(async move |_, cx| {
+                let Ok(versions) = read.await else {
+                    return;
+                };
+                let base = match versions.old {
+                    crate::Version::Text(text) => text,
+                    _ => String::new(),
+                };
+                document
+                    .update(cx, |document, cx| document.refresh(base, versions.new, cx))
+                    .ok();
+            })
+            .detach();
+        }
     }
 
     #[cfg(feature = "fixtures")]
@@ -341,7 +444,7 @@ impl Projects {
 mod tests {
     use std::path::Path;
 
-    use gpui::{AppContext as _, TestAppContext};
+    use gpui::TestAppContext;
 
     use super::*;
     use crate::{

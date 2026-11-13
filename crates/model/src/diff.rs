@@ -7,7 +7,7 @@ use imara_diff::{Algorithm, Diff, InternedInput, sources::lines};
 use crate::{Hunk, HunkLine, LineChange};
 
 /// Unchanged lines shown around each change, as many as `git diff` shows.
-const CONTEXT: u32 = 3;
+const CONTEXT: usize = 3;
 /// How far into a file Git looks for a NUL byte before calling it binary.
 const BINARY_PROBE: usize = 8000;
 
@@ -64,53 +64,98 @@ impl FileDiff {
     }
 }
 
+/// Which lines changed between two texts, as runs of old lines replaced by new ones, in order.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct LineDiff {
+    pub changes: Vec<ChangedLines>,
+}
+
+/// Old lines, by index, replaced by new ones. Either side can be empty.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ChangedLines {
+    pub old: Range<usize>,
+    pub new: Range<usize>,
+}
+
+impl LineDiff {
+    pub fn new(old: &str, new: &str) -> Self {
+        let input = InternedInput::new(lines(old), lines(new));
+        let mut diff = Diff::compute(Algorithm::Histogram, &input);
+        diff.postprocess_lines(&input);
+        Self {
+            changes: diff
+                .hunks()
+                .map(|change| ChangedLines {
+                    old: change.before.start as usize..change.before.end as usize,
+                    new: change.after.start as usize..change.after.end as usize,
+                })
+                .collect(),
+        }
+    }
+}
+
+/// The lines of `text` without their line endings, the way [`LineDiff`] counts them.
+pub fn text_lines(text: &str) -> Vec<&str> {
+    line_ranges(text)
+        .into_iter()
+        .map(|range| &text[range])
+        .collect()
+}
+
+/// The byte range of each line of `text`, without its line ending.
+pub(crate) fn line_ranges(text: &str) -> Vec<Range<usize>> {
+    let mut start = 0;
+    lines(text)
+        .map(|line| {
+            let range = start..start + without_newline(line).len();
+            start += line.len();
+            range
+        })
+        .collect()
+}
+
 /// The changed lines between `old` and `new`, each run with up to three unchanged lines around
 /// it. Runs whose context would meet share one hunk, as in `git diff`.
 fn hunks(old: &str, new: &str) -> Vec<Hunk> {
-    let input = InternedInput::new(lines(old), lines(new));
-    let mut diff = Diff::compute(Algorithm::Histogram, &input);
-    diff.postprocess_lines(&input);
-    let old: Vec<&str> = lines(old).map(without_newline).collect();
-    let new: Vec<&str> = lines(new).map(without_newline).collect();
-
-    let mut groups: Vec<Vec<imara_diff::Hunk>> = Vec::new();
-    for change in diff.hunks() {
-        match groups.last_mut() {
-            Some(group)
-                if change.before.start - group.last().expect("groups aren't empty").before.end
-                    <= 2 * CONTEXT =>
-            {
-                group.push(change)
-            }
-            _ => groups.push(vec![change]),
+    let diff = LineDiff::new(old, new);
+    let (old, new) = (text_lines(old), text_lines(new));
+    let mut groups: Vec<&[ChangedLines]> = Vec::new();
+    let mut start = 0;
+    for (index, pair) in diff.changes.windows(2).enumerate() {
+        if pair[1].old.start - pair[0].old.end > 2 * CONTEXT {
+            groups.push(&diff.changes[start..=index]);
+            start = index + 1;
         }
+    }
+    if start < diff.changes.len() {
+        groups.push(&diff.changes[start..]);
     }
     groups.iter().map(|group| hunk(group, &old, &new)).collect()
 }
 
 /// One hunk from changes that lie within each other's context.
-fn hunk(group: &[imara_diff::Hunk], old: &[&str], new: &[&str]) -> Hunk {
+fn hunk(group: &[ChangedLines], old: &[&str], new: &[&str]) -> Hunk {
     let (first, last) = (&group[0], &group[group.len() - 1]);
-    let lead = CONTEXT.min(first.before.start).min(first.after.start);
+    let lead = CONTEXT.min(first.old.start).min(first.new.start);
     let trail = CONTEXT
-        .min(old.len() as u32 - last.before.end)
-        .min(new.len() as u32 - last.after.end);
-    let old_range = first.before.start - lead..last.before.end + trail;
-    let new_range = first.after.start - lead..last.after.end + trail;
+        .min(old.len() - last.old.end)
+        .min(new.len() - last.new.end);
+    let old_range = first.old.start - lead..last.old.end + trail;
+    let new_range = first.new.start - lead..last.new.end + trail;
 
     let mut lines = Vec::new();
-    let context = |lines: &mut Vec<HunkLine>, from: u32, to: u32| {
+    let context = |lines: &mut Vec<HunkLine>, from: usize, to: usize| {
         lines.extend((from..to).map(|index| HunkLine {
-            change: LineChange::Context(index as usize + 1),
-            text: new[index as usize].to_string().into(),
+            change: LineChange::Context(index + 1),
+            text: new[index].to_string().into(),
             changed: Vec::new(),
         }));
     };
     let mut position = new_range.start;
     for change in group {
-        context(&mut lines, position, change.after.start);
-        let removed = &old[range(&change.before)];
-        let added = &new[range(&change.after)];
+        context(&mut lines, position, change.new.start);
+        let removed = &old[change.old.clone()];
+        let added = &new[change.new.clone()];
         let mut words: Vec<_> = removed
             .iter()
             .zip(added)
@@ -128,7 +173,7 @@ fn hunk(group: &[imara_diff::Hunk], old: &[&str], new: &[&str]) -> Hunk {
         }));
         lines.extend(added.iter().enumerate().map(|(index, text)| {
             HunkLine {
-                change: LineChange::Added(change.after.start as usize + index + 1),
+                change: LineChange::Added(change.new.start + index + 1),
                 text: text.to_string().into(),
                 changed: words
                     .get_mut(index)
@@ -136,7 +181,7 @@ fn hunk(group: &[imara_diff::Hunk], old: &[&str], new: &[&str]) -> Hunk {
                     .unwrap_or_default(),
             }
         }));
-        position = change.after.end;
+        position = change.new.end;
     }
     context(&mut lines, position, new_range.end);
 
@@ -153,7 +198,7 @@ fn hunk(group: &[imara_diff::Hunk], old: &[&str], new: &[&str]) -> Hunk {
 
 /// The byte ranges of the words that differ between two lines that pair up, on each side. When
 /// nothing is shared, neither side gets any, since the line's own fill already says it all.
-fn changed_words(old: &str, new: &str) -> (Vec<Range<usize>>, Vec<Range<usize>>) {
+pub fn changed_words(old: &str, new: &str) -> (Vec<Range<usize>>, Vec<Range<usize>>) {
     let old_words = words(old);
     let new_words = words(new);
     let mut input = InternedInput::default();
@@ -238,10 +283,6 @@ fn span(words: &[Range<usize>], tokens: &Range<u32>) -> Option<Range<usize>> {
         .then(|| words[tokens.start as usize].start..words[tokens.end as usize - 1].end)
 }
 
-fn range(tokens: &Range<u32>) -> Range<usize> {
-    tokens.start as usize..tokens.end as usize
-}
-
 fn without_newline(line: &str) -> &str {
     line.strip_suffix('\n')
         .map(|line| line.strip_suffix('\r').unwrap_or(line))
@@ -249,7 +290,7 @@ fn without_newline(line: &str) -> &str {
 }
 
 /// A side of a hunk header the way Git writes it: an empty range names the line before it.
-fn header_range(lines: &Range<u32>) -> String {
+fn header_range(lines: &Range<usize>) -> String {
     if lines.is_empty() {
         format!("{},0", lines.start)
     } else {

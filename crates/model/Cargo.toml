@@ -11,6 +11,7 @@ anyhow.workspace = true
 futures.workspace = true
 gpui.workspace = true
 imara-diff.workspace = true
+ropey.workspace = true
 
 # `SystemTime::now` panics in a browser.
 [target.'cfg(target_family = "wasm")'.dependencies]
