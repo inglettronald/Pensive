@@ -7,13 +7,14 @@ use settings::{AnySetting, Settings};
 
 /// The categories Pensive knows, in the rail's order. A setting can name a category that isn't
 /// here, and it's listed last with the gear for its icon.
-const KNOWN: [(&str, IconName, &str); 3] = [
+const KNOWN: [(&str, IconName, &str); 4] = [
     ("Appearance", IconName::Palette, "Theme, size and fonts"),
     (
         "Command palette",
         IconName::Command,
         "Tabs, Active and the backdrop",
     ),
+    ("Editor", IconName::FileText, "Saving"),
     ("Notices", IconName::Bell, "Toasts and the badge"),
 ];
 
@@ -74,4 +75,26 @@ pub(crate) fn outline(cx: &App) -> Vec<Category> {
             .unwrap_or(KNOWN.len())
     });
     categories
+}
+
+#[cfg(test)]
+mod tests {
+    use gpui::TestAppContext;
+
+    use super::*;
+
+    #[gpui::test]
+    fn every_category_the_app_declares_has_an_icon_and_a_description(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            theme::init(cx);
+            crate::init(cx);
+            for category in outline(cx) {
+                assert!(
+                    KNOWN.iter().any(|(name, ..)| *name == category.name),
+                    "add the `{}` category to KNOWN",
+                    category.name
+                );
+            }
+        });
+    }
 }

@@ -580,9 +580,9 @@ impl MockMode {
 }
 
 pub(crate) fn mocks() -> Vec<Mock> {
-    use model::fixtures::{self, PENSIVE};
+    use model::fixtures::PENSIVE;
 
-    use crate::{palette::declare_settings, root::Pensive};
+    use crate::{mock_window, root::Pensive};
 
     /// The pensive project's window after Ctrl Shift M, set up by `setup`.
     fn browsing(
@@ -590,9 +590,7 @@ pub(crate) fn mocks() -> Vec<Mock> {
         window: &mut Window,
         cx: &mut App,
     ) -> AnyView {
-        declare_settings(cx);
-        let projects = cx.new(|_| fixtures::projects());
-        let pensive = cx.new(|cx| Pensive::new(projects, Some(PENSIVE), window, cx));
+        let pensive = mock_window::pensive(Some(PENSIVE), window, cx);
         pensive.update(cx, |pensive, cx| {
             pensive.view_mocks(window, cx);
             setup(pensive, window, cx);

@@ -125,6 +125,7 @@ fn framed(
     window: &mut Window,
     cx: &mut App,
 ) -> AnyView {
+    crate::declare_settings(cx);
     let projects = cx.new(|_| fixtures::projects());
     let view = cx.new(|cx| ProjectView::new(projects, PENSIVE, window, cx));
     view.update(cx, |view, cx| setup(view, window, cx));

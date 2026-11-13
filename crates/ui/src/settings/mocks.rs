@@ -1,12 +1,12 @@
 //! The settings view's mocks: a window on the sample project with Settings open.
 
-use gpui::{AnyView, App, AppContext, Context, Window};
+use gpui::{AnyView, App, Context, Window};
 use mock::Mock;
-use model::fixtures::{self, PENSIVE};
+use model::fixtures::PENSIVE;
 use theme::DensityPreset;
 
 use super::{Pending, SettingsView, Spot};
-use crate::root::Pensive;
+use crate::mock_window;
 
 /// The Command palette category, second on the rail.
 const PALETTE: usize = 1;
@@ -17,10 +17,7 @@ fn window(
     window: &mut Window,
     cx: &mut App,
 ) -> AnyView {
-    crate::palette::declare_settings(cx);
-    crate::notices::declare_settings(cx);
-    let projects = cx.new(|_| fixtures::projects());
-    let view = cx.new(|cx| Pensive::new(projects, Some(PENSIVE), window, cx));
+    let view = mock_window::pensive(Some(PENSIVE), window, cx);
     view.update(cx, |pensive, cx| {
         pensive.open_settings(window, cx);
         if let Some(settings) = pensive.settings_view() {
