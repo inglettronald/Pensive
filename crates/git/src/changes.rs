@@ -257,9 +257,11 @@ pub(crate) fn write_file(worktree: &Path, path: &Path, text: &str) -> Result<()>
 }
 
 /// The file at `path` in commit `revision`, as checkout would write it, so its line endings
-/// match the worktree's. A submodule there is a commit, not a file, so it's missing.
+/// match the worktree's. A submodule there is a commit, not a file, so it's missing, and so is
+/// every file in a revision that doesn't exist, such as HEAD before the first commit or the parent
+/// of a root commit.
 fn blob(worktree: &Path, revision: &str, path: &Path) -> Result<Version> {
-    let listed = git(
+    let listed = match git(
         worktree,
         &[
             OsString::from("ls-tree"),
@@ -270,15 +272,17 @@ fn blob(worktree: &Path, revision: &str, path: &Path) -> Result<Version> {
             "--".into(),
             path.into(),
         ],
-    );
-    let id = listed.ok().and_then(|listed| {
-        let entry = listed.split(|&byte| byte == 0).next()?;
-        let id = entry.strip_prefix(b"blob ")?;
-        Some(OsString::from(String::from_utf8_lossy(id).into_owned()))
-    });
-    let Some(id) = id else {
+    ) {
+        Ok(listed) => listed,
+        Err(_) if resolve(worktree, revision).is_none() => return Ok(Version::Missing),
+        Err(error) => return Err(error),
+    };
+    // Nothing listed means the revision has no file at `path`.
+    let entry = listed.split(|&byte| byte == 0).next().unwrap_or_default();
+    let Some(id) = entry.strip_prefix(b"blob ") else {
         return Ok(Version::Missing);
     };
+    let id = OsString::from(String::from_utf8_lossy(id).into_owned());
     let mut path_arg = OsString::from("--path=");
     path_arg.push(path);
     let content = git(
