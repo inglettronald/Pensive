@@ -12,7 +12,7 @@ Pensive is a review-first Git client written in Rust with GPUI.
 
 ## Checking your work
 
-- `cargo fmt`, `cargo clippy --all-targets -- -D warnings` and `cargo test` must pass. CI rejects any warning.
+- `cargo fmt`, `cargo clippy --all-targets --all-features -- -D warnings` and `cargo test` must pass. CI rejects any warning.
 - To check UI, run `cargo mocks <filter>` and open the PNGs it prints. It renders without a window or display, so use it instead of launching the app.
 - To click through the app, open it in the T3 preview with the `web-preview` skill. `cargo mocks` is still how to check what a view looks like.
 
