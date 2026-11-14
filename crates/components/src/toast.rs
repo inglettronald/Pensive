@@ -1,11 +1,7 @@
 //! A notice in the window's corner, outlined in its tone, with a line along its bottom that
 //! drains until it folds away.
 
-use std::time::Duration;
-
-use gpui::{
-    Animation, AnimationExt, App, ElementId, SharedString, Window, div, prelude::*, relative,
-};
+use gpui::{App, ElementId, SharedString, Window, div, prelude::*, relative};
 use theme::{ActiveTheme, Dp, HAIRLINE, Shadow, Typeset, dp};
 
 use crate::{Callback, IconButton, IconName, Tag, Tone, callback};
@@ -20,7 +16,7 @@ pub struct Toast {
     title: SharedString,
     tag: Option<Tag>,
     detail: Option<SharedString>,
-    timer: Option<(f32, Option<Duration>)>,
+    timer: Option<f32>,
     on_close: Option<Callback<()>>,
     on_hover: Option<Callback<bool>>,
 }
@@ -51,10 +47,9 @@ impl Toast {
         self
     }
 
-    /// The line along the bottom: `left` of the toast's time, from 1 to 0, draining to nothing
-    /// over `draining`, or holding while that's `None`.
-    pub fn timer(mut self, left: f32, draining: Option<Duration>) -> Self {
-        self.timer = Some((left, draining));
+    /// The line along the bottom: `left` of the toast's time, from 1 to 0.
+    pub fn timer(mut self, left: f32) -> Self {
+        self.timer = Some(left);
         self
     }
 
@@ -75,25 +70,15 @@ impl RenderOnce for Toast {
         let colors = &theme.colors;
         let density = cx.density();
         let hue = self.tone.mark(colors).map(|(_, hue)| hue);
-        let line = self.timer.zip(hue).map(|((left, draining), hue)| {
-            let line = div().h_full().bg(hue).w(relative(left));
-            // Inset by the corner radius, so the line stays clear of the rounded corners.
+        // Inset by the corner radius, so the line stays clear of the rounded corners.
+        let line = self.timer.zip(hue).map(|(left, hue)| {
             div()
                 .absolute()
                 .bottom_0()
                 .left(density.radius_lg)
                 .right(density.radius_lg)
                 .h(HAIRLINE)
-                .child(match draining {
-                    Some(duration) => line
-                        .with_animation(
-                            ("timer", (left * 10_000.) as usize),
-                            Animation::new(duration),
-                            move |line, delta| line.w(relative(left * (1. - delta))),
-                        )
-                        .into_any_element(),
-                    None => line.into_any_element(),
-                })
+                .child(div().h_full().bg(hue).w(relative(left)))
         });
         div()
             .id(self.id)
@@ -170,7 +155,7 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
                                 .detail(
                                     "~/code/harbor-wt/tooltip-clip is not in a sample repository",
                                 )
-                                .timer(0.55, None)
+                                .timer(0.55)
                                 .into_any_element(),
                         ),
                         (
