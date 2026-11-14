@@ -578,14 +578,21 @@ mod tests {
     }
 
     #[test]
-    fn a_rename_unstages_with_the_path_it_came_from() {
+    fn a_rename_stages_by_its_new_path_and_unstages_with_the_old_one() {
         let repo = Repo::new();
         repo.write("old.rs", "a\nb\nc\n");
         repo.commit_all("first");
         repo.run(&["mv", "old.rs", "new.rs"]);
+        repo.write("new.rs", "a\nb\nc\nd\n");
         let renamed = repo.changes();
         let renamed = renamed.file(Path::new("new.rs")).unwrap();
         assert_eq!(renamed.renamed_from.as_deref(), Some(Path::new("old.rs")));
+        assert_eq!(renamed.staging(), Staging::Partly);
+
+        GitCli
+            .set_staged(&repo.path(), &[PathBuf::from("new.rs")], true)
+            .unwrap();
+        assert_eq!(repo.changes().uncommitted[0].staging(), Staging::Staged);
 
         let paths = ["new.rs", "old.rs"].map(PathBuf::from);
         GitCli.set_staged(&repo.path(), &paths, false).unwrap();

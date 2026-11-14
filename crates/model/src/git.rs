@@ -34,7 +34,9 @@ pub trait GitBackend: Send + Sync + Debug {
     fn write_file(&self, worktree: &Path, path: &Path, text: &str) -> Result<()>;
 
     /// Stages all of each file at `paths`, relative to the worktree's root, or unstages it back
-    /// to its committed state. A path can be a deleted file, or the old path of a rename.
+    /// to its committed state. A path can be a deleted file. Unstaging a rename takes the path it
+    /// came from too, but staging one doesn't: the index no longer has that path, so Git refuses
+    /// it.
     fn set_staged(&self, worktree: &Path, paths: &[PathBuf], staged: bool) -> Result<()>;
 }
 

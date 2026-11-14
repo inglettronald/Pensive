@@ -349,10 +349,12 @@ impl Projects {
         let mut pathspecs = Vec::new();
         for path in paths {
             changes.set_staged(&path, staged);
-            // A rename is staged or unstaged with the path it came from.
-            if let Some(from) = changes
-                .file(&path)
-                .and_then(|file| file.renamed_from.clone())
+            // A rename unstages with the path it came from. Git refuses that path when staging,
+            // since the index no longer has it.
+            if !staged
+                && let Some(from) = changes
+                    .file(&path)
+                    .and_then(|file| file.renamed_from.clone())
             {
                 pathspecs.push(from);
             }
