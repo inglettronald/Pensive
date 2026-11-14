@@ -5,16 +5,16 @@ use components::{
     Button, ButtonStyle, FadeText, Icon, IconButton, IconName, RingFill, SegmentedControl,
     StatusRing, TimelineLine, TimelineNode, TimelineRow,
 };
-use gpui::{AnyElement, App, Context, SharedString, Window, deferred, div, prelude::*, px};
+use gpui::{AnyElement, App, Context, SharedString, Window, deferred, div, prelude::*};
 use model::{Changes, Commit, Staging, short_sha};
 use strum::VariantArray;
-use theme::{ActiveTheme, Typeset};
+use theme::{ActiveTheme, Dp, Typeset, dp};
 
 use super::{Control, FileLayout, ProjectView, Source};
 use crate::{notices, view_callback, view_callback_with};
 
 /// The sidebar's width. It becomes resizable later.
-const WIDTH: f32 = 280.;
+const WIDTH: Dp = dp(280.);
 
 impl ProjectView {
     pub(super) fn render_sidebar(
@@ -27,7 +27,7 @@ impl ProjectView {
             .flex()
             .flex_col()
             .flex_none()
-            .w(px(WIDTH))
+            .w(WIDTH)
             .border_r_1()
             .border_color(colors.border_subtle)
             .bg(colors.surface_panel)
@@ -47,9 +47,9 @@ impl ProjectView {
                     .children(self.history(changes, cx))
                     .child(
                         TimelineRow::new()
-                            .h(px(24.))
+                            .h(dp(24.))
                             .above(TimelineLine::Fade)
-                            .node_y(px(24.)),
+                            .node_y(dp(24.)),
                     ),
             )
             .child(self.commit_box(changes, cx))
@@ -68,14 +68,14 @@ impl ProjectView {
             .flex_none()
             .items_center()
             .gap_1()
-            .h(density.row_height + px(12.))
+            .h(density.row_height + dp(12.))
             .pl_3()
             .pr_2()
             .border_b_1()
             .border_color(colors.border_subtle)
             .child(
                 Icon::new(IconName::Cloud)
-                    .size(px(14.))
+                    .size(dp(14.))
                     .color(colors.text_faint),
             )
             .child(
@@ -170,7 +170,7 @@ impl ProjectView {
         };
         let ring = StatusRing::new("stage-all", fill)
             .color(|colors| colors.diff_modified)
-            .size(px(14.));
+            .size(dp(14.));
         let ring = if total > 0 {
             ring.on_click(view_callback(cx, |this: &mut Self, _, cx| {
                 this.toggle_all_staged(cx)
@@ -184,7 +184,7 @@ impl ProjectView {
             .position(|layout| *layout == self.layout);
         TimelineRow::new()
             .items_center()
-            .h(density.row_height + px(8.))
+            .h(density.row_height + dp(8.))
             .below(TimelineLine::Dashed)
             .node(TimelineNode::Mark(ring.into_any_element()))
             .child(
@@ -216,7 +216,7 @@ impl ProjectView {
                             } else {
                                 IconName::ChevronRight
                             })
-                            .size(px(12.))
+                            .size(dp(12.))
                             .color(colors.text_faint),
                         )
                     })
@@ -415,7 +415,7 @@ impl ProjectView {
             .border_color(colors.border_subtle)
             .child(
                 div()
-                    .h(density.row_height * 2. - px(4.))
+                    .h(density.row_height * 2. - dp(4.))
                     .px_2()
                     .py_1p5()
                     .rounded(density.radius_md)
@@ -453,7 +453,7 @@ fn marker(
     let density = cx.density();
     TimelineRow::new()
         .items_center()
-        .h(density.row_height + px(4.))
+        .h(density.row_height + dp(4.))
         .above(above)
         .below(TimelineLine::Solid)
         .node(TimelineNode::Tick)
@@ -475,13 +475,13 @@ fn description_chip(cx: &mut Context<ProjectView>) -> impl IntoElement {
         .flex_none()
         .items_center()
         .justify_center()
-        .w(px(18.))
-        .h(px(12.))
+        .w(dp(18.))
+        .h(dp(12.))
         .rounded(cx.density().radius_sm)
         .bg(colors.surface_selected)
         .child(
             Icon::new(IconName::Ellipsis)
-                .size(px(12.))
+                .size(dp(12.))
                 .color(colors.text_muted),
         )
 }

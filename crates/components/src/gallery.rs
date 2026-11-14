@@ -1,10 +1,9 @@
 //! A labeled page of a component's states, which its gallery mock renders.
 
 use gpui::{
-    AnyElement, App, IntoElement, ParentElement, Pixels, RenderOnce, SharedString, Styled, Window,
-    div, px,
+    AnyElement, App, IntoElement, ParentElement, RenderOnce, SharedString, Styled, Window, div,
 };
-use theme::{ActiveTheme, Typeset};
+use theme::{ActiveTheme, Dp, Typeset, dp};
 
 #[derive(IntoElement)]
 pub struct Gallery {
@@ -86,7 +85,7 @@ impl RenderOnce for Gallery {
                 .text_color(colors.text_faint)
                 .child(text)
         };
-        const ROW_LABEL_WIDTH: f32 = 96.;
+        const ROW_LABEL_WIDTH: Dp = dp(96.);
 
         div()
             .flex()
@@ -133,7 +132,7 @@ impl RenderOnce for Gallery {
                             div()
                                 .flex()
                                 .gap_4()
-                                .child(div().w(px(ROW_LABEL_WIDTH)).flex_none())
+                                .child(div().w(ROW_LABEL_WIDTH).flex_none())
                                 .children(columns.into_iter().map(|column| {
                                     div().flex_1().min_w_0().child(label(column.into()))
                                 })),
@@ -145,7 +144,7 @@ impl RenderOnce for Gallery {
                                 .gap_4()
                                 .child(
                                     div()
-                                        .w(px(ROW_LABEL_WIDTH))
+                                        .w(ROW_LABEL_WIDTH)
                                         .flex_none()
                                         .child(label(row.into())),
                                 )
@@ -163,12 +162,12 @@ impl RenderOnce for Gallery {
 /// A sidebar-colored box to show rows on, as they sit in the app.
 #[derive(IntoElement)]
 pub(crate) struct Panel {
-    width: Pixels,
+    width: Dp,
     children: Vec<AnyElement>,
 }
 
 impl Panel {
-    pub(crate) fn new(width: Pixels, children: impl IntoIterator<Item = impl IntoElement>) -> Self {
+    pub(crate) fn new(width: Dp, children: impl IntoIterator<Item = impl IntoElement>) -> Self {
         Self {
             width,
             children: children

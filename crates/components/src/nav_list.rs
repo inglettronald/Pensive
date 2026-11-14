@@ -4,19 +4,19 @@
 use std::{ops::Range, rc::Rc, time::Duration};
 
 use gpui::{
-    Animation, AnimationExt, App, ElementId, FontWeight, HighlightStyle, Pixels, SharedString,
-    StyledText, Window, div, ease_out_quint, prelude::*, px,
+    Animation, AnimationExt, App, ElementId, FontWeight, HighlightStyle, SharedString, StyledText,
+    Window, div, ease_out_quint, prelude::*, px,
 };
-use theme::{ActiveTheme, Typeset};
+use theme::{ActiveTheme, Dp, Typeset, dp};
 
 use crate::Callback;
 
 /// How long the highlight takes to reach a new page.
 const SLIDE: Duration = Duration::from_millis(150);
 /// Where the guide runs, from a row's left edge.
-const GUIDE: Pixels = px(10.);
+const GUIDE: Dp = dp(10.);
 /// Where a label starts, past the guide.
-const LABEL: Pixels = px(22.);
+const LABEL: Dp = dp(22.);
 
 /// One row of the list.
 pub struct NavItem {
@@ -189,7 +189,7 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
 
     fn list(selected: Option<usize>, hovered: Option<usize>) -> AnyElement {
         div()
-            .w(px(228.))
+            .w(dp(228.))
             .child(
                 NavList::new("pages", ["Theme", "Size", "Fonts"].map(NavItem::new).into())
                     .selected(selected)
@@ -204,7 +204,7 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
             trailing: Some(trailing.to_string().into()),
         };
         div()
-            .w(px(228.))
+            .w(dp(228.))
             .child(
                 NavList::new(
                     "results",

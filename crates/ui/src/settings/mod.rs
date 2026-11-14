@@ -20,7 +20,7 @@ use model::Notice;
 use outline::outline;
 use search::search;
 use settings::Settings;
-use theme::ActiveTheme;
+use theme::{ActiveTheme, Dp, dp};
 
 use crate::{
     clear_after, key_binding,
@@ -32,11 +32,11 @@ actions!(settings_view, [Dismiss, FocusSearch]);
 
 const CONTEXT: &str = "SettingsView";
 /// The rail and the list together, the same width as the project's sidebar.
-const SIDEBAR: Pixels = px(280.);
+const SIDEBAR: Dp = dp(280.);
 /// A page becomes current once its heading crosses this far below the top of the page.
-const TRACKING_LINE: Pixels = px(60.);
+const TRACKING_LINE: Dp = dp(60.);
 /// Rows stop here, so a control stays near its name on a wide window. PEN-40 revisits it.
-const READING_WIDTH: Pixels = px(680.);
+const READING_WIDTH: Dp = dp(680.);
 /// How long a click takes to glide to its heading.
 const CLICK_GLIDE: Duration = Duration::from_millis(200);
 /// How long a wheel notch takes to glide. A trackpad moves the page as it reports.
@@ -209,13 +209,13 @@ impl SettingsView {
 
     /// Makes current the last page whose heading is above the tracking line, as the scroll was
     /// last laid out. At the bottom, it's the last page, which may never reach the line.
-    fn track(&mut self, cx: &mut Context<Self>) {
+    fn track(&mut self, window: &Window, cx: &mut Context<Self>) {
         if self.pinned.is_some() || self.search_from.is_some() {
             return;
         }
         let scroll = self.scroll.handle();
         let scrolled = -scroll.offset().y;
-        let line = scroll.bounds().top() + scrolled + TRACKING_LINE;
+        let line = scroll.bounds().top() + scrolled + TRACKING_LINE.to_pixels(window.rem_size());
         let pages = self
             .anchors
             .iter()
@@ -355,7 +355,7 @@ impl Focusable for SettingsView {
 impl Render for SettingsView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let outline = outline(cx);
-        self.track(cx);
+        self.track(window, cx);
         self.show_pending(cx);
         let query = self.query(cx);
         let hits = (!query.is_empty()).then(|| search(&outline, &query, self.home()));

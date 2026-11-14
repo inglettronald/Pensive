@@ -1,10 +1,10 @@
 //! The main view: where the selected file is, how it's shown, then the file in the editor.
 
 use components::{Breadcrumb, DiffStat, Icon, IconName, SegmentedControl};
-use gpui::{AnyElement, App, Context, div, prelude::*, px};
+use gpui::{AnyElement, App, Context, div, prelude::*};
 use model::{FileChange, Source, short_sha};
 use strum::VariantArray;
-use theme::{ActiveTheme, Typeset};
+use theme::{ActiveTheme, Typeset, dp};
 
 use super::ProjectView;
 use crate::{editor::Mode, view_callback_with};
@@ -47,7 +47,7 @@ impl ProjectView {
                     .flex_none()
                     .items_center()
                     .gap_2()
-                    .h(density.row_height + px(8.))
+                    .h(density.row_height + dp(8.))
                     .pl_3()
                     .pr_2()
                     .border_b_1()
@@ -113,7 +113,7 @@ impl ProjectView {
                     .gap_1()
                     .child(
                         Icon::new(IconName::GitCommitHorizontal)
-                            .size(px(12.))
+                            .size(dp(12.))
                             .color(colors.text_faint),
                     )
                     .child(
@@ -147,10 +147,10 @@ impl ProjectView {
                         div()
                             .flex()
                             .items_center()
-                            .gap(px(5.))
-                            .ml(px(6.))
+                            .gap(dp(5.))
+                            .ml(dp(6.))
                             .text_color(colors.text_muted)
-                            .child(div().size(px(6.)).rounded_full().bg(colors.text_muted))
+                            .child(div().size(dp(6.)).rounded_full().bg(colors.text_muted))
                             .child("Unsaved"),
                     )
                 })
