@@ -662,7 +662,10 @@ mod tests {
         editor.update_in(cx, |editor, window, cx| editor.undo(&Undo, window, cx));
         cx.run_until_parked();
         editor.read_with(cx, |editor, cx| {
-            let line = editor.text(cx).unwrap().byte_to_line(editor.selection.cursor());
+            let line = editor
+                .text(cx)
+                .unwrap()
+                .byte_to_line(editor.selection.cursor());
             assert!(editor.row_of(line).is_some());
         });
     }
