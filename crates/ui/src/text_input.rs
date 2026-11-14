@@ -534,7 +534,7 @@ mod tests {
     use gpui::ClipboardItem;
 
     use super::*;
-    use crate::test_support::secondary;
+    use crate::test_support::{secondary, word};
 
     fn input_window(cx: &mut TestAppContext) -> (Entity<TextInput>, &mut VisualTestContext) {
         crate::test_support::init(cx);
@@ -579,17 +579,12 @@ mod tests {
 
     #[gpui::test]
     fn the_word_keys_move_and_delete_by_word(cx: &mut TestAppContext) {
-        let word = if cfg!(target_os = "macos") {
-            "alt"
-        } else {
-            "ctrl"
-        };
         let (input, cx) = input_window(cx);
         cx.simulate_input("open the file");
-        cx.simulate_keystrokes(&format!("{word}-left {word}-left"));
+        cx.simulate_keystrokes(&format!("{} {}", word("left"), word("left")));
         cx.simulate_input("x");
         assert_eq!(text(&input, cx), "open xthe file");
-        cx.simulate_keystrokes(&format!("{word}-backspace"));
+        cx.simulate_keystrokes(&word("backspace"));
         assert_eq!(text(&input, cx), "open the file");
     }
 

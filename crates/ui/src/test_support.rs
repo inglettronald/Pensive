@@ -39,3 +39,14 @@ pub(crate) fn secondary(key: &str) -> String {
     };
     format!("{modifier}-{key}")
 }
+
+/// `key` with the platform's word modifier, Alt on macOS and Ctrl elsewhere, as the text-editing
+/// word keys read it.
+pub(crate) fn word(key: &str) -> String {
+    let modifier = if cfg!(target_os = "macos") {
+        "alt"
+    } else {
+        "ctrl"
+    };
+    format!("{modifier}-{key}")
+}

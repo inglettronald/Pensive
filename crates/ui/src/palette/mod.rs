@@ -515,6 +515,7 @@ mod tests {
     use model::fixtures;
 
     use super::*;
+    use crate::test_support::word;
 
     /// The palette alone in a window, on the sample projects, with its input focused.
     fn palette_window(cx: &mut TestAppContext) -> (Entity<PaletteView>, &mut VisualTestContext) {
@@ -550,6 +551,24 @@ mod tests {
         assert_eq!(tab(cx), first);
         cx.simulate_keystrokes("shift-tab");
         assert_eq!(tab(cx), *Tab::ALL.last().unwrap());
+    }
+
+    #[gpui::test]
+    fn the_query_moves_by_word(cx: &mut TestAppContext) {
+        let (view, cx) = palette_window(cx);
+        cx.simulate_input("open the file");
+        cx.simulate_keystrokes(&word("left"));
+        cx.simulate_input("x");
+        let query = view.read_with(cx, |view, cx| view.input.read(cx).text().to_string());
+        assert_eq!(query, "open the xfile");
+    }
+
+    #[gpui::test]
+    fn backspace_in_an_empty_query_removes_the_keyword(cx: &mut TestAppContext) {
+        let (view, cx) = palette_window(cx);
+        view.update(cx, |view, cx| view.set_keyword(Some(Keyword::Branch), cx));
+        cx.simulate_keystrokes("backspace");
+        assert_eq!(view.read_with(cx, |view, _| view.keyword.clone()), None);
     }
 
     #[test]
