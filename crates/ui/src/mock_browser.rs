@@ -16,6 +16,7 @@ use theme::{ActiveTheme, Density, Theme, Typeset};
 
 use crate::{
     key_binding,
+    root::OpenSettings,
     text_input::{self, TextInput},
     view_callback,
     window_frame::draws_window_controls,
@@ -396,13 +397,6 @@ impl Render for MockBrowser {
                 .child(Kbd::new(keys))
                 .child(label)
         };
-        let location = Breadcrumb::new([
-            div().text_color(colors.text_muted).child("Mocks"),
-            div()
-                .text_color(colors.text_strong)
-                .child(SharedString::from(self.subjects[self.selected].name)),
-        ])
-        .chevron_size(px(14.));
         div()
             .key_context(CONTEXT)
             .on_action(cx.listener(|this, _: &NextSubject, _, cx| this.step_subject(1, cx)))
@@ -421,11 +415,7 @@ impl Render for MockBrowser {
             .flex()
             .flex_col()
             .size_full()
-            .child(
-                TitleBar::new(None)
-                    .location(div().pl_1p5().typeset(density.body).child(location))
-                    .controls(draws_window_controls(window)),
-            )
+            .child(title_bar(&[self.subjects[self.selected].name], window, cx))
             .child(
                 div()
                     .flex()
@@ -452,6 +442,30 @@ impl Render for MockBrowser {
                     .child(hint("Esc", "Back to where you were")),
             )
     }
+}
+
+/// The title bar over the mocks, with the window controls and a breadcrumb from Mocks down
+/// through `place`. Its gear leaves the mocks for Settings.
+fn title_bar(place: &[&'static str], window: &Window, cx: &App) -> TitleBar {
+    let colors = &cx.theme().colors;
+    let crumbs = std::iter::once("Mocks")
+        .chain(place.iter().copied())
+        .enumerate()
+        .map(|(depth, crumb)| {
+            let color = if depth == place.len() {
+                colors.text_strong
+            } else {
+                colors.text_muted
+            };
+            div()
+                .text_color(color)
+                .child(SharedString::new_static(crumb))
+        });
+    let location = Breadcrumb::new(crumbs).chevron_size(px(14.));
+    TitleBar::new(None)
+        .location(div().pl_1p5().typeset(cx.density().body).child(location))
+        .controls(draws_window_controls(window))
+        .on_settings(|_, window, cx| window.dispatch_action(Box::new(OpenSettings), cx))
 }
 
 /// A mock opened from the browser.
@@ -534,9 +548,9 @@ impl MockMode {
         self.saved.restore(cx);
     }
 
-    /// A view mock fills the window. A component mock sits centered at its size, labeled, so
-    /// its edges show.
-    pub fn render(&self, cx: &App) -> AnyElement {
+    /// A view mock fills the window, title bar and all. A component mock sits centered at its
+    /// size under the mocks' title bar, labeled, so its edges show.
+    pub fn render(&self, window: &Window, cx: &App) -> AnyElement {
         let Some(shown) = &self.shown else {
             return self.browser.clone().into_any_element();
         };
@@ -546,7 +560,7 @@ impl MockMode {
         let colors = &cx.theme().colors;
         let density = cx.density();
         let size = shown.mock.size;
-        div()
+        let mock = div()
             .flex()
             .flex_col()
             .flex_1()
@@ -574,7 +588,17 @@ impl MockMode {
                     .border_color(colors.border_subtle)
                     .overflow_hidden()
                     .child(shown.view.clone()),
-            )
+            );
+        div()
+            .flex()
+            .flex_col()
+            .size_full()
+            .child(title_bar(
+                &[shown.mock.subject, shown.mock.name],
+                window,
+                cx,
+            ))
+            .child(mock)
             .into_any_element()
     }
 }

@@ -32,12 +32,22 @@ pub const ZED: ProjectId = ProjectId(5);
 /// Six projects with worktrees and branches of every age the palette groups by, read through
 /// `FakeGit`.
 pub fn projects() -> Projects {
-    let mut projects = Projects::new(Arc::new(FakeGit::default()));
+    let mut projects = projects_on(FakeGit::default());
+    projects.insert_changes(PENSIVE_ROOT.into(), changes());
+    projects
+}
+
+/// The same projects with nothing changed in any worktree.
+pub fn clean_projects() -> Projects {
+    projects_on(FakeGit::clean())
+}
+
+fn projects_on(git: FakeGit) -> Projects {
+    let mut projects = Projects::new(Arc::new(git));
     for (repository, opened) in repositories() {
         projects.add(repository, opened);
     }
     projects.as_of = Some(as_of());
-    projects.insert_changes(PENSIVE_ROOT.into(), changes());
     projects
 }
 
