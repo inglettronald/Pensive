@@ -19,6 +19,7 @@ theme = { path = "crates/theme" }
 ui = { path = "crates/ui" }
 
 anyhow = "1"
+embed-resource = "3"
 etcetera = "0.11"
 futures = "0.3"
 image = { version = "0.25", default-features = false, features = ["png"] }

@@ -246,6 +246,7 @@ name = "assets"
 version = "0.1.0"
 dependencies = [
  "gpui",
+ "image",
 ]
 
 [[package]]
@@ -3752,6 +3753,7 @@ dependencies = [
  "anyhow",
  "assets",
  "config",
+ "embed-resource",
  "git",
  "gpui",
  "gpui_platform",
@@ -5414,6 +5416,7 @@ dependencies = [
 name = "ui"
 version = "0.1.0"
 dependencies = [
+ "assets",
  "components",
  "gpui",
  "mock",

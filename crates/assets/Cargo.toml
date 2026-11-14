@@ -8,3 +8,4 @@ repository.workspace = true
 
 [dependencies]
 gpui.workspace = true
+image.workspace = true

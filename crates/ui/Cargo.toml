@@ -7,6 +7,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+assets.workspace = true
 components.workspace = true
 gpui.workspace = true
 model.workspace = true
