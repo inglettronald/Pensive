@@ -3,26 +3,24 @@
 
 use std::rc::Rc;
 
-use gpui::{
-    AnyElement, App, ElementId, Pixels, SharedString, Window, deferred, div, prelude::*, px,
-};
-use theme::{ActiveTheme, Typeset};
+use gpui::{AnyElement, App, ElementId, SharedString, Window, deferred, div, prelude::*, px};
+use theme::{ActiveTheme, Dp, Typeset, dp};
 
 use crate::{Callback, Icon, IconName, OnClick as _, callback};
 
 /// The width of a disclosure arrow. A leading mark is centered in the same width, so arrows,
 /// marks and guides share one center line.
-const MARK: Pixels = px(12.);
+const MARK: Dp = dp(12.);
 /// How far each level of a tree moves in: one disclosure arrow's width.
-const INDENT: Pixels = MARK;
+const INDENT: Dp = MARK;
 /// Where a guide sits in its indent column: under the parent's arrow.
-const GUIDE_OFFSET: Pixels = px(5.5);
+const GUIDE_OFFSET: Dp = dp(5.5);
 
 #[derive(IntoElement)]
 pub struct ListRow {
     id: ElementId,
     depth: usize,
-    indent: Pixels,
+    indent: Dp,
     disclosure: Option<bool>,
     leading: Option<AnyElement>,
     label: SharedString,
@@ -62,7 +60,7 @@ impl ListRow {
 
     /// The slot an arrow or a leading mark takes, including its gap to what follows. Indenting a
     /// row by it lines its leading mark up under its parent's.
-    pub const SLOT: Pixels = px(18.);
+    pub const SLOT: Dp = dp(18.);
 
     /// How many levels in, each with a guide under its parent's arrow.
     pub fn depth(mut self, depth: usize) -> Self {
@@ -71,7 +69,7 @@ impl ListRow {
     }
 
     /// Overrides the 12 px indent, such as to line a child up under its parent's leading mark.
-    pub fn indent(mut self, indent: Pixels) -> Self {
+    pub fn indent(mut self, indent: Dp) -> Self {
         self.indent = indent;
         self
     }
@@ -152,7 +150,7 @@ impl RenderOnce for ListRow {
         let colors = &theme.colors;
         let density = cx.density();
         let height = if self.compact {
-            density.row_height - px(4.)
+            density.row_height - dp(4.)
         } else {
             density.row_height
         };
@@ -253,7 +251,7 @@ impl RenderOnce for ListRow {
                 div()
                     .absolute()
                     .top_full()
-                    .left(px(8.) + label_start - px(2.))
+                    .left(dp(8.) + label_start - dp(2.))
                     .mt_0p5()
                     .child(deferred(below).priority(1))
             }))
@@ -277,7 +275,7 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
                     .leading(StatusRing::new("ring", fill).color(|colors| colors.diff_modified))
                     .trailing(DiffStat::new(4, 1))
             };
-            let column = |rows: Vec<ListRow>| Panel::new(px(256.), rows).into_any_element();
+            let column = |rows: Vec<ListRow>| Panel::new(dp(256.), rows).into_any_element();
             crate::Gallery::new("ListRow")
                 .section(
                     "States",
@@ -320,7 +318,7 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
                                     .indent(ListRow::SLOT)
                                     .compact()
                                     .code()
-                                    .leading(crate::Icon::new(IconName::Braces).size(px(12.)))
+                                    .leading(crate::Icon::new(IconName::Braces).size(dp(12.)))
                                     .trailing(DiffStat::new(9, 2)),
                             ]),
                         ),
@@ -331,7 +329,7 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
                     [(
                         "Hovered, path shown",
                         div()
-                            .h(px(64.))
+                            .h(dp(64.))
                             .child(column(vec![
                                 file("j", "row.rs", RingFill::Full).hovered(true).below(
                                     Tooltip::new("crates/components/src/palette/row.rs")

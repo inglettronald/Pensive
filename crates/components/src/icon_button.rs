@@ -1,7 +1,7 @@
 //! A square button that shows only an icon.
 
-use gpui::{App, ElementId, Hsla, Pixels, Window, div, prelude::*, px};
-use theme::{ActiveTheme, ThemeColors};
+use gpui::{App, ElementId, Hsla, Window, div, prelude::*};
+use theme::{ActiveTheme, Dp, ThemeColors, dp};
 
 use crate::{Callback, Icon, IconName, OnClick as _, callback};
 
@@ -9,7 +9,7 @@ use crate::{Callback, Icon, IconName, OnClick as _, callback};
 pub struct IconButton {
     id: ElementId,
     icon: IconName,
-    size: Pixels,
+    size: Dp,
     color: fn(&ThemeColors) -> Hsla,
     on_click: Option<Callback<()>>,
 }
@@ -20,14 +20,14 @@ impl IconButton {
         Self {
             id: id.into(),
             icon,
-            size: px(24.),
+            size: dp(24.),
             color: |colors| colors.text_muted,
             on_click: None,
         }
     }
 
     /// The button's side. The icon stays 14 px.
-    pub fn size(mut self, size: Pixels) -> Self {
+    pub fn size(mut self, size: Dp) -> Self {
         self.size = size;
         self
     }
@@ -59,7 +59,7 @@ impl RenderOnce for IconButton {
             .hover(move |button| button.bg(hover))
             .child(
                 Icon::new(self.icon)
-                    .size(px(14.))
+                    .size(dp(14.))
                     .color((self.color)(colors)),
             )
             .on_click_callback(self.on_click)
@@ -68,7 +68,7 @@ impl RenderOnce for IconButton {
 
 #[cfg(feature = "mocks")]
 pub(crate) fn mocks() -> Vec<mock::Mock> {
-    use gpui::size;
+    use gpui::{px, size};
 
     vec![
         mock::Mock::component("icon_button", "gallery", || {

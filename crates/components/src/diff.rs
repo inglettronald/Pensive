@@ -3,8 +3,8 @@
 #[cfg(feature = "mocks")]
 use std::ops::Range;
 
-use gpui::{AnyElement, App, Hsla, Window, div, prelude::*, px};
-use theme::{ActiveTheme, ThemeColors};
+use gpui::{AnyElement, App, Hsla, Window, div, prelude::*};
+use theme::{ActiveTheme, ThemeColors, dp};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LineKind {
@@ -54,7 +54,7 @@ impl RenderOnce for DiffRow {
             .child(
                 div()
                     .flex_none()
-                    .w(px(44.))
+                    .w(dp(44.))
                     .pr_2()
                     .text_right()
                     .text_color(if self.kind == LineKind::Added {
@@ -67,7 +67,7 @@ impl RenderOnce for DiffRow {
             .child(
                 div()
                     .flex_none()
-                    .w(px(2.))
+                    .w(dp(2.))
                     .when_some(hue, |bar, hue| bar.bg(hue)),
             )
             .child(
@@ -109,7 +109,7 @@ impl RenderOnce for Sample {
 
 #[cfg(feature = "mocks")]
 pub(crate) fn mocks() -> Vec<mock::Mock> {
-    use gpui::size;
+    use gpui::{px, size};
 
     vec![
         mock::Mock::component("diff", "gallery", || {
@@ -119,7 +119,7 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
                     [(
                         "Context, added, and a removed line paired with the one that replaced it",
                         div()
-                            .w(px(640.))
+                            .w(dp(640.))
                             .py_1()
                             .whitespace_nowrap()
                             .children([

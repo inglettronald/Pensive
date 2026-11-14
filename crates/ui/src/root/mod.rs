@@ -14,7 +14,7 @@ use gpui::{
 #[cfg(feature = "mocks")]
 pub(crate) use mocks::mocks;
 use model::{ProjectId, Projects};
-use theme::{ActiveTheme, Typeset};
+use theme::{ActiveTheme, Typeset, dp};
 
 #[cfg(feature = "mocks")]
 use crate::mock_browser::{MockBrowser, MockBrowserEvent, MockMode, ViewMocks};
@@ -366,7 +366,7 @@ impl Pensive {
             .child(
                 svg()
                     .path("logo.svg")
-                    .size(px(64.))
+                    .size(dp(64.))
                     .flex_none()
                     .mb_2()
                     .text_color(theme.colors.text_strong),

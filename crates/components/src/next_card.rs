@@ -1,7 +1,7 @@
 //! The card at the end of a settings category that leads on to the next one.
 
-use gpui::{App, ElementId, SharedString, Window, div, prelude::*, px};
-use theme::{ActiveTheme, Typeset};
+use gpui::{App, ElementId, SharedString, Window, div, prelude::*};
+use theme::{ActiveTheme, Typeset, dp};
 
 use crate::{Callback, Icon, IconName, callback};
 
@@ -48,7 +48,7 @@ impl RenderOnce for NextCard {
     fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
         let colors = &cx.theme().colors;
         let density = cx.density();
-        let tile = density.row_height + px(4.);
+        let tile = density.row_height + dp(4.);
         let fill = if self.hovered {
             colors.surface_raised
         } else {
@@ -104,11 +104,11 @@ impl RenderOnce for NextCard {
 
 #[cfg(feature = "mocks")]
 pub(crate) fn mocks() -> Vec<mock::Mock> {
-    use gpui::size;
+    use gpui::{px, size};
 
     fn card(hovered: bool) -> gpui::AnyElement {
         div()
-            .w(px(560.))
+            .w(dp(560.))
             .child(
                 NextCard::new(
                     "next",

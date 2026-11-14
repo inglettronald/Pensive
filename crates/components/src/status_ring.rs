@@ -1,8 +1,8 @@
 //! A ring in a status color that fills to show how much of something is staged.
 
-use gpui::{App, ElementId, Hsla, Pixels, Window, div, prelude::*, px};
+use gpui::{App, ElementId, Hsla, Window, div, prelude::*};
 use strum::{IntoStaticStr, VariantArray};
-use theme::{ActiveTheme, ThemeColors};
+use theme::{ActiveTheme, Dp, ThemeColors, dp};
 
 use crate::{Callback, OnClick as _, callback};
 
@@ -19,7 +19,7 @@ pub struct StatusRing {
     id: ElementId,
     fill: RingFill,
     color: fn(&ThemeColors) -> Hsla,
-    size: Pixels,
+    size: Dp,
     on_click: Option<Callback<()>>,
 }
 
@@ -30,7 +30,7 @@ impl StatusRing {
             id: id.into(),
             fill,
             color: |colors| colors.text_muted,
-            size: px(10.),
+            size: dp(10.),
             on_click: None,
         }
     }
@@ -41,7 +41,7 @@ impl StatusRing {
         self
     }
 
-    pub fn size(mut self, size: Pixels) -> Self {
+    pub fn size(mut self, size: Dp) -> Self {
         self.size = size;
         self
     }
@@ -55,7 +55,7 @@ impl StatusRing {
 impl RenderOnce for StatusRing {
     fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
         let color = (self.color)(&cx.theme().colors);
-        let stroke = px(2.);
+        let stroke = dp(2.);
         let inner = self.size - stroke * 2.;
         div()
             .id(self.id)
@@ -76,7 +76,7 @@ impl RenderOnce for StatusRing {
 
 #[cfg(feature = "mocks")]
 pub(crate) fn mocks() -> Vec<mock::Mock> {
-    use gpui::size;
+    use gpui::{px, size};
 
     #[derive(Clone, Copy, VariantArray, IntoStaticStr)]
     enum Status {
@@ -100,7 +100,7 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
             let ring = |status: Status, fill: RingFill, size: f32| {
                 StatusRing::new("ring", fill)
                     .color(status.color())
-                    .size(px(size))
+                    .size(dp(size))
                     .into_any_element()
             };
             crate::Gallery::new("StatusRing")

@@ -7,7 +7,7 @@ use gpui::{
     SharedString, Size, Styled, Window, div, img, px, size,
 };
 use image::{Frame, RgbaImage};
-use theme::{ActiveTheme, Typeset};
+use theme::{ActiveTheme, Dp, Typeset};
 
 use crate::Mock;
 
@@ -134,7 +134,7 @@ impl Render for Atlas {
                         .items_center()
                         .gap_2()
                         .bg(colors.surface_raised)
-                        .rounded_t(density.radius_md - BORDER)
+                        .rounded_t(density.radius_md - Dp(BORDER.as_f32()))
                         .border_b(BORDER)
                         .border_color(colors.border_subtle)
                         .child(

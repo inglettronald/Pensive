@@ -5,12 +5,12 @@ use gpui::{
     AnyElement, App, Div, ElementId, Entity, MouseButton, Pixels, Point, SharedString, Stateful,
     Window, WindowControlArea, div, point, prelude::*, px,
 };
-use theme::{ActiveTheme, Typeset};
+use theme::{ActiveTheme, Dp, Typeset, dp};
 
 use crate::{Breadcrumb, Callback, Icon, IconButton, IconName, Kbd, Tone, callback};
 
 /// Room left of the crumbs for the macOS window buttons.
-const TRAFFIC_LIGHTS_WIDTH: Pixels = px(76.);
+const TRAFFIC_LIGHTS_WIDTH: Dp = dp(76.);
 
 /// The project shown in the title bar.
 pub struct TitleBarProject {
@@ -127,7 +127,7 @@ impl RenderOnce for TitleBar {
                 .flex()
                 .items_center()
                 .gap_2()
-                .h(px(28.))
+                .h(dp(28.))
                 .px_1p5()
                 .rounded(density.radius_md)
                 .hover(|crumb| crumb.bg(colors.surface_raised))
@@ -150,7 +150,7 @@ impl RenderOnce for TitleBar {
                         .flex()
                         .items_center()
                         .justify_center()
-                        .size(px(20.))
+                        .size(dp(20.))
                         .rounded(density.radius_sm)
                         .bg(colors.surface_selected)
                         .text_color(colors.text_strong)
@@ -174,7 +174,7 @@ impl RenderOnce for TitleBar {
                         .gap_1p5()
                         .child(
                             Icon::new(IconName::GitBranch)
-                                .size(px(14.))
+                                .size(dp(14.))
                                 .color(colors.text_muted),
                         )
                         .child(
@@ -193,7 +193,7 @@ impl RenderOnce for TitleBar {
                     .chain(branch.map(IntoElement::into_any_element))
                     .chain(settings.take()),
             )
-            .chevron_size(px(14.))
+            .chevron_size(dp(14.))
             .into_any_element()
         });
         // With no project, Settings stands alone.
@@ -207,8 +207,8 @@ impl RenderOnce for TitleBar {
                 .flex_none()
                 .items_center()
                 .gap_2()
-                .w(px(280.))
-                .h(px(28.))
+                .w(dp(280.))
+                .h(dp(28.))
                 .pl_2()
                 .pr_1()
                 .rounded(density.radius_md)
@@ -219,7 +219,7 @@ impl RenderOnce for TitleBar {
                 .hover(|palette| palette.border_color(colors.border))
                 .child(
                     Icon::new(IconName::Search)
-                        .size(px(14.))
+                        .size(dp(14.))
                         .color(colors.text_faint),
                 )
                 .child(
@@ -255,7 +255,7 @@ impl RenderOnce for TitleBar {
                 .flex()
                 .items_center()
                 .gap_1p5()
-                .h(px(26.))
+                .h(dp(26.))
                 .px_2()
                 .mr_1()
                 .rounded(density.radius_md)
@@ -277,7 +277,7 @@ impl RenderOnce for TitleBar {
                 .flex()
                 .items_center()
                 .gap_0p5()
-                .child(div().w(px(1.)).h(px(16.)).mx_1p5().bg(colors.border_subtle))
+                .child(div().w(px(1.)).h(dp(16.)).mx_1p5().bg(colors.border_subtle))
                 .child(window_control(
                     "minimize",
                     IconName::WindowMinimize,
@@ -299,7 +299,7 @@ impl RenderOnce for TitleBar {
             .flex()
             .flex_none()
             .items_center()
-            .h(density.row_height + px(12.))
+            .h(density.row_height + dp(12.))
             .pl_2()
             .pr_1()
             .when(cfg!(target_os = "macos"), |bar| {
@@ -335,7 +335,7 @@ impl RenderOnce for TitleBar {
                             .when(self.settings_open, |gear| gear.bg(gear_fill))
                             .child(
                                 IconButton::new("gear", IconName::Settings)
-                                    .size(px(28.))
+                                    .size(dp(28.))
                                     .when(self.settings_open, |gear| {
                                         gear.color(|colors| colors.text_strong)
                                     }),
@@ -400,7 +400,7 @@ fn drag_area(id: &'static str, window: &mut Window, cx: &mut App) -> Stateful<Di
 fn window_control(id: &'static str, icon: IconName, area: WindowControlArea) -> impl IntoElement {
     div().occlude().window_control_area(area).child(
         IconButton::new(id, icon)
-            .size(px(28.))
+            .size(dp(28.))
             .color(|colors| colors.text_faint)
             .on_click(move |window, _| {
                 if cfg!(target_os = "windows") {
@@ -422,7 +422,7 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
 
     vec![
         mock::Mock::component("title_bar", "gallery", || {
-            let bar = |title_bar: TitleBar| div().w(px(960.)).child(title_bar).into_any_element();
+            let bar = |title_bar: TitleBar| div().w(dp(960.)).child(title_bar).into_any_element();
             let pensive = TitleBarProject {
                 initial: "P".into(),
                 name: "pensive".into(),

@@ -7,12 +7,12 @@ use components::{Breadcrumb, Icon, IconName, Kbd, ListRow, TitleBar};
 use gpui::{
     AnyElement, AnyView, App, Context, Entity, EventEmitter, FocusHandle, Focusable, Global,
     ObjectFit, RenderImage, SharedString, Subscription, UpdateGlobal, Window, actions, div, img,
-    prelude::*, px,
+    prelude::*,
 };
 use mock::{Mock, atlas};
 use model::Notices;
 use settings::Settings;
-use theme::{ActiveTheme, Density, Theme, Typeset};
+use theme::{ActiveTheme, Density, Theme, Typeset, dp};
 
 use crate::{
     key_binding,
@@ -252,7 +252,7 @@ impl MockBrowser {
             .flex()
             .flex_col()
             .flex_none()
-            .w(px(220.))
+            .w(dp(220.))
             .pb_2()
             .overflow_y_scroll()
             .border_r_1()
@@ -264,7 +264,7 @@ impl MockBrowser {
                     .items_center()
                     .gap_2()
                     .m_2()
-                    .h(px(28.))
+                    .h(dp(28.))
                     .px_2()
                     .rounded(density.radius_md)
                     .border_1()
@@ -273,7 +273,7 @@ impl MockBrowser {
                     .typeset(density.body)
                     .child(
                         Icon::new(IconName::Search)
-                            .size(px(14.))
+                            .size(dp(14.))
                             .color(colors.text_faint),
                     )
                     .child(div().flex_1().child(self.input.clone())),
@@ -311,7 +311,7 @@ impl MockBrowser {
                         .flex()
                         .items_center()
                         .gap_2()
-                        .h(px(30.))
+                        .h(dp(30.))
                         .px_2p5()
                         .border_b_1()
                         .border_color(colors.border_subtle)
@@ -402,7 +402,7 @@ impl Render for MockBrowser {
                 .text_color(colors.text_strong)
                 .child(SharedString::from(self.subjects[self.selected].name)),
         ])
-        .chevron_size(px(14.));
+        .chevron_size(dp(14.));
         div()
             .key_context(CONTEXT)
             .on_action(cx.listener(|this, _: &NextSubject, _, cx| this.step_subject(1, cx)))
@@ -440,7 +440,7 @@ impl Render for MockBrowser {
                     .flex_none()
                     .items_center()
                     .gap_4()
-                    .h(px(36.))
+                    .h(dp(36.))
                     .px_3()
                     .border_t_1()
                     .border_color(colors.border_subtle)

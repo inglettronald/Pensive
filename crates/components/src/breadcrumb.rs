@@ -2,8 +2,8 @@
 
 use std::{cell::Cell, rc::Rc};
 
-use gpui::{AnyElement, App, Hsla, Pixels, Window, canvas, div, prelude::*, px};
-use theme::{ActiveTheme, ThemeColors};
+use gpui::{AnyElement, App, Hsla, Window, canvas, div, prelude::*, px};
+use theme::{ActiveTheme, Dp, ThemeColors, dp};
 
 use crate::{
     Icon, IconName,
@@ -13,7 +13,7 @@ use crate::{
 #[derive(IntoElement)]
 pub struct Breadcrumb {
     crumbs: Vec<AnyElement>,
-    chevron: Pixels,
+    chevron: Dp,
     fade_start: Option<fn(&ThemeColors) -> Hsla>,
 }
 
@@ -25,7 +25,7 @@ impl Breadcrumb {
                 .into_iter()
                 .map(IntoElement::into_any_element)
                 .collect(),
-            chevron: px(12.),
+            chevron: dp(12.),
             fade_start: None,
         }
     }
@@ -38,7 +38,7 @@ impl Breadcrumb {
     }
 
     /// The chevron's size, 12 px unless set.
-    pub fn chevron_size(mut self, size: Pixels) -> Self {
+    pub fn chevron_size(mut self, size: Dp) -> Self {
         self.chevron = size;
         self
     }
@@ -148,7 +148,7 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
                     .map(|(label, crumb)| {
                         (
                             label,
-                            div().w(px(150.)).flex().child(crumb).into_any_element(),
+                            div().w(dp(150.)).flex().child(crumb).into_any_element(),
                         )
                     }),
                 )
