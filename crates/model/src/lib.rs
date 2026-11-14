@@ -12,6 +12,7 @@ mod git;
 mod notice;
 mod notices;
 mod projects;
+mod queue;
 
 pub use backend::Backend;
 pub use changes::{

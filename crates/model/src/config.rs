@@ -5,9 +5,9 @@ use std::{fmt::Debug, sync::Arc, time::Duration};
 
 use anyhow::Result;
 use futures::{StreamExt, channel::mpsc};
-use gpui::{Context, EventEmitter};
+use gpui::{Context, EventEmitter, Task};
 
-use crate::{Backend, Notice, Notices, Origin, Severity};
+use crate::{Backend, Notice, Notices, Origin, Severity, queue::Queue};
 
 /// Calls block, so models run them off the UI thread.
 pub trait ConfigBackend: Send + Sync + Debug {
@@ -34,9 +34,10 @@ pub struct ConfigFiles {
     pub settings: String,
     pub themes: Vec<(String, String)>,
     backend: Backend<dyn ConfigBackend>,
-    /// Settings text waiting to be written. One write runs at a time.
+    /// Settings text waiting to be written.
     unsaved: Option<String>,
-    saving: bool,
+    /// Writes of `settings.toml`, one at a time.
+    writes: Queue,
     watching: Option<Box<dyn Send>>,
 }
 
@@ -50,7 +51,7 @@ impl ConfigFiles {
             themes: Vec::new(),
             backend: Backend::new(backend, Origin::Config),
             unsaved: None,
-            saving: false,
+            writes: Queue::default(),
             watching: None,
         }
     }
@@ -137,58 +138,63 @@ impl ConfigFiles {
     /// Writes `text` as `settings.toml`, off the UI thread. If the file changed on disk since it
     /// was last read, the user's edit wins: it's read instead and `text` is dropped.
     pub fn save_settings(&mut self, text: String, cx: &mut Context<Self>) {
-        if text == self.settings {
+        // While a write runs, `settings` is about to change, so the same text still needs writing.
+        if text == self.settings && !self.writes.is_busy() {
             self.unsaved = None;
             return;
         }
         self.unsaved = Some(text);
-        if !self.saving {
-            self.saving = true;
-            self.write_unsaved(cx);
-        }
+        // A write takes the newest text when it starts, so the writes queued behind it find none.
+        self.writes.push(
+            async move |this, cx| {
+                let Ok(Some((text, write))) = this.update(cx, |this, cx| this.write_unsaved(cx))
+                else {
+                    return;
+                };
+                let result = write.await;
+                this.update(cx, |this, cx| this.written(text, result, cx))
+                    .ok();
+            },
+            cx,
+        );
     }
 
-    fn write_unsaved(&self, cx: &mut Context<Self>) {
-        cx.spawn(async move |this, cx| {
-            while let Ok(Some((text, write))) = this.update(cx, |this, cx| {
-                let text = this.unsaved.take();
-                if text.is_none() {
-                    this.saving = false;
-                }
-                let text = text?;
-                let (last_read, written) = (this.settings.clone(), text.clone());
-                let write = this.backend.call(
-                    "Couldn't save settings.toml",
-                    move |backend| write_if_unchanged(backend, &last_read, &written),
-                    cx,
-                );
-                Some((text, write))
-            }) {
-                let result = write.await;
-                let updated = this.update(cx, |this, cx| match result {
-                    Ok(None) => this.settings = text,
-                    Ok(Some(on_disk)) => {
-                        this.unsaved = None;
-                        this.settings = on_disk;
-                        let notice = Notice {
-                            severity: Severity::Error,
-                            origin: Origin::Config,
-                            title: "settings.toml changed on disk, so the change made in \
-                                    Pensive wasn't saved"
-                                .into(),
-                            detail: None,
-                        };
-                        Notices::post(notice, cx);
-                        cx.emit(ConfigEvent::SettingsRead);
-                    }
-                    Err(_) => {}
-                });
-                if updated.is_err() {
-                    break;
-                }
+    /// Starts writing the newest unsaved text, if there is any.
+    fn write_unsaved(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) -> Option<(String, Task<Result<Option<String>>>)> {
+        let text = self.unsaved.take()?;
+        let (last_read, written) = (self.settings.clone(), text.clone());
+        let write = self.backend.call(
+            "Couldn't save settings.toml",
+            move |backend| write_if_unchanged(backend, &last_read, &written),
+            cx,
+        );
+        Some((text, write))
+    }
+
+    /// Follows a finished write of `text`. When the file changed on disk first, the file wins.
+    fn written(&mut self, text: String, result: Result<Option<String>>, cx: &mut Context<Self>) {
+        match result {
+            Ok(None) => self.settings = text,
+            Ok(Some(on_disk)) => {
+                self.unsaved = None;
+                self.settings = on_disk;
+                let notice = Notice {
+                    severity: Severity::Error,
+                    origin: Origin::Config,
+                    title: "settings.toml changed on disk, so the change made in Pensive wasn't \
+                            saved"
+                        .into(),
+                    detail: None,
+                };
+                Notices::post(notice, cx);
+                cx.emit(ConfigEvent::SettingsRead);
             }
-        })
-        .detach();
+            // The backend reported it.
+            Err(_) => {}
+        }
     }
 }
 
@@ -275,5 +281,22 @@ mod tests {
             assert_eq!(files.settings, "theme = \"nord\"")
         });
         assert_eq!(events.borrow().last().unwrap(), "settings read");
+    }
+
+    #[gpui::test]
+    fn changing_a_setting_back_while_it_saves_saves_it_back(cx: &mut TestAppContext) {
+        let fake = Arc::new(FakeConfig::new("density = \"calm\"", &[]));
+        let (files, _) = load(&fake, cx);
+        files.update(cx, |files, cx| {
+            files.save_settings("density = \"dense\"".into(), cx)
+        });
+        while fake.settings() != "density = \"dense\"" {
+            cx.executor().tick();
+        }
+        files.update(cx, |files, cx| {
+            files.save_settings("density = \"calm\"".into(), cx)
+        });
+        cx.run_until_parked();
+        assert_eq!(fake.settings(), "density = \"calm\"");
     }
 }
