@@ -620,6 +620,22 @@ mod tests {
     }
 
     #[test]
+    fn keeps_the_git_contract() {
+        let repo = Repo::new();
+        repo.write("modified.rs", "a\nb\n");
+        repo.write("deleted.rs", "gone\n");
+        repo.write("before.rs", "one\ntwo\nthree\n");
+        repo.commit_all("first");
+        repo.run(&["mv", "before.rs", "after.rs"]);
+        repo.commit_all("rename");
+        repo.run(&["worktree", "add", "-q", "-b", "feat", "../linked"]);
+        repo.write("modified.rs", "a\nB\n");
+        fs::remove_file(repo.path().join("deleted.rs")).unwrap();
+        repo.write("new.rs", "new\n");
+        model::fixtures::contract::git(&GitCli, &repo.path());
+    }
+
+    #[test]
     fn a_folder_outside_any_repository_fails() {
         let dir = tempfile::tempdir().unwrap();
         assert!(GitCli.repository(dir.path()).is_err());

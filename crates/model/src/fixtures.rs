@@ -1,6 +1,7 @@
 //! Sample projects and changes for mocks and tests: the ones drawn on the design canvases.
 
 mod changes;
+pub mod contract;
 mod fake_config;
 mod fake_git;
 

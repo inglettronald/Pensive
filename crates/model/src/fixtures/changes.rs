@@ -3,6 +3,8 @@
 //! Line counts match the canvas. Each file's versions are an excerpt, so a file can count more
 //! lines than its diff shows.
 
+use std::path::Path;
+
 use gpui::SharedString;
 
 use crate::{
@@ -36,11 +38,11 @@ pub fn changes() -> Changes {
                 files: changes(open_palette()),
             },
             Commit {
-                sha: "6284693".into(),
+                sha: ADD_PROJECTS.into(),
                 title: "feat: add projects, worktrees and branches".into(),
                 description: Some("Projects are cached, so reading them never runs Git.".into()),
                 pushed: false,
-                files: Vec::new(),
+                files: changes(add_projects()),
             },
             Commit {
                 sha: "ef032a6".into(),
@@ -53,15 +55,25 @@ pub fn changes() -> Changes {
     }
 }
 
-/// Both versions of the sample file `key` names.
-pub(crate) fn versions(key: &FileKey) -> Option<FileVersions> {
-    samples(&key.source)
+/// Both versions of the sample file `key` names. As in Git, the old version is the one at
+/// `renamed_from` when that's given, so a rename read without it has no old version.
+pub(crate) fn versions(key: &FileKey, renamed_from: Option<&Path>) -> Option<FileVersions> {
+    let samples = samples(&key.source);
+    let old_path = renamed_from.unwrap_or(&key.path);
+    let old = samples
+        .iter()
+        .find(|sample| sample.old_path() == old_path)
+        .map_or(Version::Missing, |sample| sample.versions.old.clone());
+    let new = samples
         .into_iter()
-        .find(|sample| sample.change.path == key.path)
-        .map(|sample| sample.versions)
+        .find(|sample| sample.change.path == key.path)?
+        .versions
+        .new;
+    Some(FileVersions { old, new })
 }
 
 const OPEN_PALETTE: &str = "5e35ea9";
+const ADD_PROJECTS: &str = "6284693";
 
 /// A file as the sidebar lists it, and its two versions.
 struct Sample {
@@ -69,10 +81,20 @@ struct Sample {
     versions: FileVersions,
 }
 
+impl Sample {
+    fn old_path(&self) -> &Path {
+        self.change
+            .renamed_from
+            .as_deref()
+            .unwrap_or(&self.change.path)
+    }
+}
+
 fn samples(source: &Source) -> Vec<Sample> {
     match source {
         Source::Uncommitted => uncommitted(),
         Source::Commit(sha) if sha == OPEN_PALETTE => open_palette(),
+        Source::Commit(sha) if sha == ADD_PROJECTS => add_projects(),
         Source::Commit(_) => Vec::new(),
     }
 }
@@ -235,6 +257,34 @@ fn open_palette() -> Vec<Sample> {
     ]
 }
 
+/// The files of the second commit, which no canvas opens.
+fn add_projects() -> Vec<Sample> {
+    vec![
+        file(
+            "crates/model/src/projects.rs",
+            FileStatus::Renamed,
+            (4, 2),
+            Staging::Staged,
+        )
+        .renamed_from("crates/model/src/workspace.rs")
+        .symbol(SymbolKind::Type, "Project", (3, 1))
+        .lines(&[
+            ('-', "//! The workspaces Pensive has open."),
+            (
+                '+',
+                "//! Projects, with the worktrees and branches of each.",
+            ),
+            (' ', ""),
+            ('-', "pub struct Workspace {"),
+            ('+', "pub struct Project {"),
+            (' ', "    pub root: PathBuf,"),
+            ('+', "    pub worktrees: Vec<Worktree>,"),
+            ('+', "    pub branches: Vec<Branch>,"),
+            (' ', "}"),
+        ]),
+    ]
+}
+
 /// Two changes far enough apart that the unchanged lines between and around them fold.
 fn root() -> Vec<(char, String)> {
     let unchanged = |lines: std::ops::Range<usize>| {
@@ -325,6 +375,7 @@ fn file(
 }
 
 trait Build: Sized {
+    fn renamed_from(self, path: &str) -> Self;
     fn symbol(self, kind: SymbolKind, name: &str, counts: (usize, usize)) -> Self;
     /// Versions from lines marked `+` for added, `-` for removed or a space for unchanged.
     fn lines(self, lines: &[(char, impl AsRef<str>)]) -> Sample;
@@ -341,6 +392,11 @@ trait Build: Sized {
 }
 
 impl Build for FileChange {
+    fn renamed_from(mut self, path: &str) -> Self {
+        self.renamed_from = Some(path.into());
+        self
+    }
+
     fn symbol(mut self, kind: SymbolKind, name: &str, (added, removed): (usize, usize)) -> Self {
         self.symbols.push(Symbol {
             kind,

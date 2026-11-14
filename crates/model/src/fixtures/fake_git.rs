@@ -88,10 +88,10 @@ impl GitBackend for FakeGit {
         &self,
         worktree: &Path,
         key: &FileKey,
-        _renamed_from: Option<&Path>,
+        renamed_from: Option<&Path>,
     ) -> Result<FileVersions> {
         Self::sample_root(worktree, &key.path)?;
-        let mut versions = super::changes::versions(key)
+        let mut versions = super::changes::versions(key, renamed_from)
             .ok_or_else(|| FixtureGap(format!("{} has no sample versions", key.path.display())))?;
         if key.source == Source::Uncommitted {
             versions.new = self.read_file(worktree, &key.path)?;
@@ -109,7 +109,7 @@ impl GitBackend for FakeGit {
             source: Source::Uncommitted,
             path: path.to_path_buf(),
         };
-        Ok(super::changes::versions(&key).map_or(Version::Missing, |versions| versions.new))
+        Ok(super::changes::versions(&key, None).map_or(Version::Missing, |versions| versions.new))
     }
 
     fn write_file(&self, worktree: &Path, path: &Path, text: &str) -> Result<()> {
@@ -128,5 +128,16 @@ impl GitBackend for FakeGit {
             staging.insert(path.clone(), staged);
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::fixtures::{PENSIVE_ROOT, contract};
+
+    #[test]
+    fn keeps_the_git_contract() {
+        contract::git(&FakeGit::default(), Path::new(PENSIVE_ROOT));
     }
 }
