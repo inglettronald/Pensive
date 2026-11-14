@@ -6,6 +6,7 @@ mod demo;
 mod mock_thumbnails;
 
 use gpui::{App, AppContext};
+use model::Notices;
 
 #[cfg(all(target_family = "wasm", not(feature = "demo")))]
 compile_error!("the browser build is a demo build: build it with `--features demo`");
@@ -23,6 +24,7 @@ fn main() {
         projects,
         paths,
         config,
+        check,
     } = backends::startup();
 
     gpui_platform::application()
@@ -35,6 +37,13 @@ fn main() {
             if let Some(config) = config {
                 config_sync::init(config, cx);
             }
+            let checking = cx.background_executor().spawn(async move { check() });
+            cx.spawn(async move |cx| {
+                for notice in checking.await {
+                    cx.update(|cx| Notices::post(notice, cx));
+                }
+            })
+            .detach();
 
             cx.on_window_closed(|cx, _window_id| {
                 if cx.windows().is_empty() {
