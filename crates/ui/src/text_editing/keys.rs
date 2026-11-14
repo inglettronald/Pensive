@@ -33,7 +33,7 @@ actions!(
 const CONTEXT: &str = "TextEditing";
 
 /// The key context for the view named `view`, which also takes the shared text-editing keys.
-pub(crate) fn key_context(view: &'static str) -> KeyContext {
+pub(super) fn key_context(view: &'static str) -> KeyContext {
     let mut context = KeyContext::default();
     context.add(view);
     context.add(CONTEXT);

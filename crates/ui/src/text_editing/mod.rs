@@ -46,10 +46,16 @@ pub(crate) trait TextEditing: Sized + 'static {
 /// Where a motion takes the cursor, given the text and the cursor.
 type Target = fn(&Rope, usize) -> usize;
 
-/// Runs every shared action on `element` against the view behind `cx`.
-pub(crate) fn on_actions<V: TextEditing, E: InteractiveElement>(element: E, cx: &Context<V>) -> E {
+/// Gives `element` the key context `view` and the shared keys, and runs every shared action on it
+/// against the view behind `cx`.
+pub(crate) fn attach<V: TextEditing, E: InteractiveElement>(
+    element: E,
+    view: &'static str,
+    cx: &Context<V>,
+) -> E {
     use movement::*;
     element
+        .key_context(key_context(view))
         .on_action(cx.listener(|view, _: &Left, window, cx| step(view, false, window, cx)))
         .on_action(cx.listener(|view, _: &Right, window, cx| step(view, true, window, cx)))
         .on_action(

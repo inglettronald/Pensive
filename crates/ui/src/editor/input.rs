@@ -51,6 +51,7 @@ impl EntityInputHandler for Editor {
     ) {
         if let Some(range) = self.bytes(Some(range_utf16), cx) {
             self.selection.select(range);
+            self.goal_column = None;
             cx.notify();
         }
     }

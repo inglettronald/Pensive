@@ -182,11 +182,8 @@ impl Render for Editor {
         let rows = cx.entity().downgrade();
         let entity = cx.entity();
         let focus_handle = self.focus_handle.clone();
-        let editor = div()
-            .id("editor")
-            .key_context(text_editing::key_context(CONTEXT))
-            .track_focus(&self.focus_handle);
-        text_editing::on_actions(editor, cx)
+        let editor = div().id("editor").track_focus(&self.focus_handle);
+        text_editing::attach(editor, CONTEXT, cx)
             .on_action(cx.listener(Self::up))
             .on_action(cx.listener(Self::down))
             .on_action(cx.listener(Self::select_up))

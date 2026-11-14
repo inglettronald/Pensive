@@ -457,6 +457,7 @@ impl Editor {
             let start = movement::previous_word(text, movement::next(text, offset));
             let end = movement::next_word(text, start);
             self.selection.select(start..end);
+            self.goal_column = None;
             window.notify_text_selection_changed(&self.focus_handle);
             cx.notify();
         } else {
@@ -523,6 +524,7 @@ impl TextEditing for Editor {
             return;
         };
         self.selection.select(0..len);
+        self.goal_column = None;
         window.notify_text_selection_changed(&self.focus_handle);
         cx.notify();
     }
@@ -548,13 +550,17 @@ impl Focusable for Editor {
 mod tests {
     use std::{path::Path, sync::Arc};
 
-    use gpui::{AppContext as _, TestAppContext, VisualTestContext};
+    use gpui::{
+        AppContext as _, EntityInputHandler, Modifiers, MouseButton, TestAppContext,
+        VisualTestContext, point,
+    };
     use model::{
         FileKey, GitBackend, Projects, Source, Version,
         fixtures::{FakeGit, PENSIVE_ROOT},
     };
 
     use super::*;
+    use crate::test_support::secondary;
 
     const PATH: &str = "crates/theme/src/colors.rs";
 
@@ -681,6 +687,69 @@ mod tests {
         assert!(text(&editor, cx).starts_with("one"));
         editor.update_in(cx, |editor, window, cx| editor.undo(&Undo, window, cx));
         assert_eq!(text(&editor, cx), original);
+    }
+
+    fn goal_column(editor: &Entity<Editor>, cx: &mut VisualTestContext) -> Option<usize> {
+        editor.read_with(cx, |editor, _| editor.goal_column)
+    }
+
+    #[gpui::test]
+    async fn left_or_right_on_a_selection_forgets_the_goal_column(cx: &mut TestAppContext) {
+        let (editor, _, cx) = editor(cx).await;
+        for key in ["left", "right"] {
+            cx.simulate_keystrokes("shift-down");
+            assert!(goal_column(&editor, cx).is_some());
+            cx.simulate_keystrokes(key);
+            assert_eq!(goal_column(&editor, cx), None, "after {key}");
+        }
+    }
+
+    /// Sets a goal column with Down, then checks that `step` forgets it.
+    fn forgets_the_goal_column(
+        editor: &Entity<Editor>,
+        cx: &mut VisualTestContext,
+        name: &str,
+        step: impl FnOnce(&mut VisualTestContext),
+    ) {
+        cx.simulate_keystrokes("down");
+        assert!(goal_column(editor, cx).is_some());
+        step(cx);
+        assert_eq!(goal_column(editor, cx), None, "after {name}");
+    }
+
+    #[gpui::test]
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the test clicks at window pixels"
+    )]
+    async fn clicks_undo_and_select_all_forget_the_goal_column(cx: &mut TestAppContext) {
+        let (editor, _, cx) = editor(cx).await;
+        let inside = point(px(300.), px(20.));
+        cx.simulate_input("x");
+        forgets_the_goal_column(&editor, cx, "click", |cx| {
+            crate::test_support::click(cx, inside)
+        });
+        forgets_the_goal_column(&editor, cx, "double click", |cx| {
+            cx.simulate_event(MouseDownEvent {
+                button: MouseButton::Left,
+                position: inside,
+                modifiers: Modifiers::none(),
+                click_count: 2,
+                first_mouse: false,
+            });
+            cx.simulate_mouse_up(inside, MouseButton::Left, Modifiers::none());
+        });
+        forgets_the_goal_column(&editor, cx, "undo", |cx| {
+            cx.simulate_keystrokes(&secondary("z"))
+        });
+        forgets_the_goal_column(&editor, cx, "select all", |cx| {
+            cx.simulate_keystrokes(&secondary("a"))
+        });
+        forgets_the_goal_column(&editor, cx, "an input method's selection", |cx| {
+            editor.update_in(cx, |editor, window, cx| {
+                editor.set_selected_text_range(0..1, window, cx)
+            })
+        });
     }
 
     #[gpui::test]
