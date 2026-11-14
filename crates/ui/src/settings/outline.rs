@@ -7,13 +7,14 @@ use settings::{AnySetting, Settings};
 
 /// The categories Pensive knows, in the rail's order. A setting can name a category that isn't
 /// here, and it's listed last with the gear for its icon.
-const KNOWN: [(&str, IconName, &str); 3] = [
+const KNOWN: [(&str, IconName, &str); 4] = [
     ("Appearance", IconName::Palette, "Theme, size and fonts"),
     (
         "Command palette",
         IconName::Command,
         "Tabs, Active and the backdrop",
     ),
+    ("Editor", IconName::FileText, "Saving"),
     ("Notices", IconName::Bell, "Toasts and the badge"),
 ];
 

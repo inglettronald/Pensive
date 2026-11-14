@@ -510,9 +510,9 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
 
     use gpui::AnyView;
     use mock::Mock;
-    use model::fixtures::{self, FakeGit, HARBOR, PENSIVE};
+    use model::fixtures::{FakeGit, HARBOR, PENSIVE};
 
-    use crate::palette::declare_settings;
+    use crate::mock_window;
 
     /// A window on the sample projects, with the palette open on `tab` and set up by `setup`.
     fn window(
@@ -522,9 +522,7 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
         window: &mut Window,
         cx: &mut App,
     ) -> AnyView {
-        declare_settings(cx);
-        let projects = cx.new(|_| fixtures::projects());
-        let view = cx.new(|cx| Pensive::new(projects, project, window, cx));
+        let view = mock_window::pensive(project, window, cx);
         view.update(cx, |pensive, cx| {
             if let Some(tab) = tab {
                 pensive.open_palette(Some(tab), window, cx);
@@ -537,7 +535,7 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
 
     vec![
         Mock::new("root", "empty", |window, cx| {
-            declare_settings(cx);
+            crate::declare_settings(cx);
             let projects = cx.new(|_| Projects::new(Arc::new(FakeGit::default())));
             cx.new(|cx| Pensive::new(projects, None, window, cx)).into()
         }),

@@ -7,6 +7,8 @@ mod editor;
 mod fuzzy;
 #[cfg(feature = "mocks")]
 mod mock_browser;
+#[cfg(feature = "mocks")]
+mod mock_window;
 mod notices;
 mod palette;
 mod project;
@@ -32,9 +34,7 @@ pub use root::{Pensive, open_window};
 
 /// Binds every view's keys and declares the views' settings.
 pub fn init(cx: &mut App) {
-    palette::declare_settings(cx);
-    notices::declare_settings(cx);
-    editor::declare_settings(cx);
+    declare_settings(cx);
     text_input::bind_keys(cx);
     editor::bind_keys(cx);
     palette::bind_keys(cx);
@@ -43,6 +43,14 @@ pub fn init(cx: &mut App) {
     settings::bind_keys(cx);
     #[cfg(feature = "mocks")]
     mock_browser::bind_keys(cx);
+}
+
+/// Declares every view's settings, so the palette and the settings view list them. Declaring them
+/// again lists each once.
+fn declare_settings(cx: &mut App) {
+    palette::declare_settings(cx);
+    notices::declare_settings(cx);
+    editor::declare_settings(cx);
 }
 
 /// Binds `keys` to `action` in `context`. Unlike `KeyBinding::new`, it reads `secondary-` as Cmd

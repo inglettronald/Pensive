@@ -261,14 +261,13 @@ impl Render for NoticeOverlay {
 pub(crate) fn mocks() -> Vec<mock::Mock> {
     use gpui::AnyView;
     use mock::Mock;
-    use model::fixtures::{self, PENSIVE};
+    use model::fixtures::PENSIVE;
 
-    use crate::{palette, root::Pensive};
+    use crate::mock_window;
 
     /// The pensive project's window after the samples below, with their toasts folded into the
     /// badge if `fold`, and the list open if `open`.
     fn window(fold: bool, open: bool, window: &mut Window, cx: &mut App) -> AnyView {
-        palette::declare_settings(cx);
         Notices::global(cx).update(cx, |notices, cx| {
             samples(notices, cx);
             if fold {
@@ -278,8 +277,7 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
                 }
             }
         });
-        let projects = cx.new(|_| fixtures::projects());
-        let pensive = cx.new(|cx| Pensive::new(projects, Some(PENSIVE), window, cx));
+        let pensive = mock_window::pensive(Some(PENSIVE), window, cx);
         if open {
             let overlay = pensive.read(cx).notices();
             overlay.update(cx, NoticeOverlay::toggle_list);
