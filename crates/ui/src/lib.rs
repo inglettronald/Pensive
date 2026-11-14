@@ -12,6 +12,8 @@ mod root;
 mod setting_control;
 mod settings;
 mod smooth_scroll;
+#[cfg(test)]
+mod test_support;
 mod text_input;
 mod window_frame;
 

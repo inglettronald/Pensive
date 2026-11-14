@@ -59,3 +59,48 @@ fn warn(title: &'static str, problems: impl IntoIterator<Item = String>, cx: &mu
         Notices::post(notice, cx);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use gpui::TestAppContext;
+    use model::fixtures::FakeConfig;
+
+    use super::*;
+
+    /// The app's globals, kept in step with `config` as the app keeps them.
+    fn synced(config: &Arc<FakeConfig>, cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            theme::init(cx);
+            ui::init(cx);
+            init(config.clone(), cx);
+        });
+        cx.run_until_parked();
+    }
+
+    #[gpui::test]
+    fn a_setting_changed_in_the_app_is_saved_to_the_file(cx: &mut TestAppContext) {
+        let config = Arc::new(FakeConfig::new("# my settings\n", &[]));
+        synced(&config, cx);
+        cx.update(|cx| {
+            let density = cx.global::<Settings>().find("density").unwrap();
+            density.step(1, cx);
+        });
+        cx.run_until_parked();
+        let saved = config.settings();
+        assert!(saved.contains("# my settings\n"), "{saved}");
+        assert!(saved.contains("density = "), "{saved}");
+    }
+
+    #[gpui::test]
+    fn a_setting_the_file_gets_wrong_is_ignored_with_a_warning(cx: &mut TestAppContext) {
+        let config = Arc::new(FakeConfig::new("density = 3\n", &[]));
+        synced(&config, cx);
+        let notices = cx.update(Notices::global);
+        notices.read_with(cx, |notices, _| {
+            let held = notices.held();
+            assert_eq!(held.len(), 1);
+            assert_eq!(held[0].notice.title, "Setting ignored");
+        });
+        assert_eq!(config.settings(), "density = 3\n");
+    }
+}

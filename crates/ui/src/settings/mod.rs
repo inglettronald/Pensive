@@ -852,19 +852,12 @@ impl Render for SettingsView {
 #[cfg(test)]
 mod tests {
     use gpui::{Modifiers, ScrollDelta, TestAppContext, VisualTestContext, point};
-    use model::fixtures::{self, PENSIVE};
 
     use super::*;
-    use crate::root::Pensive;
+    use crate::test_support::pensive_window;
 
     fn settings_window(cx: &mut TestAppContext) -> (Entity<SettingsView>, &mut VisualTestContext) {
-        cx.update(|cx| {
-            theme::init(cx);
-            crate::init(cx);
-        });
-        let projects = cx.new(|_| fixtures::projects());
-        let (root, cx) =
-            cx.add_window_view(|window, cx| Pensive::new(projects, Some(PENSIVE), window, cx));
+        let (root, cx) = pensive_window(cx);
         root.update_in(cx, |pensive, window, cx| pensive.open_settings(window, cx));
         cx.run_until_parked();
         let view = root.read_with(cx, |pensive, _| pensive.settings_view().unwrap());

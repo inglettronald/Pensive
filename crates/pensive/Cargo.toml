@@ -33,6 +33,7 @@ model = { workspace = true, features = ["fixtures"] }
 demo = ["ui/mocks", "model/fixtures", "dep:image", "dep:mock"]
 
 [dev-dependencies]
+gpui = { workspace = true, features = ["test-support"] }
 anyhow.workspace = true
 image.workspace = true
 mock.workspace = true
