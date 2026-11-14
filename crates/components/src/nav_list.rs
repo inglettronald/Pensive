@@ -5,9 +5,9 @@ use std::{ops::Range, rc::Rc, time::Duration};
 
 use gpui::{
     Animation, AnimationExt, App, ElementId, FontWeight, HighlightStyle, SharedString, StyledText,
-    Window, div, ease_out_quint, prelude::*, px,
+    Window, div, ease_out_quint, prelude::*,
 };
-use theme::{ActiveTheme, Dp, Typeset, dp};
+use theme::{ActiveTheme, Dp, HAIRLINE, Typeset, dp};
 
 use crate::Callback;
 
@@ -94,7 +94,7 @@ impl RenderOnce for NavList {
                 .top_0()
                 .bottom_0()
                 .left(GUIDE)
-                .w(px(1.))
+                .w(HAIRLINE)
                 .bg(color)
         };
         let highlight = self.selected.map(|to| {
@@ -185,7 +185,7 @@ impl RenderOnce for NavList {
 
 #[cfg(feature = "mocks")]
 pub(crate) fn mocks() -> Vec<mock::Mock> {
-    use gpui::{AnyElement, size};
+    use gpui::AnyElement;
 
     fn list(selected: Option<usize>, hovered: Option<usize>) -> AnyElement {
         div()
@@ -231,6 +231,6 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
                 )
                 .into_any_element()
         })
-        .size(size(px(800.), px(240.))),
+        .size(800., 240.),
     ]
 }

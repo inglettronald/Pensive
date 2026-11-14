@@ -1,9 +1,7 @@
 //! A small raised box for what doesn't fit where it's anchored, or for how an action there went.
 
-use gpui::{
-    AnyElement, AnyView, App, BoxShadow, Context, SharedString, Window, div, hsla, prelude::*, px,
-};
-use theme::{ActiveTheme, Typeset, dp};
+use gpui::{AnyElement, AnyView, App, Context, SharedString, Window, div, prelude::*};
+use theme::{ActiveTheme, HAIRLINE, Shadow, Typeset, dp};
 
 use crate::{Kbd, Tag, Tone};
 
@@ -70,9 +68,7 @@ impl RenderOnce for Tooltip {
             .border_1()
             .border_color(self.tone.outline(colors))
             .bg(colors.surface_raised)
-            .shadow(vec![
-                BoxShadow::new(px(0.), px(6.), hsla(0., 0., 0., 0.5)).blur_radius(px(16.)),
-            ])
+            .shadow(Shadow::Small.layers())
             .typeset(density.small)
             .text_color(if self.tone == Tone::Neutral {
                 colors.text
@@ -108,7 +104,7 @@ impl RenderOnce for Tooltip {
             )
             .when_some(self.shortcut, |tooltip, (label, keys)| {
                 tooltip
-                    .child(div().w(px(1.)).self_stretch().bg(colors.border_subtle))
+                    .child(div().w(HAIRLINE).self_stretch().bg(colors.border_subtle))
                     .child(
                         div()
                             .flex()
@@ -137,8 +133,6 @@ impl Render for TextTooltip {
 
 #[cfg(feature = "mocks")]
 pub(crate) fn mocks() -> Vec<mock::Mock> {
-    use gpui::size;
-
     vec![
         mock::Mock::component("tooltip", "gallery", || {
             crate::Gallery::new("Tooltip")
@@ -190,6 +184,6 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
                 )
                 .into_any_element()
         })
-        .size(size(px(640.), px(420.))),
+        .size(640., 420.),
     ]
 }

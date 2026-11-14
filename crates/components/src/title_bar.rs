@@ -5,7 +5,7 @@ use gpui::{
     AnyElement, App, Div, ElementId, Entity, MouseButton, Pixels, Point, SharedString, Stateful,
     Window, WindowControlArea, div, point, prelude::*, px,
 };
-use theme::{ActiveTheme, Dp, Typeset, dp};
+use theme::{ActiveTheme, Dp, HAIRLINE, Typeset, dp};
 
 use crate::{Breadcrumb, Callback, Icon, IconButton, IconName, Kbd, Tone, callback};
 
@@ -37,6 +37,10 @@ pub struct TitleBar {
 
 impl TitleBar {
     /// Where the macOS window buttons sit, inside the title bar's left end.
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "macOS places its buttons in window pixels"
+    )]
     pub const TRAFFIC_LIGHTS: Point<Pixels> = point(px(14.), px(13.));
 
     /// With no project, the bar is empty apart from the gear and the window controls, as on the
@@ -277,7 +281,13 @@ impl RenderOnce for TitleBar {
                 .flex()
                 .items_center()
                 .gap_0p5()
-                .child(div().w(px(1.)).h(dp(16.)).mx_1p5().bg(colors.border_subtle))
+                .child(
+                    div()
+                        .w(HAIRLINE)
+                        .h(dp(16.))
+                        .mx_1p5()
+                        .bg(colors.border_subtle),
+                )
                 .child(window_control(
                     "minimize",
                     IconName::WindowMinimize,
@@ -418,8 +428,6 @@ fn window_control(id: &'static str, icon: IconName, area: WindowControlArea) -> 
 
 #[cfg(feature = "mocks")]
 pub(crate) fn mocks() -> Vec<mock::Mock> {
-    use gpui::size;
-
     vec![
         mock::Mock::component("title_bar", "gallery", || {
             let bar = |title_bar: TitleBar| div().w(dp(960.)).child(title_bar).into_any_element();
@@ -474,6 +482,6 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
                 )
                 .into_any_element()
         })
-        .size(size(px(1088.), px(640.))),
+        .size(1088., 640.),
     ]
 }

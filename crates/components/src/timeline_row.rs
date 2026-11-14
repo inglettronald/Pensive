@@ -221,8 +221,6 @@ fn dashes(color: Hsla) -> impl IntoElement {
 
 #[cfg(feature = "mocks")]
 pub(crate) fn mocks() -> Vec<mock::Mock> {
-    use gpui::px;
-
     use crate::{RingFill, StatusRing, gallery::Panel};
 
     #[derive(Clone, Copy, VariantArray, IntoStaticStr)]
@@ -265,6 +263,6 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
                 )
                 .into_any_element()
         })
-        .size(gpui::size(px(960.), px(480.))),
+        .size(960., 480.),
     ]
 }

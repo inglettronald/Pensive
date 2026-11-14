@@ -1,4 +1,8 @@
 //! One subject's mocks as a grid of numbered cards, drawn into a single image.
+#![expect(
+    clippy::disallowed_methods,
+    reason = "the atlas is an image laid out in pixels"
+)]
 
 use std::sync::Arc;
 

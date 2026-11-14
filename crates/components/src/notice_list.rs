@@ -1,7 +1,7 @@
 //! The notices that are held, errors first, each dismissable, with Clear all at the top.
 
-use gpui::{App, BoxShadow, ElementId, SharedString, Window, div, hsla, prelude::*, px};
-use theme::{ActiveTheme, Dp, Typeset, dp};
+use gpui::{App, ElementId, SharedString, Window, div, prelude::*};
+use theme::{ActiveTheme, Dp, Shadow, Typeset, dp};
 
 use crate::{Callback, IconButton, IconName, Tag, Tone, callback};
 
@@ -172,9 +172,7 @@ impl RenderOnce for NoticeList {
             .border_1()
             .border_color(colors.border)
             .bg(colors.surface_raised)
-            .shadow(vec![
-                BoxShadow::new(px(0.), px(8.), hsla(0., 0., 0., 0.55)).blur_radius(px(24.)),
-            ])
+            .shadow(Shadow::Medium.layers())
             .child(
                 div()
                     .flex()
@@ -206,8 +204,6 @@ impl RenderOnce for NoticeList {
 
 #[cfg(feature = "mocks")]
 pub(crate) fn mocks() -> Vec<mock::Mock> {
-    use gpui::size;
-
     vec![
         mock::Mock::component("notice_list", "gallery", || {
             crate::Gallery::new("Notice list")
@@ -237,6 +233,6 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
                 )
                 .into_any_element()
         })
-        .size(size(px(640.), px(420.))),
+        .size(640., 420.),
     ]
 }

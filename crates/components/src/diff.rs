@@ -109,8 +109,6 @@ impl RenderOnce for Sample {
 
 #[cfg(feature = "mocks")]
 pub(crate) fn mocks() -> Vec<mock::Mock> {
-    use gpui::{px, size};
-
     vec![
         mock::Mock::component("diff", "gallery", || {
             crate::Gallery::new("Diff row")
@@ -160,6 +158,6 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
                 )
                 .into_any_element()
         })
-        .size(size(px(800.), px(320.))),
+        .size(800., 320.),
     ]
 }

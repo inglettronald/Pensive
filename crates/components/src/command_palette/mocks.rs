@@ -2,7 +2,7 @@
 
 use std::iter::once;
 
-use gpui::{AnyElement, AnyView, App, div, prelude::*, px, size};
+use gpui::{AnyElement, AnyView, App, div, prelude::*};
 use mock::Mock;
 use theme::DensityPreset;
 
@@ -15,9 +15,8 @@ const ACTIVE: Option<usize> = Some(1);
 const COMMANDS: Option<usize> = Some(2);
 
 pub(crate) fn mocks() -> Vec<Mock> {
-    let size = size(px(640.), px(560.));
-    let calm = |name, render| Mock::component("command_palette", name, render).size(size);
-    let dense = |name, build| Mock::new("command_palette", name, build).size(size);
+    let calm = |name, render| Mock::component("command_palette", name, render).size(640., 560.);
+    let dense = |name, build| Mock::new("command_palette", name, build).size(640., 560.);
     vec![
         calm("landing", || framed(landing())),
         calm("active", || framed(active())),

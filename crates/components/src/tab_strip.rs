@@ -56,8 +56,6 @@ impl RenderOnce for TabStrip {
 
 #[cfg(feature = "mocks")]
 pub(crate) fn mocks() -> Vec<mock::Mock> {
-    use gpui::{px, size};
-
     vec![
         mock::Mock::component("tab_strip", "gallery", || {
             const TABS: [&str; 3] = ["All", "Active", "Commands"];
@@ -79,6 +77,6 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
                 )
                 .into_any_element()
         })
-        .size(size(px(960.), px(200.))),
+        .size(960., 200.),
     ]
 }

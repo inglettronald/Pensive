@@ -5,10 +5,10 @@ use std::{cell::RefCell, ops::Range, rc::Rc};
 
 use gpui::{
     App, Bounds, ElementId, GlobalElementId, Hsla, LayoutId, Pixels, ShapedLine, SharedString,
-    Style, TextAlign, TextRun, UnderlineStyle, WeakEntity, Window, fill, point, prelude::*, px,
+    Style, TextAlign, TextRun, UnderlineStyle, WeakEntity, Window, fill, point, prelude::*,
     relative, size,
 };
-use theme::{ActiveTheme, Dp, dp};
+use theme::{ActiveTheme, CARET, Dp, HAIRLINE, dp};
 
 use super::Editor;
 
@@ -138,7 +138,7 @@ impl Element for LineElement {
         let x = |index: usize| bounds.left() + shaped.x_for_index(index) - self.scroll_x;
         if let Some((selected, past_end)) = &self.selection {
             let newline = NEWLINE_WIDTH.to_pixels(window.rem_size());
-            let end = x(selected.end) + if *past_end { newline } else { px(0.) };
+            let end = x(selected.end) + if *past_end { newline } else { Pixels::ZERO };
             window.paint_quad(fill(
                 Bounds::from_corners(
                     point(x(selected.start), bounds.top()),
@@ -160,7 +160,7 @@ impl Element for LineElement {
             window.paint_quad(fill(
                 Bounds::new(
                     point(cursor_x, bounds.top()),
-                    size(px(1.5), bounds.size.height),
+                    size(CARET, bounds.size.height),
                 ),
                 cursor_color,
             ));
@@ -193,7 +193,7 @@ impl LineElement {
         let scroll_x = if cursor_x > bounds.right() - margin {
             self.scroll_x + (cursor_x - (bounds.right() - margin))
         } else if cursor_x < bounds.left() + margin {
-            (self.scroll_x - (bounds.left() + margin - cursor_x)).max(px(0.))
+            (self.scroll_x - (bounds.left() + margin - cursor_x)).max(Pixels::ZERO)
         } else {
             return;
         };
@@ -234,7 +234,7 @@ fn runs(
                 .filter(|marked| marked.start <= span.start && span.end <= marked.end)
                 .map(|_| UnderlineStyle {
                     color: Some(base.color),
-                    thickness: px(1.),
+                    thickness: HAIRLINE,
                     wavy: false,
                 });
             TextRun {

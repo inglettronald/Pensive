@@ -6,6 +6,7 @@ mod colors;
 mod density;
 mod dp;
 mod fonts;
+mod shadow;
 mod theme;
 
 use gpui::App;
@@ -13,8 +14,9 @@ use gpui::App;
 pub use appearance::apply;
 pub use colors::{Role, ThemeColors, ThemeColorsRefinement, gray};
 pub use density::{Density, DensityPreset, TextRole, TextSize, Typeset};
-pub use dp::{Dp, dp};
+pub use dp::{CARET, Dp, HAIRLINE, dp};
 pub use fonts::{ThemeFonts, ThemeFontsRefinement};
+pub use shadow::Shadow;
 /// Lists every value of `DensityPreset` and `TextRole`, for galleries.
 pub use strum::VariantArray;
 use theme::{BASE_THEME, BASE_THEME_NAME};

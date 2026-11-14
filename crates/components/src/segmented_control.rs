@@ -129,8 +129,6 @@ impl RenderOnce for SegmentedControl {
 
 #[cfg(feature = "mocks")]
 pub(crate) fn mocks() -> Vec<mock::Mock> {
-    use gpui::{px, size};
-
     vec![
         mock::Mock::component("segmented_control", "gallery", || {
             const OPTIONS: [&str; 3] = ["Off", "New file", "Both"];
@@ -156,6 +154,6 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
                 )
                 .into_any_element()
         })
-        .size(size(px(640.), px(280.))),
+        .size(640., 280.),
     ]
 }

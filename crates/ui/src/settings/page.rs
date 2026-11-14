@@ -4,9 +4,9 @@
 use components::{
     Card, CategoryHeading, Icon, IconName, NavItem, NavList, NextCard, PageHeading, SettingRow,
 };
-use gpui::{AnyElement, App, Context, SharedString, div, prelude::*, px};
+use gpui::{AnyElement, App, Context, SharedString, div, prelude::*};
 use settings::AnySetting;
-use theme::{ActiveTheme, Typeset, dp};
+use theme::{ActiveTheme, HAIRLINE, Typeset, dp};
 
 use super::{
     Anchor, SettingsView, Spot,
@@ -54,7 +54,7 @@ impl SettingsView {
                     .child(here)
             })
             .when(both, |list| {
-                list.child(div().h(px(1.)).mx_4().mt_2p5().bg(colors.border_subtle))
+                list.child(div().h(HAIRLINE).mx_4().mt_2p5().bg(colors.border_subtle))
             })
             .when_some(elsewhere, |list, elsewhere| {
                 list.child(label("Other categories".into(), None))

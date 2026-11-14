@@ -135,6 +135,10 @@ pub fn mocks() -> Vec<mock::Mock> {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "tests click and scroll at window pixels"
+)]
 mod tests {
     use std::{cell::Cell, rc::Rc};
 

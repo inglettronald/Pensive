@@ -38,8 +38,6 @@ impl RenderOnce for DiffStat {
 
 #[cfg(feature = "mocks")]
 pub(crate) fn mocks() -> Vec<mock::Mock> {
-    use gpui::{px, size};
-
     vec![
         mock::Mock::component("diff_stat", "gallery", || {
             crate::Gallery::new("DiffStat")
@@ -57,6 +55,6 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
                 )
                 .into_any_element()
         })
-        .size(size(px(640.), px(200.))),
+        .size(640., 200.),
     ]
 }

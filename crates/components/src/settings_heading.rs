@@ -136,7 +136,7 @@ impl RenderOnce for PageHeading {
 
 #[cfg(feature = "mocks")]
 pub(crate) fn mocks() -> Vec<mock::Mock> {
-    use gpui::{IntoElement, px, size};
+    use gpui::IntoElement;
 
     vec![
         mock::Mock::component("settings_heading", "gallery", || {
@@ -156,6 +156,6 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
                 )
                 .into_any_element()
         })
-        .size(size(px(640.), px(260.))),
+        .size(640., 260.),
     ]
 }

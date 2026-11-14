@@ -4,7 +4,7 @@
 
 use std::{cell::Cell, rc::Rc, time::Duration};
 
-use gpui::{Context, Pixels, ScrollHandle, Task, point, px};
+use gpui::{Context, Pixels, ScrollHandle, Task, point};
 
 /// Each glide moves the page once per frame.
 const FRAME: Duration = Duration::from_millis(16);
@@ -67,6 +67,6 @@ impl SmoothScroll {
 
     /// Offsets run from zero at the top down to minus the most the content can scroll.
     fn clamp(&self, offset: Pixels) -> Pixels {
-        offset.clamp(-self.handle.max_offset().y, px(0.))
+        offset.clamp(-self.handle.max_offset().y, Pixels::ZERO)
     }
 }

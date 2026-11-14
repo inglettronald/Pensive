@@ -12,10 +12,8 @@ pub(crate) use mocks::mocks;
 
 use std::rc::Rc;
 
-use gpui::{
-    AnyElement, App, BoxShadow, ScrollHandle, SharedString, Window, div, hsla, prelude::*, px,
-};
-use theme::{ActiveTheme, Typeset, dp};
+use gpui::{AnyElement, App, ScrollHandle, SharedString, Window, div, prelude::*};
+use theme::{ActiveTheme, Shadow, Typeset, dp};
 
 use crate::{Callback, Icon, IconButton, IconName, Kbd, TabStrip, callback};
 use field::Field;
@@ -337,9 +335,7 @@ impl RenderOnce for CommandPalette {
             .border_color(colors.border)
             .bg(colors.surface_panel.opacity(self.opacity))
             .when(self.overlay, |palette| {
-                palette.shadow(vec![
-                    BoxShadow::new(px(0.), px(16.), hsla(0., 0., 0., 0.6)).blur_radius(px(48.)),
-                ])
+                palette.shadow(Shadow::Large.layers())
             })
             .font_family(theme.fonts.ui.clone())
             .text_color(colors.text)

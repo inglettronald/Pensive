@@ -60,8 +60,6 @@ impl RenderOnce for Select {
 
 #[cfg(feature = "mocks")]
 pub(crate) fn mocks() -> Vec<mock::Mock> {
-    use gpui::{px, size};
-
     vec![
         mock::Mock::component("select", "gallery", || {
             crate::Gallery::new("Select")
@@ -72,6 +70,6 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
                 )
                 .into_any_element()
         })
-        .size(size(px(480.), px(200.))),
+        .size(480., 200.),
     ]
 }

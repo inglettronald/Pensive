@@ -104,8 +104,6 @@ impl RenderOnce for NextCard {
 
 #[cfg(feature = "mocks")]
 pub(crate) fn mocks() -> Vec<mock::Mock> {
-    use gpui::{px, size};
-
     fn card(hovered: bool) -> gpui::AnyElement {
         div()
             .w(dp(560.))
@@ -129,6 +127,6 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
                 )
                 .into_any_element()
         })
-        .size(size(px(640.), px(360.))),
+        .size(640., 360.),
     ]
 }

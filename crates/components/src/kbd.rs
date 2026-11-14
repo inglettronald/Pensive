@@ -35,8 +35,6 @@ impl RenderOnce for Kbd {
 
 #[cfg(feature = "mocks")]
 pub(crate) fn mocks() -> Vec<mock::Mock> {
-    use gpui::{px, size};
-
     vec![
         mock::Mock::component("kbd", "gallery", || {
             crate::Gallery::new("Kbd")
@@ -55,6 +53,6 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
                 )
                 .into_any_element()
         })
-        .size(size(px(640.), px(200.))),
+        .size(640., 200.),
     ]
 }

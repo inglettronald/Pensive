@@ -70,8 +70,6 @@ impl RenderOnce for Card {
 
 #[cfg(feature = "mocks")]
 pub(crate) fn mocks() -> Vec<mock::Mock> {
-    use gpui::{px, size};
-
     fn line(text: &'static str) -> impl IntoElement {
         div().px_3().py_2p5().child(text)
     }
@@ -104,6 +102,6 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
                 )
                 .into_any_element()
         })
-        .size(size(px(700.), px(260.))),
+        .size(700., 260.),
     ]
 }

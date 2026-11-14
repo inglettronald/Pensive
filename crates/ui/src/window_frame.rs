@@ -3,6 +3,10 @@
 //! this crate's `LICENSE-APACHE`) at the Zed tag pinned in the root `Cargo.toml`.
 //!
 //! With server decorations, as on macOS, Windows and in mocks, it adds nothing.
+#![expect(
+    clippy::disallowed_methods,
+    reason = "the frame is in window pixels, outside the zoom"
+)]
 
 use gpui::{
     AnyElement, App, Bounds, BoxShadow, CursorStyle, Decorations, HitboxBehavior, MouseButton,

@@ -100,8 +100,6 @@ pub(crate) fn paint_fade(
 
 #[cfg(feature = "mocks")]
 pub(crate) fn mocks() -> Vec<mock::Mock> {
-    use gpui::px;
-
     use crate::gallery::Panel;
 
     vec![
@@ -122,6 +120,6 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
                 )
                 .into_any_element()
         })
-        .size(gpui::size(px(640.), px(200.))),
+        .size(640., 200.),
     ]
 }

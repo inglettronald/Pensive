@@ -1,8 +1,9 @@
 # Only `git`, `config` and `pensive` do I/O, and each has its own clippy.toml that drops these
-# rules. Every other crate goes through a model, so any view can render from mock data. See the
-# rules in docs/architecture.md.
+# rules. Every other crate goes through a model, so any view can render from mock data. Sizes go
+# through theme::dp so they follow the zoom. See the rules in docs/architecture.md.
 
 disallowed-methods = [
+    { path = "gpui::px", reason = "size with theme::dp so it follows the zoom. For fixed pixels there's Pixels::ZERO, theme::HAIRLINE, theme::CARET and theme::Shadow; anything else needs an #[expect] saying why" },
     { path = "std::fs::read", reason = "read files through a model's backend" },
     { path = "std::fs::read_to_string", reason = "read files through a model's backend" },
     { path = "std::fs::read_dir", reason = "read files through a model's backend" },
