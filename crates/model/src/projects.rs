@@ -12,7 +12,7 @@ use gpui::{AppContext as _, Context, Entity, SharedString, Subscription, Task};
 
 use crate::{
     Backend, Changes, Document, DocumentEvent, FileKey, FileVersions, GitBackend, Origin,
-    Repository, Source, clock, document::Contents,
+    Repository, Source, clock, document::Contents, queue::Queue,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -91,9 +91,8 @@ pub struct Projects {
     /// Files with a binary version, which have no lines to show.
     binary: HashSet<(PathBuf, FileKey)>,
     git: Backend<dyn GitBackend>,
-    /// The last write to Git's index. The next one waits for it, since two writes at once would
-    /// both need the index's lock.
-    staging: Option<Task<()>>,
+    /// Writes to Git's index, one at a time, since two at once would both need the index's lock.
+    staging: Queue,
     /// How many reads of each worktree's changes have started.
     reads: HashMap<PathBuf, u64>,
     _saves: Vec<Subscription>,
@@ -110,7 +109,7 @@ impl Projects {
             opening: HashSet::new(),
             binary: HashSet::new(),
             git: Backend::new(git, Origin::Git),
-            staging: None,
+            staging: Queue::default(),
             reads: HashMap::new(),
             _saves: Vec::new(),
         }
@@ -367,27 +366,26 @@ impl Projects {
             "Couldn't unstage"
         };
         let worktree = worktree.to_path_buf();
-        let previous = self.staging.take();
-        self.staging = Some(cx.spawn(async move |this, cx| {
-            if let Some(previous) = previous {
-                previous.await;
-            }
-            let path = worktree.clone();
-            let Ok(write) = this.update(cx, |this, cx| {
-                this.git.call(
-                    title,
-                    move |git| git.set_staged(&path, &pathspecs, staged),
-                    cx,
-                )
-            }) else {
-                return;
-            };
-            // The backend reports a write Git refused. The read shows what Git has either way.
-            write.await.ok();
-            if let Ok(read) = this.update(cx, |this, cx| this.read_changes(worktree, cx)) {
-                read.await.ok();
-            }
-        }));
+        self.staging.push(
+            async move |this, cx| {
+                let path = worktree.clone();
+                let Ok(write) = this.update(cx, |this, cx| {
+                    this.git.call(
+                        title,
+                        move |git| git.set_staged(&path, &pathspecs, staged),
+                        cx,
+                    )
+                }) else {
+                    return;
+                };
+                // The backend reports a write Git refused. The read shows what Git has either way.
+                write.await.ok();
+                if let Ok(read) = this.update(cx, |this, cx| this.read_changes(worktree, cx)) {
+                    read.await.ok();
+                }
+            },
+            cx,
+        );
     }
 
     pub fn project(&self, id: ProjectId) -> Option<&Project> {

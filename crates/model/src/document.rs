@@ -13,7 +13,7 @@ use ropey::Rope;
 
 use crate::{
     Backend, FileKey, FileVersions, GitBackend, LineDiff, Notice, Notices, Origin, Severity,
-    Source, Version, diff::line_ranges,
+    Source, Version, diff::line_ranges, queue::Queue,
 };
 
 pub enum DocumentEvent {
@@ -34,24 +34,27 @@ pub struct Document {
     /// Counts edits, so a save knows which text it was for.
     revision: usize,
     saved_revision: usize,
-    /// Counts diffs started, so only the newest one lands.
-    diff_generation: usize,
     /// Counts changes to `on_disk`, so a read of the disk that started before one is dropped.
     disk_generation: usize,
     /// Set when the file changed on disk since it was read, which stops saving until the
     /// document is reloaded or the file is overwritten.
     conflict: Option<Version>,
     diff: LineDiff,
+    /// The diff running. Replacing it cancels it, so only the newest one lands.
     diffing: Option<Task<()>>,
     undo: Vec<Vec<Edit>>,
     redo: Vec<Vec<Edit>>,
     /// Whether the next edit may join the last undo step.
     grouping: bool,
-    saving: bool,
-    save_again: bool,
+    /// Writes of the text, one at a time.
+    saves: Queue,
     save_timer: Option<Task<()>>,
     git: Backend<dyn GitBackend>,
 }
+
+/// What a save wrote, or the file as it was on disk when it changed since it was read, so nothing
+/// was written.
+type Written = anyhow::Result<Result<String, Version>>;
 
 /// One replacement, as applied: `old` at `start` became `new`.
 #[derive(Clone, Debug)]
@@ -116,7 +119,6 @@ impl Document {
             text: contents.text,
             revision: 0,
             saved_revision: 0,
-            diff_generation: 0,
             disk_generation: 0,
             conflict: None,
             diff: contents.diff,
@@ -124,8 +126,7 @@ impl Document {
             undo: Vec::new(),
             redo: Vec::new(),
             grouping: false,
-            saving: false,
-            save_again: false,
+            saves: Queue::default(),
             save_timer: None,
             git,
         }
@@ -257,8 +258,6 @@ impl Document {
 
     /// Diffs the text off the UI thread. A newer diff drops the one still running.
     fn rediff(&mut self, cx: &mut Context<Self>) {
-        self.diff_generation += 1;
-        let generation = self.diff_generation;
         let (base, text) = (self.base.clone(), self.text.clone());
         self.diffing = Some(cx.spawn(async move |this, cx| {
             let diff = cx
@@ -266,10 +265,8 @@ impl Document {
                 .spawn(async move { LineDiff::new(&base, &text.to_string()) })
                 .await;
             this.update(cx, |this, cx| {
-                if this.diff_generation == generation {
-                    this.diff = diff;
-                    cx.notify();
-                }
+                this.diff = diff;
+                cx.notify();
             })
             .ok();
         }));
@@ -291,12 +288,27 @@ impl Document {
         if !self.is_dirty() || self.conflict.is_some() {
             return;
         }
-        if self.saving {
-            self.save_again = true;
-            return;
+        // A save checks again when it starts, so the ones queued behind a save that wrote
+        // everything find nothing to do.
+        self.saves.push(
+            async move |this, cx| {
+                let Ok(Some((revision, write))) = this.update(cx, |this, cx| this.write(cx)) else {
+                    return;
+                };
+                let result = write.await;
+                this.update(cx, |this, cx| this.written(revision, result, cx))
+                    .ok();
+            },
+            cx,
+        );
+    }
+
+    /// Starts writing the text, unless it's saved or the file changed on disk. Returns the
+    /// revision it writes.
+    fn write(&mut self, cx: &mut Context<Self>) -> Option<(usize, Task<Written>)> {
+        if !self.is_dirty() || self.conflict.is_some() {
+            return None;
         }
-        self.saving = true;
-        let revision = self.revision;
         let text = self.text.to_string();
         let expected = self.on_disk.clone();
         let (worktree, path) = (self.worktree.clone(), self.key.path.clone());
@@ -313,32 +325,25 @@ impl Document {
             },
             cx,
         );
-        cx.spawn(async move |this, cx| {
-            let result = write.await;
-            this.update(cx, |this, cx| {
-                this.saving = false;
-                match result {
-                    Ok(Ok(text)) => {
-                        this.set_on_disk(Version::Text(text));
-                        this.saved_revision = revision;
-                        cx.emit(DocumentEvent::Saved);
-                    }
-                    Ok(Err(current)) => {
-                        this.conflict = Some(current);
-                        this.save_again = false;
-                        Notices::post(this.conflict_notice(), cx);
-                    }
-                    // The backend reported it.
-                    Err(_) => this.save_again = false,
-                }
-                if std::mem::take(&mut this.save_again) {
-                    this.save(cx);
-                }
-                cx.notify();
-            })
-            .ok();
-        })
-        .detach();
+        Some((self.revision, write))
+    }
+
+    /// Follows a finished write of `revision`.
+    fn written(&mut self, revision: usize, result: Written, cx: &mut Context<Self>) {
+        match result {
+            Ok(Ok(text)) => {
+                self.set_on_disk(Version::Text(text));
+                self.saved_revision = revision;
+                cx.emit(DocumentEvent::Saved);
+            }
+            Ok(Err(current)) => {
+                self.conflict = Some(current);
+                Notices::post(self.conflict_notice(), cx);
+            }
+            // The backend reported it.
+            Err(_) => {}
+        }
+        cx.notify();
     }
 
     fn conflict_notice(&self) -> Notice {
@@ -399,7 +404,7 @@ impl Document {
             self.base = base.into();
             self.rediff(cx);
         }
-        let current = stamp == self.disk_generation && !self.saving;
+        let current = stamp == self.disk_generation && !self.saves.is_busy();
         if current && !self.is_dirty() && on_disk != self.on_disk {
             self.take_disk_text(on_disk, cx);
         }
