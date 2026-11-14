@@ -1,6 +1,8 @@
 mod backends;
 mod config_sync;
 #[cfg(feature = "demo")]
+mod demo;
+#[cfg(feature = "demo")]
 mod mock_thumbnails;
 
 use gpui::{App, AppContext};
@@ -12,6 +14,11 @@ fn main() {
         // Debug builds log each shader wgpu compiles, which buries the warnings.
         log::set_max_level(log::LevelFilter::Info);
     }
+    #[cfg(feature = "demo")]
+    let demo = demo::Options::from_args().unwrap_or_else(|problem| {
+        eprintln!("{problem}");
+        std::process::exit(2);
+    });
     let backends::Startup {
         projects,
         paths,
@@ -43,6 +50,10 @@ fn main() {
                     .update(cx, |projects, cx| projects.open(path, cx))
                     .detach();
             }
+            #[cfg(feature = "demo")]
+            ui::open_demo_window(projects, demo.mock.as_deref(), demo.size, cx)
+                .expect("the demo's options name a mock that exists");
+            #[cfg(not(feature = "demo"))]
             ui::open_window(projects, None, cx);
             cx.activate(true);
         });

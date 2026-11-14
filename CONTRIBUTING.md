@@ -48,7 +48,7 @@ The first build takes a few minutes while it downloads and compiles dependencies
 | Command | What it does |
 |---|---|
 | `cargo run <path>...` | The app, on real repositories |
-| `cargo demo` | The app on the sample projects, so you can click around without real repositories. Settings stay in memory, so it never reads or changes your config folder. Ctrl Shift M opens the mock browser, which lists every mock with its thumbnail and opens any of them in the window. |
+| `cargo demo` | The app on the sample projects, so you can click around without real repositories. Settings stay in memory, so it never reads or changes your config folder. `cargo demo -- --mock project/unsaved --size 1280x800` starts on that mock with the window at that size. Ctrl Shift M opens the mock browser, which lists every mock with its thumbnail and opens any of them in the window. |
 | `cargo mocks [filter]` | Renders mocks to PNGs in `target/mocks`, without opening a window |
 | `cargo mocks --save-baseline` | Renders mocks and keeps a copy, so later runs list the mocks that changed |
 
