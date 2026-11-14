@@ -127,6 +127,12 @@ mod tests {
     use super::*;
 
     #[test]
+    fn keeps_the_config_contract() {
+        let dir = tempfile::tempdir().unwrap();
+        model::fixtures::contract::config(&ConfigFolder::new(dir.path().join("pensive")));
+    }
+
+    #[test]
     fn a_missing_settings_file_reads_as_empty() {
         let dir = tempfile::tempdir().unwrap();
         let folder = ConfigFolder::new(dir.path().join("pensive"));

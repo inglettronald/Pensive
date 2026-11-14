@@ -13,4 +13,5 @@ model.workspace = true
 notify.workspace = true
 
 [dev-dependencies]
+model = { workspace = true, features = ["fixtures"] }
 tempfile.workspace = true

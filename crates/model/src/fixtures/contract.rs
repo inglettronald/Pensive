@@ -3,7 +3,10 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::{FileChange, FileKey, FileStatus, FileVersions, GitBackend, Source, Staging, Version};
+use crate::{
+    ConfigBackend, FileChange, FileKey, FileStatus, FileVersions, GitBackend, Source, Staging,
+    Version,
+};
 
 /// Checks `backend` on the main worktree at `worktree`, whose repository must also have a linked
 /// worktree. Its uncommitted files must include a modified, a new and a deleted file, and its
@@ -15,6 +18,13 @@ pub fn git(backend: &dyn GitBackend, worktree: &Path) {
     uncommitted_versions_match_the_files(backend, worktree);
     commit_versions_match_the_changes(backend, worktree);
     staging_shows_in_the_changes(backend, worktree);
+}
+
+/// Checks `backend` before anything is stored in it. For `ConfigFolder` that's a folder that
+/// doesn't exist yet. The checks write `settings.toml`.
+pub fn config(backend: &dyn ConfigBackend) {
+    nothing_stored_reads_as_empty(backend);
+    written_settings_read_back(backend);
 }
 
 fn lists_the_main_worktree_first(backend: &dyn GitBackend, worktree: &Path) {
@@ -182,4 +192,23 @@ fn paths(files: &[FileChange], staged: bool) -> Vec<PathBuf> {
 /// path under `/private`. A fake's paths aren't on disk, so they stay as they are.
 fn resolved(path: &Path) -> PathBuf {
     std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+}
+
+fn nothing_stored_reads_as_empty(backend: &dyn ConfigBackend) {
+    assert_eq!(backend.read_settings().unwrap(), "");
+    assert_eq!(backend.read_themes().unwrap(), []);
+}
+
+/// Each write replaces the whole file, down to nothing, and keeps its line endings as written.
+fn written_settings_read_back(backend: &dyn ConfigBackend) {
+    for text in [
+        "density = \"dense\"\ntheme = \"nord\"\n",
+        "theme = \"nord\"\n",
+        "density = \"dense\"\r\ntheme = \"nord\"\r\n",
+        "theme = \"nord\"",
+        "",
+    ] {
+        backend.write_settings(text).unwrap();
+        assert_eq!(backend.read_settings().unwrap(), text, "{text:?}");
+    }
 }
