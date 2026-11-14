@@ -2,6 +2,8 @@
 
 use std::{fmt, path::PathBuf};
 
+use crate::{Notice, Origin, Severity};
+
 /// A Git release, compared by its numbers.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct GitVersion {
@@ -73,6 +75,16 @@ pub enum GitProblem {
 }
 
 impl GitProblem {
+    /// An error from Git, with the instructions for `platform`.
+    pub fn notice(&self, platform: Platform) -> Notice {
+        Notice {
+            severity: Severity::Error,
+            origin: Origin::Git,
+            title: self.title().into(),
+            detail: Some(self.detail(platform).into()),
+        }
+    }
+
     pub fn title(&self) -> String {
         match self {
             GitProblem::Missing => "Couldn't find Git".into(),
