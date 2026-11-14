@@ -564,6 +564,36 @@ mod tests {
     }
 
     #[gpui::test]
+    fn right_applies_the_selected_rows_keyword(cx: &mut TestAppContext) {
+        let (view, cx) = palette_window(cx);
+        view.update(cx, |view, cx| {
+            view.set_keyword(Some(Keyword::Project(None)), cx)
+        });
+        cx.simulate_keystrokes("right");
+        let keyword = view.read_with(cx, |view, _| view.keyword.clone());
+        assert!(
+            matches!(keyword, Some(Keyword::Project(Some(_)))),
+            "{keyword:?}"
+        );
+    }
+
+    #[gpui::test]
+    fn left_steps_the_selected_settings_choice(cx: &mut TestAppContext) {
+        let (view, cx) = palette_window(cx);
+        view.update(cx, |view, cx| {
+            view.set_keyword(Some(Keyword::Setting), cx);
+            view.selected = view
+                .results(cx)
+                .into_items()
+                .position(|item| item.action == Action::Step(OPEN_ON.key))
+                .expect("the settings list has Open on");
+        });
+        let before = cx.update(|_, cx| OPEN_ON.get(cx));
+        cx.simulate_keystrokes("left");
+        assert_ne!(cx.update(|_, cx| OPEN_ON.get(cx)), before);
+    }
+
+    #[gpui::test]
     fn backspace_in_an_empty_query_removes_the_keyword(cx: &mut TestAppContext) {
         let (view, cx) = palette_window(cx);
         view.update(cx, |view, cx| view.set_keyword(Some(Keyword::Branch), cx));

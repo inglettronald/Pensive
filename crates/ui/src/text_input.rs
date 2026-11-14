@@ -119,10 +119,14 @@ impl TextInput {
         Rope::from_str(&self.content)
     }
 
-    fn splice(&mut self, range: Range<usize>, new_text: &str) {
+    /// Replaces `range` with `new_text`, every line break in it made a space so the field stays
+    /// one line, and returns what it inserted.
+    fn splice(&mut self, range: Range<usize>, new_text: &str) -> String {
+        let inserted = new_text.replace("\r\n", " ").replace(['\r', '\n'], " ");
         self.content =
-            (self.content[0..range.start].to_owned() + new_text + &self.content[range.end..])
+            (self.content[0..range.start].to_owned() + &inserted + &self.content[range.end..])
                 .into();
+        inserted
     }
 
     /// `range`, counted in UTF-16, as bytes.
@@ -144,8 +148,6 @@ impl TextInput {
 }
 
 impl TextEditing for TextInput {
-    const SINGLE_LINE: bool = true;
-
     fn rope(&self, _: &App) -> Option<Rope> {
         Some(self.text_rope())
     }
@@ -178,8 +180,8 @@ impl TextEditing for TextInput {
         cx: &mut Context<Self>,
     ) {
         let range = self.selection.replaced(range);
-        self.splice(range.clone(), text);
-        self.selection = Selection::at(range.start + text.len());
+        let inserted = self.splice(range.clone(), text);
+        self.selection = Selection::at(range.start + inserted.len());
         self.text_changed(window, cx);
     }
 }
@@ -262,10 +264,10 @@ impl EntityInputHandler for TextInput {
     ) {
         let range = range_utf16.map(|range| self.bytes(&range));
         let range = self.selection.replaced(range);
-        self.splice(range.clone(), new_text);
+        let inserted = self.splice(range.clone(), new_text);
         let text = self.text_rope();
         self.selection
-            .mark(&text, range.start, new_text, new_selected_range_utf16);
+            .mark(&text, range.start, &inserted, new_selected_range_utf16);
         self.text_changed(window, cx);
     }
 
@@ -509,10 +511,9 @@ impl Render for TextInput {
         let input = div()
             .flex()
             .w_full()
-            .key_context(text_editing::key_context(CONTEXT))
             .track_focus(&self.focus_handle(cx))
             .cursor(CursorStyle::IBeam);
-        text_editing::on_actions(input, cx)
+        text_editing::attach(input, CONTEXT, cx)
             .on_mouse_down(MouseButton::Left, cx.listener(Self::on_mouse_down))
             .on_mouse_up(MouseButton::Left, cx.listener(Self::on_mouse_up))
             .on_mouse_up_out(MouseButton::Left, cx.listener(Self::on_mouse_up))
@@ -529,9 +530,7 @@ impl Focusable for TextInput {
 
 #[cfg(test)]
 mod tests {
-    use gpui::{TestAppContext, VisualTestContext};
-
-    use gpui::ClipboardItem;
+    use gpui::{ClipboardItem, TestAppContext, VisualTestContext};
 
     use super::*;
     use crate::test_support::{secondary, word};
@@ -589,10 +588,60 @@ mod tests {
     }
 
     #[gpui::test]
-    fn a_pasted_line_break_becomes_a_space(cx: &mut TestAppContext) {
+    fn shift_home_and_shift_end_select_to_the_ends(cx: &mut TestAppContext) {
         let (input, cx) = input_window(cx);
-        cx.write_to_clipboard(ClipboardItem::new_string("one\ntwo".into()));
+        cx.simulate_input("abcd");
+        cx.simulate_keystrokes("left left shift-home");
+        cx.simulate_input("x");
+        assert_eq!(text(&input, cx), "xcd");
+        cx.simulate_keystrokes("shift-end");
+        cx.simulate_input("y");
+        assert_eq!(text(&input, cx), "xy");
+    }
+
+    #[gpui::test]
+    fn home_stops_after_leading_spaces_first(cx: &mut TestAppContext) {
+        let (input, cx) = input_window(cx);
+        cx.simulate_input("  ab");
+        cx.simulate_keystrokes("home");
+        cx.simulate_input("x");
+        assert_eq!(text(&input, cx), "  xab");
+        cx.simulate_keystrokes("home home");
+        cx.simulate_input("y");
+        assert_eq!(text(&input, cx), "y  xab");
+    }
+
+    #[gpui::test]
+    fn pasted_line_breaks_become_spaces(cx: &mut TestAppContext) {
+        let (input, cx) = input_window(cx);
+        cx.write_to_clipboard(ClipboardItem::new_string("one\r\ntwo\nthree".into()));
         cx.simulate_keystrokes(&secondary("v"));
-        assert_eq!(text(&input, cx), "one two");
+        assert_eq!(text(&input, cx), "one two three");
+    }
+
+    #[gpui::test]
+    fn an_input_methods_line_breaks_become_spaces(cx: &mut TestAppContext) {
+        let (input, cx) = input_window(cx);
+        input.update_in(cx, |input, window, cx| {
+            input.replace_text_in_range(None, "a\r\nb\rc\nd", window, cx)
+        });
+        assert_eq!(text(&input, cx), "a b c d");
+        cx.simulate_keystrokes("home end");
+        cx.simulate_input("!");
+        assert_eq!(text(&input, cx), "a b c d!");
+    }
+
+    #[gpui::test]
+    fn a_composition_can_select_inside_a_combining_character(cx: &mut TestAppContext) {
+        let (input, cx) = input_window(cx);
+        cx.simulate_input("ab");
+        input.update_in(cx, |input, window, cx| {
+            input.replace_and_mark_text_in_range(None, "e\u{301}", Some(1..1), window, cx);
+            assert_eq!(input.marked_text_range(window, cx), Some(2..4));
+            assert_eq!(input.selection.range, 3..3);
+            input.replace_text_in_range(None, "\u{e9}", window, cx);
+            assert_eq!(input.marked_text_range(window, cx), None);
+        });
+        assert_eq!(text(&input, cx), "ab\u{e9}");
     }
 }

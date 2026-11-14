@@ -16,9 +16,6 @@ pub(crate) use selection::Selection;
 
 /// A view that the shared text-editing actions work on.
 pub(crate) trait TextEditing: Sized + 'static {
-    /// Whether a pasted line break becomes a space.
-    const SINGLE_LINE: bool;
-
     /// The text being edited, if there is any.
     fn rope(&self, cx: &App) -> Option<Rope>;
 
@@ -184,11 +181,7 @@ fn cut<V: TextEditing>(view: &mut V, _: &Cut, window: &mut Window, cx: &mut Cont
 }
 
 fn paste<V: TextEditing>(view: &mut V, _: &Paste, window: &mut Window, cx: &mut Context<V>) {
-    let Some(mut text) = cx.read_from_clipboard().and_then(|item| item.text()) else {
-        return;
-    };
-    if V::SINGLE_LINE {
-        text = text.replace('\n', " ");
+    if let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) {
+        view.replace(None, &text, window, cx);
     }
-    view.replace(None, &text, window, cx);
 }
