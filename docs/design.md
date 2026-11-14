@@ -122,7 +122,7 @@ Rows stay quiet. Fuzzy matches are the only accent color, and the right edge sho
 
 A setting found in the palette carries its control inline, so it can be changed without leaving. Settings itself isn't listed until you search for it. The gear in the footer opens it at the palette's section.
 
-Settings: whether the tabs show, which tab Ctrl K opens on, how far back Active looks, background opacity and scrim strength. Blur behind the palette waits on GPUI support.
+Settings: whether the tabs show, which tab Ctrl K opens on, how far back Active looks, background opacity and scrim strength. Blur behind the palette isn't planned. [Overlay blur](decisions/overlay-blur.md) covers why.
 
 ## Settings
 
