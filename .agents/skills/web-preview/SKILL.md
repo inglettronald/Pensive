@@ -11,8 +11,8 @@ Builds Pensive for the browser with Trunk and opens it in a T3 Code preview tab.
 
 1. Run `trunk --version`. If Trunk is missing, ask the user to run `cargo install trunk --locked`, and stop. Don't install it yourself. The wasm target comes with the toolchain in `rust-toolchain.toml`.
 2. If `curl -sf http://127.0.0.1:8765/ >/dev/null` succeeds, a server is already running. Skip to step 4.
-3. From the repo root, start `trunk serve --config crates/pensive/Trunk.toml` as a background command. Wait until the curl in step 2 succeeds, without a foreground `sleep`. A cold build takes several minutes. If the server exits first, show the error from its output and stop.
-4. Call `preview_open` with `target: {kind: "environment-port", port: 8765}`. Load it with ToolSearch first if it isn't loaded.
+3. From the repo root, start `trunk serve --config crates/pensive/Trunk.toml` as a background command. Wait for it with `curl -sf --retry 120 --retry-connrefused --retry-delay 2 --retry-max-time 600 http://127.0.0.1:8765/ >/dev/null`, which sleeps between tries. A cold build takes several minutes. If the curl fails, show the error from the server's output and stop.
+4. Call `preview_open` with `target: {kind: "environment-port", port: 8765}`. Load it with ToolSearch first if it isn't loaded. To start on a mock, add `path: "/?mock=<subject>/<mock>"` to the target.
 5. Call `preview_snapshot` with `includeImage: true` and look at the image. GPUI draws everything to one canvas, so the accessibility tree is empty and only the image shows the app. A panic or a failed GPU setup shows up in the snapshot's console diagnostics.
 
 Leave the server and the tab open for the user. Trunk rebuilds when a file in `crates/` or `assets/` changes, then reloads the page.

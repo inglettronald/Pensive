@@ -1,0 +1,39 @@
+{
+  "skill_name": "record-demo",
+  "evals": [
+    {
+      "id": 1,
+      "name": "palette-from-project",
+      "prompt": "/record-demo root/project: open the palette with Ctrl K and type \"font\"",
+      "expected_output": "An MP4 in target/demos that opens on the project mock, shows the palette opening and the query being typed, and a contact sheet the agent read before replying.",
+      "assertions": [
+        "The preview tab opens port 8765 with the path /?mock=root/project",
+        "The agent runs keep-painting.js in the tab before it starts recording",
+        "The agent pauses with preview_evaluate and a setTimeout promise, never a foreground sleep",
+        "The video is saved under target/demos with a name that starts with root-project",
+        "The agent reads a contact sheet of the video and describes its first and last frames",
+        "The agent closes the tab it opened, and the server is still running at the end"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "unknown-mock",
+      "prompt": "/record-demo root/nope: open the palette",
+      "expected_output": "The snapshot's console shows the panic for the unknown mock, and the agent tells the user without recording.",
+      "assertions": [
+        "The agent never calls preview_recording_start",
+        "The final message says no mock is called root/nope"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "no-flow",
+      "prompt": "/record-demo settings/command_palette",
+      "expected_output": "The agent asks what flow to record and records nothing.",
+      "assertions": [
+        "The final message asks for the flow",
+        "The agent never calls preview_recording_start"
+      ]
+    }
+  ]
+}
