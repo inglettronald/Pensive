@@ -22,7 +22,7 @@ use model::{Changes, FileChange, FileKey, Notice, ProjectId, Projects, Source, S
 use strum::VariantArray;
 
 use crate::{
-    clear_after,
+    NOTICE_FOR, clear_after,
     editor::Editor,
     key_binding, notices,
     rail_gear::{GearClicked, rail_gear},
@@ -40,8 +40,6 @@ const CONTEXT: &str = "ProjectView";
 const TOOLTIP_DELAY: Duration = Duration::from_millis(500);
 /// How long the tooltip says the path was copied before showing the path again.
 const COPIED_FOR: Duration = Duration::from_secs(1);
-/// How long a notice stays on the control it's about.
-const NOTICE_FOR: Duration = Duration::from_secs(3);
 
 pub(crate) fn bind_keys(cx: &mut App) {
     cx.bind_keys([

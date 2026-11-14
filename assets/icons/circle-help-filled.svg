@@ -1,0 +1,14 @@
+<!-- Drawn for Pensive: Lucide's circle-help, filled, with the question mark cut out of it. -->
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+>
+  <mask id="mark">
+    <rect width="24" height="24" fill="#fff" />
+    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" fill="none" stroke="#000" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" />
+    <path d="M12 17h.01" stroke="#000" stroke-width="2.6" stroke-linecap="round" />
+  </mask>
+  <circle cx="12" cy="12" r="10" fill="currentColor" mask="url(#mark)" />
+</svg>

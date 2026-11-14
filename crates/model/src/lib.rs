@@ -14,6 +14,7 @@ mod notice;
 mod notices;
 mod projects;
 mod queue;
+mod run;
 
 pub use backend::Backend;
 pub use changes::{
@@ -29,3 +30,4 @@ pub use notice::{FixtureGap, Notice, Origin, Severity};
 pub use notices::{Held, Notices};
 pub use projects::{Branch, Project, ProjectId, Projects, Work, WorkKind, Worktree};
 pub use ropey::Rope;
+pub use run::{PROJECT_FILE, RunConfig, run_configs};

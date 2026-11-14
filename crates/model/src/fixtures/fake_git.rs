@@ -9,7 +9,24 @@ use std::{
 
 use anyhow::Result;
 
-use crate::{Changes, FileKey, FileVersions, FixtureGap, GitBackend, Repository, Source, Version};
+use crate::{
+    Changes, FileKey, FileVersions, FixtureGap, GitBackend, PROJECT_FILE, Repository, Source,
+    Version,
+};
+
+/// The pensive sample's `.pensive/project.toml`. The other samples have none.
+pub(crate) const SAMPLE_PROJECT_FILE: &str = r#"[[run]]
+name = "pensive"
+command = "cargo run"
+
+[[run]]
+name = "demo"
+command = "cargo run -p pensive --features demo -- --size 1280x800"
+
+[[run]]
+name = "mocks"
+command = "cargo mocks"
+"#;
 
 #[derive(Debug)]
 pub struct FakeGit {
@@ -103,6 +120,14 @@ impl GitBackend for FakeGit {
 
     /// A saved file, or else the sample's new version, or else missing.
     fn read_file(&self, worktree: &Path, path: &Path) -> Result<Version> {
+        if path == Path::new(PROJECT_FILE) {
+            self.repository(worktree)?;
+            return Ok(if worktree == Path::new(super::PENSIVE_ROOT) {
+                Version::Text(SAMPLE_PROJECT_FILE.into())
+            } else {
+                Version::Missing
+            });
+        }
         Self::sample_root(worktree, path)?;
         if let Some(text) = self.saved.lock().expect("not poisoned").get(path) {
             return Ok(Version::Text(text.clone()));

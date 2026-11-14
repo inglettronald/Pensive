@@ -84,7 +84,7 @@ The first window opens maximized. A window opened from it, with Ctrl Enter or Ct
 
 A window has a title bar, the rail and its panel on the left, and the main view. There is no status bar.
 
-Pensive draws its own title bar. It holds project › branch as a breadcrumb, the palette trigger in the middle, the notice badge and the window controls. Clicking a crumb opens the palette scoped with `project:` or `branch:`. macOS keeps its own window buttons on the left. So does a Linux compositor that decorates windows itself, and Pensive's title bar then sits under the compositor's.
+Pensive draws its own title bar. It holds project › branch as a breadcrumb on the left. On the right are the activity, the notice badge, the Run button and the window controls. The middle stays empty and draggable, held for buttons that plugins add. There is no palette field, since Ctrl K opens the palette from anywhere. Clicking a crumb opens the palette scoped with `project:` or `branch:`. macOS keeps its own window buttons on the left. So does a Linux compositor that decorates windows itself, and Pensive's title bar then sits under the compositor's.
 
 Overlays such as tooltips draw above every pane, so no pane clips them.
 
@@ -114,7 +114,17 @@ A notice about a control shows in a tooltip on that control. One with no control
 
 Only errors and the successes of long work toast. Warnings never do, so a noisy source can't take over the screen. A success fades on its own. An error folds into the badge once its time runs out, three seconds by default and a setting. A line along its bottom drains until then, and hovering it holds it open.
 
-The badge sits at the title bar's right end: an icon and a count for the errors held and for the warnings, outlined in the worse of the two. It's gone while nothing is held. Clicking it opens the list, errors first and newest first within each. A repeat counts on its row as ×3 instead of adding one. Each row dismisses on its own, and Clear all empties the list.
+The badge sits left of the Run button: an icon and a count for the errors held and for the warnings, outlined in the worse of the two. It's gone while nothing is held. Clicking it opens the list, errors first and newest first within each. A repeat counts on its row as ×3 instead of adding one. Each row dismisses on its own, and Clear all empties the list.
+
+## Run
+
+The Run button runs a configuration saved in the repo's `.pensive/project.toml`. It's a split button. The left half runs the current configuration, and the chevron picks another. While it runs, play becomes stop and the chevron becomes restart, with the elapsed time beside the name. In the picker, a long command fades out at the menu's edge.
+
+When a run fails, the button's outline tints red and a log segment appears beside the name until the next run.
+
+## Background work
+
+Work Pensive runs on its own, such as indexing or a fetch, shows as a short bar and one icon left of the badge. The bar fills when the work knows its size and sweeps when it doesn't. With several tasks, it follows the one that will finish last. Clicking it opens the list of tasks. Hovering changes nothing, and nothing shows while idle.
 
 ## Command palette
 

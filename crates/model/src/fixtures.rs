@@ -35,6 +35,8 @@ pub const ZED: ProjectId = ProjectId(5);
 pub fn projects() -> Projects {
     let mut projects = projects_on(FakeGit::default());
     projects.insert_changes(PENSIVE_ROOT.into(), changes());
+    let configs = crate::run_configs(fake_git::SAMPLE_PROJECT_FILE).expect("the sample parses");
+    projects.insert_run_configs(PENSIVE, configs);
     projects
 }
 

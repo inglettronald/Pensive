@@ -1,4 +1,5 @@
-//! The title bar Pensive draws: project › branch, the palette trigger, the notice badge and the window
+//! The title bar Pensive draws: project › branch on the left, and background work, the notice
+//! badge, the Run button and the window
 //! controls, with the empty space dragging the window.
 
 use gpui::{
@@ -7,7 +8,7 @@ use gpui::{
 };
 use theme::{ActiveTheme, Dp, HAIRLINE, Typeset, dp};
 
-use crate::{Breadcrumb, Callback, Icon, IconButton, IconName, Kbd, Tone, callback};
+use crate::{Breadcrumb, Callback, Icon, IconButton, IconName, Tone, callback};
 
 /// Room left of the crumbs for the macOS window buttons.
 const TRAFFIC_LIGHTS_WIDTH: Dp = dp(76.);
@@ -30,7 +31,8 @@ pub struct TitleBar {
     controls: bool,
     on_project: Option<Callback<()>>,
     on_branch: Option<Callback<()>>,
-    on_palette: Option<Callback<()>>,
+    activity: Option<AnyElement>,
+    run: Option<AnyElement>,
     settings_open: bool,
 }
 
@@ -54,7 +56,8 @@ impl TitleBar {
             controls: false,
             on_project: None,
             on_branch: None,
-            on_palette: None,
+            activity: None,
+            run: None,
             settings_open: false,
         }
     }
@@ -100,9 +103,15 @@ impl TitleBar {
         self
     }
 
-    /// Shows the palette trigger, which calls this when clicked.
-    pub fn on_palette(mut self, handler: impl Fn(&mut Window, &mut App) + 'static) -> Self {
-        self.on_palette = Some(callback(handler));
+    /// Background work, left of the badge. Nothing shows there while idle.
+    pub fn activity(mut self, activity: impl IntoElement) -> Self {
+        self.activity = Some(activity.into_any_element());
+        self
+    }
+
+    /// The Run button, between the badge and the window controls.
+    pub fn run(mut self, run: impl IntoElement) -> Self {
+        self.run = Some(run.into_any_element());
         self
     }
 }
@@ -192,39 +201,6 @@ impl RenderOnce for TitleBar {
         // With no project, Settings stands alone.
         let location = self.location.or(location).or(settings);
 
-        let palette = self.on_palette.map(|handler| {
-            div()
-                .id("palette")
-                .occlude()
-                .flex()
-                .flex_none()
-                .items_center()
-                .gap_2()
-                .w(dp(280.))
-                .h(dp(28.))
-                .pl_2()
-                .pr_1()
-                .rounded(density.radius_md)
-                .border_1()
-                .border_color(colors.border_subtle)
-                .bg(colors.surface_raised)
-                .text_color(colors.text_faint)
-                .hover(|palette| palette.border_color(colors.border))
-                .child(
-                    Icon::new(IconName::Search)
-                        .size(dp(14.))
-                        .color(colors.text_faint),
-                )
-                .child(
-                    div()
-                        .flex_1()
-                        .typeset(density.small)
-                        .child("Search or run a command"),
-                )
-                .child(Kbd::new("Ctrl K"))
-                .on_click(move |_, window, cx| handler((), window, cx))
-        });
-
         let (errors, warnings) = self.notices;
         let badge = (errors + warnings > 0).then(|| {
             let worst = if errors > 0 {
@@ -250,7 +226,6 @@ impl RenderOnce for TitleBar {
                 .gap_1p5()
                 .h(dp(26.))
                 .px_2()
-                .mr_1()
                 .rounded(density.radius_md)
                 .border_1()
                 .border_color(worst.outline(colors))
@@ -316,15 +291,17 @@ impl RenderOnce for TitleBar {
                     .min_w_0()
                     .children(location),
             )
-            .children(palette)
             .child(
                 drag_area("drag-right", window, cx)
                     .flex()
                     .items_center()
                     .justify_end()
+                    .gap_1p5()
                     .flex_1()
                     .min_w_0()
+                    .children(self.activity)
                     .children(badge)
+                    .children(self.run)
                     .children(controls),
             )
     }
@@ -410,9 +387,7 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
                     "Project open",
                     [(
                         "With window controls, as on Linux and Windows",
-                        bar(TitleBar::new(Some(pensive))
-                            .controls(true)
-                            .on_palette(|_, _| {})),
+                        bar(TitleBar::new(Some(pensive)).controls(true)),
                     )],
                 )
                 .section(
@@ -425,8 +400,7 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
                             branch: Some("main".into()),
                         }))
                         .controls(true)
-                        .settings_open(true)
-                        .on_palette(|_, _| {})),
+                        .settings_open(true)),
                     )],
                 )
                 .section(
@@ -434,6 +408,27 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
                     [(
                         "No project: only the controls",
                         bar(TitleBar::new(None).controls(true)),
+                    )],
+                )
+                .section(
+                    "Working",
+                    [(
+                        "Background work, the badge and Run, in that order",
+                        bar(TitleBar::new(Some(TitleBarProject {
+                            initial: "P".into(),
+                            name: "pensive".into(),
+                            branch: Some("main".into()),
+                        }))
+                        .controls(true)
+                        .activity(crate::Activity::progress("indexing", 0.62))
+                        .notices(1, 3, false)
+                        .run(crate::RunButton::new(
+                            vec![crate::RunChoice {
+                                name: "pensive".into(),
+                                command: "cargo run".into(),
+                            }],
+                            Some(0),
+                        ))),
                     )],
                 )
                 .section(
@@ -451,6 +446,6 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
                 )
                 .into_any_element()
         })
-        .size(1088., 640.),
+        .size(1088., 760.),
     ]
 }
