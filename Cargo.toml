@@ -19,6 +19,7 @@ theme = { path = "crates/theme" }
 ui = { path = "crates/ui" }
 
 anyhow = "1"
+embed-resource = "3"
 etcetera = "0.11"
 futures = "0.3"
 image = { version = "0.25", default-features = false, features = ["png"] }
@@ -26,6 +27,7 @@ imara-diff = "0.2"
 log = "0.4"
 notify = "8"
 nucleo-matcher = "0.3"
+resvg = { version = "0.46", default-features = false }
 ropey = { version = "1.6", default-features = false, features = ["simd"] }
 serde = { version = "1", features = ["derive"] }
 serde_ignored = "0.1"

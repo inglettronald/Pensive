@@ -405,6 +405,7 @@ pub(crate) fn window_options(window_size: Size<Pixels>, cx: &App) -> WindowOptio
         }),
         window_decorations: Some(WindowDecorations::Client),
         app_id: Some("pensive".into()),
+        icon: Some(assets::app_icon()),
         ..Default::default()
     }
 }

@@ -32,6 +32,11 @@ model = { workspace = true, features = ["fixtures"] }
 # rendered at launch. `cargo demo` turns it on. It never ships in the app.
 demo = ["ui/mocks", "model/fixtures", "dep:image", "dep:mock"]
 
+[build-dependencies]
+embed-resource.workspace = true
+image = { workspace = true, features = ["ico"] }
+resvg.workspace = true
+
 [dev-dependencies]
 gpui = { workspace = true, features = ["test-support"] }
 anyhow.workspace = true

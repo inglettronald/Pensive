@@ -1,8 +1,13 @@
-//! Files bundled into the app binary, served to GPUI by their path under `assets/`.
+//! Files bundled into the app binary, served to GPUI by their path under `assets/`, and the app
+//! icon.
 
-use std::borrow::Cow;
+use std::{
+    borrow::Cow,
+    sync::{Arc, LazyLock},
+};
 
 use gpui::{AssetSource, Result, SharedString};
+use image::{ImageFormat, RgbaImage};
 
 macro_rules! bundled {
     ($($path:literal),* $(,)?) => {
@@ -57,6 +62,17 @@ const FILES: &[(&str, &[u8])] = bundled![
     "icons/window-minimize.svg",
     "icons/x.svg",
 ];
+
+/// The app icon, which X11 shows on each window. The build script renders it from `icon.svg`.
+pub fn app_icon() -> Arc<RgbaImage> {
+    static ICON: LazyLock<Arc<RgbaImage>> = LazyLock::new(|| {
+        let png = include_bytes!(concat!(env!("OUT_DIR"), "/icon.png"));
+        let image = image::load_from_memory_with_format(png, ImageFormat::Png)
+            .expect("the build script writes a valid PNG");
+        Arc::new(image.into_rgba8())
+    });
+    ICON.clone()
+}
 
 /// Serves the bundled files. The app and the mock renderer both install it, so `svg()` can load
 /// icons by path.

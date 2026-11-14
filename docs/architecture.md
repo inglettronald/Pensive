@@ -7,7 +7,7 @@ Pensive is a Cargo workspace. A crate can only use the crates it lists as depend
 | Crate | Job | Depends on |
 |---|---|---|
 | `pensive` | The app. Opens the window and gives each model its backend, which differ between the desktop and the browser. | `ui`, `model`, `git` and `config` on the desktop, `settings`, `theme`, `assets` |
-| `ui` | Views: screens and panels that read models and own their view state. | `components`, `model`, `settings`, `theme` |
+| `ui` | Views: screens and panels that read models and own their view state. | `assets`, `components`, `model`, `settings`, `theme` |
 | `components` | Stateless building blocks that render from props and the theme. | `theme` |
 | `model` | Application state, and the traits that I/O backends implement. | |
 | `git` | The Git backend, which runs the `git` command line. | `model` |
