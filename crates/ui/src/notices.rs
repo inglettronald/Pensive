@@ -47,7 +47,7 @@ pub(crate) static TOAST_SECONDS: Setting<u32> = Setting {
     name: "Toast duration",
     description: "How long a notice shows in the corner before it folds into the badge",
     default: 3,
-    control: Control::Select(|_| {
+    control: Control::Stepper(|_| {
         [2, 3, 5, 10]
             .map(|seconds| Choice::new(seconds, format!("{seconds} seconds")))
             .into()

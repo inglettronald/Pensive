@@ -1,16 +1,30 @@
-//! An on/off switch.
+//! An on/off switch. The outline stays the same either way, and only the knob changes: it slides
+//! across and lights up when on.
 
-use std::rc::Rc;
+use std::{rc::Rc, time::Duration};
 
-use gpui::{App, ClickEvent, ElementId, Window, div, prelude::*};
-use theme::{ActiveTheme, dp};
+use gpui::{
+    Animation, AnimationExt, App, ClickEvent, ElementId, Window, div, ease_out_quint, prelude::*,
+};
+use theme::{ActiveTheme, Dp, dp};
 
-use crate::Callback;
+use crate::{
+    Callback,
+    transition::{mix, transition},
+};
+
+const WIDTH: Dp = dp(34.);
+const HEIGHT: Dp = dp(20.);
+const KNOB: Dp = dp(16.);
+/// Between the knob and the outline, which takes the other pixel of the 2 px around the knob.
+const INSET: Dp = dp(1.);
+const SLIDE: Duration = Duration::from_millis(120);
 
 #[derive(IntoElement)]
 pub struct Toggle {
     id: ElementId,
     on: bool,
+    hovered: bool,
     on_change: Option<Callback<bool>>,
 }
 
@@ -19,8 +33,15 @@ impl Toggle {
         Self {
             id: id.into(),
             on,
+            hovered: false,
             on_change: None,
         }
+    }
+
+    /// Draws the outline as hovered, for a mock. The pointer does the same.
+    pub fn hovered(mut self, hovered: bool) -> Self {
+        self.hovered = hovered;
+        self
     }
 
     /// Called with the new value when the switch is clicked.
@@ -31,30 +52,52 @@ impl Toggle {
 }
 
 impl RenderOnce for Toggle {
-    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let change = transition(&self.id, self.on, window, cx);
         let colors = &cx.theme().colors;
-        let (track, knob) = if self.on {
-            (colors.accent_solid, colors.text_strong)
+        let (off_knob, on_knob) = (colors.text_disabled, colors.text_strong);
+        let hover_outline = colors.text_disabled;
+        let left = |on: bool| if on { WIDTH - KNOB - INSET * 3. } else { INSET };
+        let knob = div().absolute().top(INSET).size(KNOB).rounded_full();
+        let knob = if change.moved() {
+            let from = change.from;
+            knob.with_animation(
+                change.animation_id(&self.id, "knob"),
+                Animation::new(SLIDE).with_easing(ease_out_quint()),
+                move |knob, delta| {
+                    let toward = |a: Dp, b: Dp| a + (b - a) * delta;
+                    let (start, end) = if from {
+                        (on_knob, off_knob)
+                    } else {
+                        (off_knob, on_knob)
+                    };
+                    knob.left(toward(left(from), left(!from)))
+                        .bg(mix(start, end, delta))
+                },
+            )
+            .into_any_element()
         } else {
-            (colors.border, colors.text_muted)
+            knob.left(left(self.on))
+                .bg(if self.on { on_knob } else { off_knob })
+                .into_any_element()
         };
         let on = self.on;
         div()
             .id(self.id)
-            .flex()
+            .relative()
             .flex_none()
-            .items_center()
-            .when_else(
-                on,
-                |track| track.justify_end(),
-                |track| track.justify_start(),
-            )
-            .w(dp(28.))
-            .h(dp(16.))
-            .p(dp(2.))
+            .w(WIDTH)
+            .h(HEIGHT)
             .rounded_full()
-            .bg(track)
-            .child(div().size(dp(12.)).rounded_full().bg(knob))
+            .border_1()
+            .border_color(if self.hovered {
+                hover_outline
+            } else {
+                colors.control_outline
+            })
+            .bg(colors.surface_app)
+            .hover(|track| track.border_color(hover_outline))
+            .child(knob)
             .when_some(self.on_change, |track, handler| {
                 track.on_click(move |_: &ClickEvent, window, cx| {
                     cx.stop_propagation();
@@ -71,8 +114,18 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
             crate::Gallery::new("Toggle")
                 .section(
                     "States",
-                    [("On", true), ("Off", false)]
-                        .map(|(label, on)| (label, Toggle::new(label, on).into_any_element())),
+                    [
+                        ("On", true, false),
+                        ("Off", false, false),
+                        ("On, hovered", true, true),
+                        ("Off, hovered", false, true),
+                    ]
+                    .map(|(label, on, hovered)| {
+                        (
+                            label,
+                            Toggle::new(label, on).hovered(hovered).into_any_element(),
+                        )
+                    }),
                 )
                 .into_any_element()
         })

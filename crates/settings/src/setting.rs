@@ -94,6 +94,8 @@ pub enum ControlState {
     },
     Select {
         label: SharedString,
+        options: Vec<SharedString>,
+        selected: Option<usize>,
     },
     Stepper {
         label: SharedString,
@@ -146,6 +148,27 @@ impl<T: Clone + PartialEq + Serialize + DeserializeOwned + Sync> Setting<T> {
             }
         }
     }
+
+    /// Flips a toggle, or moves `step` choices over, around the ends when `wrap` is set.
+    fn move_by(&self, step: isize, wrap: bool, cx: &mut App) {
+        let value = self.get(cx);
+        if let Control::Toggle = self.control {
+            let flipped = toml::Value::Boolean(!as_bool(&value));
+            self.set(flipped.try_into().expect("a toggle holds a bool"), cx);
+            return;
+        }
+        let choices = self.choices(cx);
+        if choices.is_empty() {
+            return;
+        }
+        let last = choices.len() as isize - 1;
+        let index = match choices.iter().position(|choice| choice.value == value) {
+            Some(index) if wrap => (index as isize + step).rem_euclid(last + 1),
+            Some(index) => (index as isize + step).clamp(0, last),
+            None => 0,
+        };
+        self.choose(index as usize, cx);
+    }
 }
 
 /// A setting of any type, for listing settings and changing them from a control.
@@ -157,6 +180,8 @@ pub trait AnySetting: Sync {
     /// Flips a toggle, or moves `step` choices over. A stepper stops at either end, and the others
     /// wrap around.
     fn step(&self, step: isize, cx: &mut App);
+    /// Like [`AnySetting::step`], but every control stops at the first and last choice.
+    fn step_clamped(&self, step: isize, cx: &mut App);
     /// Picks the choice at `index`.
     fn choose(&self, index: usize, cx: &mut App);
     /// The default's label, when the setting holds something else.
@@ -192,6 +217,8 @@ impl<T: Clone + PartialEq + Serialize + DeserializeOwned + Sync> AnySetting for 
             },
             Control::Select(_) => ControlState::Select {
                 label: self.label(&value, cx),
+                options: choices.into_iter().map(|choice| choice.label).collect(),
+                selected,
             },
             Control::Stepper(_) => ControlState::Stepper {
                 label: self.label(&value, cx),
@@ -202,25 +229,12 @@ impl<T: Clone + PartialEq + Serialize + DeserializeOwned + Sync> AnySetting for 
     }
 
     fn step(&self, step: isize, cx: &mut App) {
-        let value = self.get(cx);
-        if let Control::Toggle = self.control {
-            let flipped = toml::Value::Boolean(!as_bool(&value));
-            self.set(flipped.try_into().expect("a toggle holds a bool"), cx);
-            return;
-        }
-        let choices = self.choices(cx);
-        if choices.is_empty() {
-            return;
-        }
-        let last = choices.len() as isize - 1;
-        let index = match choices.iter().position(|choice| choice.value == value) {
-            Some(index) if matches!(self.control, Control::Stepper(_)) => {
-                (index as isize + step).clamp(0, last) as usize
-            }
-            Some(index) => (index as isize + step).rem_euclid(last + 1) as usize,
-            None => 0,
-        };
-        self.choose(index, cx);
+        let wrap = !matches!(self.control, Control::Stepper(_));
+        self.move_by(step, wrap, cx);
+    }
+
+    fn step_clamped(&self, step: isize, cx: &mut App) {
+        self.move_by(step, false, cx);
     }
 
     fn choose(&self, index: usize, cx: &mut App) {

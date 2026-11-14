@@ -38,7 +38,7 @@ impl TabStrip {
 
 impl RenderOnce for TabStrip {
     fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
-        let tabs = SegmentedControl::new(self.id, self.tabs, self.selected);
+        let tabs = SegmentedControl::new(self.id, self.tabs, self.selected).compact();
         let tabs = match self.on_select {
             Some(handler) => tabs.on_select(move |index, window, cx| handler(index, window, cx)),
             None => tabs,
