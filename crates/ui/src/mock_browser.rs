@@ -15,10 +15,7 @@ use settings::Settings;
 use theme::{ActiveTheme, Density, Theme, Typeset, dp};
 
 use crate::{
-    key_binding,
-    root::OpenSettings,
-    text_input::{self, TextInput},
-    view_callback,
+    key_binding, root::OpenSettings, text_editing, text_input::TextInput, view_callback,
     window_frame::draws_window_controls,
 };
 
@@ -404,11 +401,11 @@ impl Render for MockBrowser {
             .on_action(cx.listener(|this, _: &OpenMock, _, cx| this.open(this.focused, cx)))
             .on_action(cx.listener(|_, _: &Back, _, cx| cx.emit(MockBrowserEvent::Back)))
             // Left and right pick a mock rather than move the filter's cursor.
-            .capture_action(cx.listener(|this, _: &text_input::Left, _, cx| {
+            .capture_action(cx.listener(|this, _: &text_editing::Left, _, cx| {
                 this.step_mock(-1, cx);
                 cx.stop_propagation();
             }))
-            .capture_action(cx.listener(|this, _: &text_input::Right, _, cx| {
+            .capture_action(cx.listener(|this, _: &text_editing::Right, _, cx| {
                 this.step_mock(1, cx);
                 cx.stop_propagation();
             }))

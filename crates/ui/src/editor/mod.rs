@@ -498,6 +498,8 @@ impl Editor {
 }
 
 impl TextEditing for Editor {
+    const SINGLE_LINE: bool = false;
+
     fn rope(&self, cx: &App) -> Option<Rope> {
         self.text(cx).cloned()
     }

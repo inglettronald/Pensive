@@ -15,8 +15,8 @@ use serde::{Deserialize, Serialize};
 use settings::{AnySetting, ControlState, Settings};
 
 use crate::{
-    key_binding,
-    text_input::{self, Changed, TextInput},
+    key_binding, text_editing,
+    text_input::{Changed, TextInput},
     view_callback_with,
 };
 pub(crate) use options::{OPEN_ON, declare as declare_settings, scrim};
@@ -374,7 +374,7 @@ impl PaletteView {
 
     /// → at the end of the query applies the selected row's keyword, such as `project:`, or
     /// moves the selected setting to its next choice.
-    fn narrow(&mut self, _: &text_input::Right, _: &mut Window, cx: &mut Context<Self>) {
+    fn narrow(&mut self, _: &text_editing::Right, _: &mut Window, cx: &mut Context<Self>) {
         if self.change_choice(1, cx) {
             return;
         }
@@ -392,7 +392,7 @@ impl PaletteView {
         }
     }
 
-    fn previous_choice(&mut self, _: &text_input::Left, _: &mut Window, cx: &mut Context<Self>) {
+    fn previous_choice(&mut self, _: &text_editing::Left, _: &mut Window, cx: &mut Context<Self>) {
         if !self.change_choice(-1, cx) {
             cx.propagate();
         }
@@ -401,7 +401,7 @@ impl PaletteView {
     /// Backspace in an empty query removes the keyword.
     fn remove_keyword(
         &mut self,
-        _: &text_input::Backspace,
+        _: &text_editing::Backspace,
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
