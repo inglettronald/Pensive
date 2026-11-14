@@ -24,7 +24,7 @@ Every crate except `git` and `config` also depends on `gpui`.
 - Views can trigger I/O but never perform it. Git, the filesystem, the clock, the network, environment variables and randomness go through a model. That way any view can render from mock data. Clippy enforces this: the root `clippy.toml` disallows the standard library's file, environment, process and clock calls, and `git`, `config` and `pensive` each have their own `clippy.toml` that drops those rules.
 - Each crate declares the settings it reads, and code reads and changes a setting through its declaration.
 - Components never see models. They render from the props they're given.
-- Backends implement traits defined in `model`. `ui` never depends on a backend crate, so only `pensive` sees both sides.
+- Backends implement traits defined in `model`. `ui` never depends on a backend crate, so only `pensive` sees both sides. Each backend's tests, the fakes' included, run the checks in `model::fixtures::contract`, so a fake keeps the promises its trait makes.
 - A model holds its backend inside a `model::Backend`. Its `call` runs on GPUI's background executor, since backend calls block, and reports a failure to the notices, so no caller can drop the error. The failure is still returned, for a view that also shows it on the control that started the call.
 - A new component ships with its gallery. A new view ships with mocks for the states that change the screen, usually empty, loading, error and a typical case.
 - Every visual state of a component can be set through its props, so a mock can show it without input.

@@ -52,3 +52,14 @@ impl ConfigBackend for FakeConfig {
         Ok(Box::new(()))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::fixtures::contract;
+
+    #[test]
+    fn keeps_the_config_contract() {
+        contract::config(&FakeConfig::default());
+    }
+}
