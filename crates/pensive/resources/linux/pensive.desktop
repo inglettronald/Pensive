@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Pensive
+Comment=A review-first Git client
+Exec=pensive %F
+Icon=pensive
+Terminal=false
+Categories=Development;RevisionControl;
+StartupWMClass=pensive
