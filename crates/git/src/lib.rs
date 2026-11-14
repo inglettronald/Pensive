@@ -578,14 +578,21 @@ mod tests {
     }
 
     #[test]
-    fn a_rename_unstages_with_the_path_it_came_from() {
+    fn a_rename_stages_by_its_new_path_and_unstages_with_the_old_one() {
         let repo = Repo::new();
         repo.write("old.rs", "a\nb\nc\n");
         repo.commit_all("first");
         repo.run(&["mv", "old.rs", "new.rs"]);
+        repo.write("new.rs", "a\nb\nc\nd\n");
         let renamed = repo.changes();
         let renamed = renamed.file(Path::new("new.rs")).unwrap();
         assert_eq!(renamed.renamed_from.as_deref(), Some(Path::new("old.rs")));
+        assert_eq!(renamed.staging(), Staging::Partly);
+
+        GitCli
+            .set_staged(&repo.path(), &[PathBuf::from("new.rs")], true)
+            .unwrap();
+        assert_eq!(repo.changes().uncommitted[0].staging(), Staging::Staged);
 
         let paths = ["new.rs", "old.rs"].map(PathBuf::from);
         GitCli.set_staged(&repo.path(), &paths, false).unwrap();
@@ -617,6 +624,28 @@ mod tests {
             .set_staged(&repo.path(), &[PathBuf::from("missing.rs")], true)
             .unwrap_err();
         assert!(error.to_string().contains("missing.rs"), "{error}");
+    }
+
+    #[test]
+    fn keeps_the_git_contract() {
+        let repo = Repo::new();
+        repo.write("modified.rs", "a\nb\n");
+        repo.write("deleted.rs", "gone\n");
+        repo.write("renamed_in_commit.rs", "one\ntwo\nthree\n");
+        repo.write("deleted_in_commit.rs", "gone\n");
+        repo.write("renamed.rs", "four\nfive\nsix\n");
+        repo.commit_all("first");
+        repo.run(&["mv", "renamed_in_commit.rs", "moved_in_commit.rs"]);
+        repo.commit_all("rename");
+        repo.run(&["rm", "-q", "deleted_in_commit.rs"]);
+        repo.commit_all("delete");
+        repo.run(&["worktree", "add", "-q", "-b", "feat", "../linked"]);
+        repo.write("modified.rs", "a\nB\n");
+        fs::remove_file(repo.path().join("deleted.rs")).unwrap();
+        repo.write("new.rs", "new\n");
+        repo.run(&["mv", "renamed.rs", "moved.rs"]);
+        repo.write("moved.rs", "four\nfive\nsix\nseven\n");
+        model::fixtures::contract::git(&GitCli, &repo.path());
     }
 
     #[test]
