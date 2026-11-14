@@ -22,6 +22,7 @@ mod select;
 mod setting_row;
 mod settings_heading;
 mod status_ring;
+mod stepper;
 mod tab_strip;
 mod tag;
 #[cfg(feature = "mocks")]
@@ -61,6 +62,7 @@ pub use select::Select;
 pub use setting_row::SettingRow;
 pub use settings_heading::{CategoryHeading, PageHeading};
 pub use status_ring::{RingFill, StatusRing};
+pub use stepper::Stepper;
 pub use tab_strip::TabStrip;
 pub use tag::Tag;
 pub use timeline_row::{TimelineLine, TimelineNode, TimelineRow};
@@ -110,6 +112,7 @@ pub fn mocks() -> Vec<mock::Mock> {
         toggle::mocks(),
         select::mocks(),
         segmented_control::mocks(),
+        stepper::mocks(),
         tab_strip::mocks(),
         button::mocks(),
         icon_button::mocks(),
