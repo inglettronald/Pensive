@@ -39,6 +39,7 @@ pub enum IconName {
     Hash,
     List,
     ListTree,
+    Minus,
     Palette,
     PanelLeft,
     Plus,

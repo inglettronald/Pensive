@@ -39,9 +39,13 @@ A user theme overrides individual roles and fonts in a TOML file, keyed by the r
 
 A UI font and a code font, both bundled with the app so every machine renders the same: Inter and JetBrains Mono by default. Geist and Geist Mono are bundled too. Users can override either.
 
-## Density
+## Size
 
 Calm and Dense both ship, as a setting, with Calm as the default. Density changes sizes only. Fonts and colors come from the theme.
+
+Zoom scales everything in every window, from 80 to 200%. Ctrl = and Ctrl - step it, and Ctrl 0 resets it. Code size is its own setting, in pixels at 100% zoom, so zoom still scales it. It follows Density until it's set.
+
+Ordered settings such as zoom use a stepper. The wheel steps it only once the pointer has rested on it for a second without scrolling, so scrolling a page past one never changes it.
 
 ## Diffs
 

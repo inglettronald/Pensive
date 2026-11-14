@@ -43,6 +43,7 @@ const FILES: &[(&str, &[u8])] = bundled![
     "icons/hash.svg",
     "icons/list.svg",
     "icons/list-tree.svg",
+    "icons/minus.svg",
     "icons/palette.svg",
     "icons/panel-left.svg",
     "icons/plus.svg",

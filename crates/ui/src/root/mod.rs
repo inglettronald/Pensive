@@ -30,7 +30,15 @@ use crate::{
 
 actions!(
     pensive,
-    [OpenPalette, OpenActive, ClosePalette, OpenSettings]
+    [
+        OpenPalette,
+        OpenActive,
+        ClosePalette,
+        OpenSettings,
+        ZoomIn,
+        ZoomOut,
+        ResetZoom
+    ]
 );
 
 /// Set on the window while the palette is open over a project, so Escape closes it wherever
@@ -42,6 +50,9 @@ pub(crate) fn bind_keys(cx: &mut App) {
         key_binding("secondary-k", OpenPalette, None, cx),
         key_binding("secondary-shift-k", OpenActive, None, cx),
         key_binding("secondary-,", OpenSettings, None, cx),
+        key_binding("secondary-=", ZoomIn, None, cx),
+        key_binding("secondary--", ZoomOut, None, cx),
+        key_binding("secondary-0", ResetZoom, None, cx),
         key_binding("escape", ClosePalette, Some(PALETTE_OVERLAY), cx),
     ]);
 }
@@ -485,6 +496,7 @@ fn open_with(
 
 impl Render for Pensive {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        window.set_rem_size(theme::rem_size(cx));
         #[cfg(feature = "mocks")]
         let mocks = self.mocks.as_ref().map(|mode| mode.render(window, cx));
         #[cfg(not(feature = "mocks"))]
@@ -530,6 +542,9 @@ impl Render for Pensive {
             .on_action(cx.listener(|pensive, _: &OpenSettings, window, cx| {
                 pensive.open_settings(window, cx)
             }))
+            .on_action(|_: &ZoomIn, _, cx| theme::step_zoom(1, cx))
+            .on_action(|_: &ZoomOut, _, cx| theme::step_zoom(-1, cx))
+            .on_action(|_: &ResetZoom, _, cx| theme::reset_zoom(cx))
             .child(screen)
             .child(self.notices.clone())
             .when(self.project.is_some() && self.palette_open, |root| {
@@ -645,6 +660,22 @@ mod tests {
 
         cx.simulate_keystrokes("escape");
         assert!(!palette_open(&view, cx));
+    }
+
+    #[gpui::test]
+    fn ctrl_equals_zooms_in_and_ctrl_zero_resets(cx: &mut TestAppContext) {
+        let (_, cx) = pensive_window(cx);
+        let rem = |cx: &mut VisualTestContext| cx.update(|window, _| window.rem_size());
+        let at_100 = rem(cx);
+        cx.simulate_keystrokes("ctrl-= ctrl-=");
+        cx.run_until_parked();
+        assert_eq!(rem(cx), at_100 * 1.25);
+        cx.simulate_keystrokes("ctrl--");
+        cx.run_until_parked();
+        assert_eq!(rem(cx), at_100 * 1.1);
+        cx.simulate_keystrokes("ctrl-0");
+        cx.run_until_parked();
+        assert_eq!(rem(cx), at_100);
     }
 
     #[gpui::test]

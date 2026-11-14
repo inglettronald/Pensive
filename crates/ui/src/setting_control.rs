@@ -1,10 +1,10 @@
 //! The control that changes a declared setting, built from what it shows now.
 
-use components::{SegmentedControl, Select, Toggle};
+use components::{SegmentedControl, Select, Stepper, Toggle};
 use gpui::{AnyElement, IntoElement};
 use settings::{AnySetting, ControlState};
 
-/// A toggle, segmented control or select for `setting`. Using it changes the setting.
+/// A toggle, segmented control, select or stepper for `setting`. Using it changes the setting.
 pub(crate) fn setting_control(
     setting: &'static dyn AnySetting,
     state: &ControlState,
@@ -21,6 +21,14 @@ pub(crate) fn setting_control(
         }
         ControlState::Select { label } => Select::new(id, label.clone())
             .on_click(move |_, cx| setting.step(1, cx))
+            .into_any_element(),
+        ControlState::Stepper {
+            label,
+            can_decrease,
+            can_increase,
+        } => Stepper::new(id, label.clone())
+            .limits(*can_decrease, *can_increase)
+            .on_step(move |step, _, cx| setting.step(step, cx))
             .into_any_element(),
     }
 }

@@ -66,6 +66,8 @@ pub enum Control<T: 'static> {
     Segmented(fn(&App) -> Vec<Choice<T>>),
     /// A longer list of choices, or one only known at runtime.
     Select(fn(&App) -> Vec<Choice<T>>),
+    /// Ordered choices stepped through one at a time, stopping at either end.
+    Stepper(fn(&App) -> Vec<Choice<T>>),
 }
 
 pub struct Choice<T> {
@@ -92,6 +94,11 @@ pub enum ControlState {
     },
     Select {
         label: SharedString,
+    },
+    Stepper {
+        label: SharedString,
+        can_decrease: bool,
+        can_increase: bool,
     },
 }
 
@@ -134,7 +141,9 @@ impl<T: Clone + PartialEq + Serialize + DeserializeOwned + Sync> Setting<T> {
     fn choices(&self, cx: &App) -> Vec<Choice<T>> {
         match self.control {
             Control::Toggle => Vec::new(),
-            Control::Segmented(choices) | Control::Select(choices) => choices(cx),
+            Control::Segmented(choices) | Control::Select(choices) | Control::Stepper(choices) => {
+                choices(cx)
+            }
         }
     }
 }
@@ -145,7 +154,8 @@ pub trait AnySetting: Sync {
     fn name(&self) -> &'static str;
     fn description(&self) -> &'static str;
     fn state(&self, cx: &App) -> ControlState;
-    /// Flips a toggle, or moves `step` choices over, wrapping around.
+    /// Flips a toggle, or moves `step` choices over. A stepper stops at either end, and the others
+    /// wrap around.
     fn step(&self, step: isize, cx: &mut App);
     /// Picks the choice at `index`.
     fn choose(&self, index: usize, cx: &mut App);
@@ -183,6 +193,11 @@ impl<T: Clone + PartialEq + Serialize + DeserializeOwned + Sync> AnySetting for 
             Control::Select(_) => ControlState::Select {
                 label: self.label(&value, cx),
             },
+            Control::Stepper(_) => ControlState::Stepper {
+                label: self.label(&value, cx),
+                can_decrease: selected.is_some_and(|index| index > 0),
+                can_increase: selected.is_some_and(|index| index + 1 < choices.len()),
+            },
         }
     }
 
@@ -197,8 +212,12 @@ impl<T: Clone + PartialEq + Serialize + DeserializeOwned + Sync> AnySetting for 
         if choices.is_empty() {
             return;
         }
+        let last = choices.len() as isize - 1;
         let index = match choices.iter().position(|choice| choice.value == value) {
-            Some(index) => (index as isize + step).rem_euclid(choices.len() as isize) as usize,
+            Some(index) if matches!(self.control, Control::Stepper(_)) => {
+                (index as isize + step).clamp(0, last) as usize
+            }
+            Some(index) => (index as isize + step).rem_euclid(last + 1) as usize,
             None => 0,
         };
         self.choose(index, cx);
@@ -232,4 +251,43 @@ fn as_bool(value: &impl Serialize) -> bool {
         .ok()
         .and_then(|value| value.as_bool())
         .expect("a toggle holds a bool")
+}
+
+#[cfg(test)]
+mod tests {
+    use gpui::TestAppContext;
+
+    use super::*;
+
+    static STEPS: Setting<u32> = Setting {
+        key: "steps",
+        name: "Steps",
+        description: "",
+        default: 2,
+        control: Control::Stepper(|_| {
+            (1..=3)
+                .map(|step| Choice::new(step, step.to_string()))
+                .collect()
+        }),
+    };
+
+    #[gpui::test]
+    fn a_stepper_stops_at_either_end(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            STEPS.step(1, cx);
+            assert_eq!(STEPS.get(cx), 3);
+            assert_eq!(
+                STEPS.state(cx),
+                ControlState::Stepper {
+                    label: "3".into(),
+                    can_decrease: true,
+                    can_increase: false,
+                }
+            );
+            STEPS.step(1, cx);
+            assert_eq!(STEPS.get(cx), 3);
+            STEPS.step(-5, cx);
+            assert_eq!(STEPS.get(cx), 1);
+        });
+    }
 }
