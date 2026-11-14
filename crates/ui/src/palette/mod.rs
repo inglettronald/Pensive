@@ -1,6 +1,7 @@
 //! The command palette's view: the query, tab, keyword and selection, and what the keys do.
 
 mod commands;
+mod items;
 mod options;
 mod results;
 
