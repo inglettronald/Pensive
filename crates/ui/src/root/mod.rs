@@ -95,6 +95,8 @@ impl Pensive {
 
     /// Shows Settings in place of the project or the landing screen.
     pub(crate) fn open_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        #[cfg(feature = "mocks")]
+        self.leave_mocks(cx);
         let view = match &self.settings {
             Some((view, _)) => view.clone(),
             None => {
@@ -122,6 +124,11 @@ impl Pensive {
     #[cfg(any(test, feature = "mocks"))]
     pub(crate) fn settings_view(&self) -> Option<Entity<SettingsView>> {
         Some(self.settings.as_ref()?.0.clone())
+    }
+
+    #[cfg(feature = "mocks")]
+    pub(crate) fn project_view(&self) -> Option<Entity<ProjectView>> {
+        Some(self.project.as_ref()?.1.clone())
     }
 
     fn project_id(&self) -> Option<ProjectId> {
@@ -471,7 +478,7 @@ fn open_with(
 impl Render for Pensive {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         #[cfg(feature = "mocks")]
-        let mocks = self.mocks.as_ref().map(|mode| mode.render(cx));
+        let mocks = self.mocks.as_ref().map(|mode| mode.render(window, cx));
         #[cfg(not(feature = "mocks"))]
         let mocks: Option<gpui::AnyElement> = None;
         let screen = match mocks {
@@ -681,6 +688,30 @@ mod tests {
             cx.dispatch_action(ViewMocks);
             assert_eq!(source(cx), before, "{id} left its settings behind");
         }
+    }
+
+    #[cfg(feature = "mocks")]
+    #[gpui::test]
+    fn the_gear_over_a_component_mock_leaves_the_mocks_for_settings(cx: &mut TestAppContext) {
+        use crate::mock_browser::ViewMocks;
+
+        let (view, cx) = pensive_window(cx);
+        cx.dispatch_action(ViewMocks);
+        let tooltips = components::mocks()
+            .into_iter()
+            .find(|mock| mock.id() == "tooltip/gallery")
+            .unwrap();
+        view.update_in(cx, |pensive, window, cx| {
+            pensive.open_mock(tooltips, true, window, cx)
+        });
+        cx.run_until_parked();
+
+        let gear = cx.debug_bounds("settings").unwrap();
+        click(cx, gear.center());
+        view.read_with(cx, |pensive, _| {
+            assert!(pensive.mocks.is_none());
+            assert!(pensive.settings.is_some());
+        });
     }
 
     #[cfg(feature = "mocks")]

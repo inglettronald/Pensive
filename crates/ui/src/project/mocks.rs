@@ -1,19 +1,17 @@
 //! One mock per board on the app shell canvas: the pensive project's window in each state,
 //! built from the sample changes.
 
-use std::sync::Arc;
-
-use components::{TitleBar, TitleBarProject};
-use gpui::{AnyView, App, Context, Entity, Window, div, prelude::*};
+use gpui::{AnyView, App, AppContext, Context, Window};
 use mock::Mock;
-use model::{
-    Projects,
-    fixtures::{self, FakeGit, PENSIVE},
-};
-use theme::{ActiveTheme, DensityPreset};
+use model::fixtures::{self, PENSIVE};
+use theme::DensityPreset;
 
 use super::{Control, FileLayout, ProjectView};
-use crate::editor::{Mode, SAVE, SaveMode};
+use crate::{
+    editor::{Mode, SAVE, SaveMode},
+    mock_window,
+    root::Pensive,
+};
 
 pub(crate) fn mocks() -> Vec<Mock> {
     vec![
@@ -78,9 +76,10 @@ pub(crate) fn mocks() -> Vec<Mock> {
             )
         }),
         Mock::new("project", "no_changes", |window, cx| {
-            let projects = cx.new(|_| Projects::new(Arc::new(FakeGit::default())));
-            let view = cx.new(|cx| ProjectView::new(projects, PENSIVE, window, cx));
-            cx.new(|_| Framed(view)).into()
+            crate::declare_settings(cx);
+            let projects = cx.new(|_| fixtures::clean_projects());
+            cx.new(|cx| Pensive::new(projects, Some(PENSIVE), window, cx))
+                .into()
         }),
         Mock::new("project", "changes_folded", |window, cx| {
             framed(|view, _, cx| view.select_uncommitted(5, cx), window, cx)
@@ -119,39 +118,17 @@ pub(crate) fn mocks() -> Vec<Mock> {
 
 fn untouched(_: &mut ProjectView, _: &mut Window, _: &mut Context<ProjectView>) {}
 
-/// The view on the sample changes, set up by `setup`, under the title bar it has in a window.
+/// The pensive project's window on the sample changes, with its view set up by `setup`.
 fn framed(
     setup: fn(&mut ProjectView, &mut Window, &mut Context<ProjectView>),
     window: &mut Window,
     cx: &mut App,
 ) -> AnyView {
-    crate::declare_settings(cx);
-    let projects = cx.new(|_| fixtures::projects());
-    let view = cx.new(|cx| ProjectView::new(projects, PENSIVE, window, cx));
+    let pensive = mock_window::pensive(Some(PENSIVE), window, cx);
+    let view = pensive
+        .read(cx)
+        .project_view()
+        .expect("the window opens on a project");
     view.update(cx, |view, cx| setup(view, window, cx));
-    cx.new(|_| Framed(view)).into()
-}
-
-struct Framed(Entity<ProjectView>);
-
-impl Render for Framed {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let theme = cx.theme();
-        div()
-            .flex()
-            .flex_col()
-            .size_full()
-            .bg(theme.colors.surface_app)
-            .text_color(theme.colors.text)
-            .font_family(theme.fonts.ui.clone())
-            .child(
-                TitleBar::new(Some(TitleBarProject {
-                    initial: "P".into(),
-                    name: "pensive".into(),
-                    branch: Some("feat/command-palette".into()),
-                }))
-                .on_palette(|_, _| {}),
-            )
-            .child(self.0.clone())
-    }
+    pensive.into()
 }

@@ -14,6 +14,8 @@ use crate::{Changes, FileKey, FileVersions, FixtureGap, GitBackend, Repository, 
 #[derive(Debug)]
 pub struct FakeGit {
     repositories: Vec<Repository>,
+    /// Whether pensive's main worktree has the sample changes. Without them nothing has changed.
+    sample_changes: bool,
     /// Files written in pensive's main worktree, by path, over the samples.
     saved: Mutex<HashMap<PathBuf, String>>,
     /// Files staged or unstaged in pensive's main worktree, by path, over the samples.
@@ -27,6 +29,7 @@ impl Default for FakeGit {
                 .into_iter()
                 .map(|(repository, _)| repository)
                 .collect(),
+            sample_changes: true,
             saved: Mutex::default(),
             staged: Mutex::default(),
         }
@@ -34,6 +37,14 @@ impl Default for FakeGit {
 }
 
 impl FakeGit {
+    /// The sample repositories with nothing changed in any of them.
+    pub fn clean() -> Self {
+        Self {
+            sample_changes: false,
+            ..Self::default()
+        }
+    }
+
     fn sample_root(worktree: &Path, path: &Path) -> Result<()> {
         if worktree == Path::new(super::PENSIVE_ROOT) {
             Ok(())
@@ -63,7 +74,7 @@ impl GitBackend for FakeGit {
     /// sample worktree.
     fn changes(&self, worktree: &Path) -> Result<Changes> {
         self.repository(worktree)?;
-        if worktree != Path::new(super::PENSIVE_ROOT) {
+        if !self.sample_changes || worktree != Path::new(super::PENSIVE_ROOT) {
             return Ok(Changes::default());
         }
         let mut changes = super::changes();
