@@ -1,10 +1,11 @@
-//! The open project: the branch timeline in the sidebar and the selected file's diff beside it.
+//! The open project: the rail of panels, the branch timeline in the Changes panel, and the
+//! selected file's diff beside them.
 
+mod changes_panel;
 mod files;
 mod main_view;
 #[cfg(feature = "mocks")]
 mod mocks;
-mod sidebar;
 mod tree;
 
 use std::{
@@ -12,15 +13,22 @@ use std::{
     time::Duration,
 };
 
-use components::IconName;
+use components::{IconName, Rail, RailItem};
 use gpui::{
-    App, ClipboardItem, Context, Entity, FocusHandle, Focusable, SharedString, Subscription, Task,
-    Window, actions, div, prelude::*,
+    App, ClipboardItem, Context, Entity, EventEmitter, FocusHandle, Focusable, SharedString,
+    Subscription, Task, Window, actions, div, prelude::*,
 };
 use model::{Changes, FileChange, FileKey, Notice, ProjectId, Projects, Source, Staging};
 use strum::VariantArray;
 
-use crate::{clear_after, editor::Editor, key_binding, text_input::TextInput};
+use crate::{
+    clear_after,
+    editor::Editor,
+    key_binding, notices,
+    rail_gear::{GearClicked, rail_gear},
+    text_input::TextInput,
+    view_callback_with,
+};
 
 #[cfg(feature = "mocks")]
 pub(crate) use mocks::mocks;
@@ -42,7 +50,7 @@ pub(crate) fn bind_keys(cx: &mut App) {
     ]);
 }
 
-/// How the sidebar lays out files, for the uncommitted work and any commit that's open.
+/// How the Changes panel lays out files, for the uncommitted work and any commit that's open.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, VariantArray)]
 pub enum FileLayout {
     List,
@@ -71,23 +79,62 @@ impl FileLayout {
     }
 }
 
-/// A sidebar control that answers with a notice.
+/// What the panel beside the rail shows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, VariantArray)]
+pub enum Panel {
+    Changes,
+    Files,
+    Search,
+    History,
+}
+
+impl Panel {
+    fn icon(self) -> IconName {
+        match self {
+            Panel::Changes => IconName::FolderGit2,
+            Panel::Files => IconName::Files,
+            Panel::Search => IconName::Search,
+            Panel::History => IconName::GitGraph,
+        }
+    }
+
+    fn name(self) -> &'static str {
+        match self {
+            Panel::Changes => "Changes",
+            Panel::Files => "Files",
+            Panel::Search => "Search",
+            Panel::History => "History",
+        }
+    }
+
+    fn index(self) -> usize {
+        Panel::VARIANTS
+            .iter()
+            .position(|&panel| panel == self)
+            .expect("every panel is listed")
+    }
+}
+
+/// A control that answers with a notice.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Control {
     Fetch,
     Pull,
     Push,
     Commit,
+    /// A panel on the rail with nothing in it yet.
+    Panel(Panel),
 }
 
 impl Control {
-    /// None of them has a Git backend behind it yet.
+    /// None of them has anything behind it yet.
     fn notice(self) -> Notice {
         Notice::not_wired(match self {
             Control::Fetch => "Fetch",
             Control::Pull => "Pull",
             Control::Push => "Push",
             Control::Commit => "Commit",
+            Control::Panel(panel) => panel.name(),
         })
     }
 }
@@ -112,6 +159,8 @@ pub struct ProjectView {
     copied: Option<Task<()>>,
     /// What the control used last had to say, until the task clears it.
     notice: Option<(Control, Notice, Task<()>)>,
+    rail_hovered: Option<usize>,
+    gear_hovered: bool,
     message: Entity<TextInput>,
     /// Shows the selected file.
     editor: Entity<Editor>,
@@ -172,6 +221,8 @@ impl ProjectView {
             tooltip_delay: None,
             copied: None,
             notice: None,
+            rail_hovered: None,
+            gear_hovered: false,
             message,
             editor,
             focus_handle: cx.focus_handle(),
@@ -439,7 +490,50 @@ impl ProjectView {
     fn commit_staged(&mut self, _: &CommitStaged, _window: &mut Window, cx: &mut Context<Self>) {
         self.use_control(Control::Commit, cx);
     }
+
+    /// Changes, then the panels with nothing in them yet, which answer with a notice, and the
+    /// gear at the foot.
+    fn rail(&self, cx: &mut Context<Self>) -> Rail {
+        let items = Panel::VARIANTS
+            .iter()
+            .map(|panel| RailItem {
+                icon: panel.icon(),
+                name: panel.name().into(),
+                dimmed: false,
+            })
+            .collect();
+        let notice = self
+            .notice
+            .as_ref()
+            .and_then(|(control, notice, _)| match control {
+                Control::Panel(panel) => {
+                    Some((panel.index(), notices::tooltip(notice).into_any_element()))
+                }
+                _ => None,
+            });
+        Rail::new(items, Panel::Changes.index())
+            .hovered(self.rail_hovered)
+            .notice(notice)
+            .tools([rail_gear(
+                false,
+                self.gear_hovered,
+                |view: &mut Self, hovered| view.gear_hovered = hovered,
+                cx,
+            )])
+            .on_select(view_callback_with(cx, |this: &mut Self, index, _, cx| {
+                let panel = Panel::VARIANTS[index];
+                if panel != Panel::Changes {
+                    this.use_control(Control::Panel(panel), cx);
+                }
+            }))
+            .on_hover(view_callback_with(cx, |this: &mut Self, index, _, cx| {
+                this.rail_hovered = index;
+                cx.notify();
+            }))
+    }
 }
+
+impl EventEmitter<GearClicked> for ProjectView {}
 
 impl Focusable for ProjectView {
     fn focus_handle(&self, _: &App) -> FocusHandle {
@@ -459,7 +553,8 @@ impl Render for ProjectView {
             .flex()
             .flex_1()
             .min_h_0()
-            .child(self.render_sidebar(&changes, cx))
+            .child(self.rail(cx))
+            .child(self.render_changes_panel(&changes, cx))
             .child(self.render_main_view(cx))
     }
 }

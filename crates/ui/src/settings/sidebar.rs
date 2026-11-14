@@ -1,4 +1,5 @@
-//! The settings sidebar: the category rail, the search field, and the current category's pages.
+//! The settings sidebar: the category rail with the gear at its foot, the search field, and the
+//! current category's pages.
 
 use components::{Icon, IconName, Kbd, NavItem, NavList, Rail, RailButton, RailItem};
 use gpui::{
@@ -8,7 +9,7 @@ use gpui::{
 use theme::{ActiveTheme, Typeset, dp};
 
 use super::{CATEGORY_IN, CATEGORY_OUT, SettingsView, Spot, Tool, outline::Category, search::Hits};
-use crate::{notices, view_callback, view_callback_with};
+use crate::{notices, rail_gear::rail_gear, view_callback, view_callback_with};
 
 impl SettingsView {
     pub(super) fn rail(
@@ -74,6 +75,12 @@ impl SettingsView {
             .tools([
                 tool(Tool::OpenFile, IconName::FileCog, "Open settings.toml"),
                 tool(Tool::ShowNames, IconName::PanelLeft, "Show names"),
+                rail_gear(
+                    true,
+                    self.gear_hovered,
+                    |view: &mut Self, hovered| view.gear_hovered = hovered,
+                    cx,
+                ),
             ])
             .on_select(view_callback_with(cx, |view: &mut Self, index, _, cx| {
                 view.show_category(index, cx)

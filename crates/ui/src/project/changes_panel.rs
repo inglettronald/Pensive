@@ -1,5 +1,5 @@
-//! The sidebar: pull and push in its header, the branch as a timeline, and the commit box pinned
-//! under it.
+//! The Changes panel: pull and push in its header, the branch as a timeline, and the commit box
+//! pinned under it.
 
 use components::{
     Button, ButtonStyle, FadeText, Icon, IconButton, IconName, RingFill, SegmentedControl,
@@ -8,16 +8,13 @@ use components::{
 use gpui::{AnyElement, App, Context, SharedString, Window, deferred, div, prelude::*};
 use model::{Changes, Commit, Staging, short_sha};
 use strum::VariantArray;
-use theme::{ActiveTheme, Dp, Typeset, dp};
+use theme::{ActiveTheme, Typeset, dp};
 
 use super::{Control, FileLayout, ProjectView, Source};
-use crate::{notices, view_callback, view_callback_with};
-
-/// The sidebar's width. It becomes resizable later.
-const WIDTH: Dp = dp(280.);
+use crate::{PANEL, notices, view_callback, view_callback_with};
 
 impl ProjectView {
-    pub(super) fn render_sidebar(
+    pub(super) fn render_changes_panel(
         &mut self,
         changes: &Changes,
         cx: &mut Context<Self>,
@@ -27,7 +24,7 @@ impl ProjectView {
             .flex()
             .flex_col()
             .flex_none()
-            .w(WIDTH)
+            .w(PANEL)
             .border_r_1()
             .border_color(colors.border_subtle)
             .bg(colors.surface_panel)
@@ -133,7 +130,7 @@ impl ProjectView {
     }
 
     /// `control` with its notice in a tooltip, right-aligned to it: below in the header, above at
-    /// the bottom of the sidebar.
+    /// the bottom of the panel.
     fn with_notice(&self, control: Control, element: impl IntoElement) -> impl IntoElement {
         let notice = self
             .notice

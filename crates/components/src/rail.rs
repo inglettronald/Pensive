@@ -29,8 +29,10 @@ pub struct RailButton {
     icon: IconName,
     name: SharedString,
     selected: bool,
+    filled: bool,
     dimmed: bool,
     hovered: bool,
+    notice: Option<AnyElement>,
     on_click: Option<Callback<()>>,
     on_hover: Option<Callback<bool>>,
 }
@@ -42,8 +44,10 @@ impl RailButton {
             icon,
             name: name.into(),
             selected: false,
+            filled: false,
             dimmed: false,
             hovered: false,
+            notice: None,
             on_click: None,
             on_hover: None,
         }
@@ -52,6 +56,19 @@ impl RailButton {
     /// The icon in `text_strong`. The rail draws the fill, so it can slide.
     pub fn selected(mut self, selected: bool) -> Self {
         self.selected = selected;
+        self
+    }
+
+    /// The icon in `text_strong` on its own fill, for a tool that marks where you are, such as
+    /// the gear in Settings. The rail draws its items' fill instead, so it can slide.
+    pub fn filled(mut self, filled: bool) -> Self {
+        self.filled = filled;
+        self
+    }
+
+    /// Shown beside the button in place of its name, such as a notice about clicking it.
+    pub fn notice(mut self, notice: Option<AnyElement>) -> Self {
+        self.notice = notice;
         self
     }
 
@@ -82,7 +99,7 @@ impl RailButton {
 impl RenderOnce for RailButton {
     fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
         let colors = &cx.theme().colors;
-        let color = if self.selected {
+        let color = if self.selected || self.filled {
             colors.text_strong
         } else if self.dimmed {
             colors.text_disabled
@@ -100,23 +117,29 @@ impl RenderOnce for RailButton {
             .justify_center()
             .size(button_size(cx))
             .rounded(cx.density().radius_md)
-            .when(self.hovered && !self.selected, |button| {
+            .when(self.filled, |button| button.bg(colors.surface_selected))
+            .when(self.hovered && !self.selected && !self.filled, |button| {
                 button.bg(colors.surface_raised)
             })
             .child(Icon::new(self.icon).size(ICON).color(color))
-            .when(self.hovered, |button| {
-                button.child(
-                    div()
-                        .absolute()
-                        .top_0()
-                        .bottom_0()
-                        .left_full()
-                        .ml_1p5()
-                        .flex()
-                        .items_center()
-                        .child(deferred(Tooltip::new(self.name)).priority(1)),
-                )
-            })
+            .children(
+                self.notice
+                    .or_else(|| {
+                        self.hovered
+                            .then(|| Tooltip::new(self.name).into_any_element())
+                    })
+                    .map(|tooltip| {
+                        div()
+                            .absolute()
+                            .top_0()
+                            .bottom_0()
+                            .left_full()
+                            .ml_1p5()
+                            .flex()
+                            .items_center()
+                            .child(deferred(tooltip).priority(1))
+                    }),
+            )
             .when_some(self.on_hover, |button, handler| {
                 button.on_hover(move |hovered, window, cx| handler(*hovered, window, cx))
             })
@@ -139,6 +162,7 @@ pub struct Rail {
     /// The category the fill slides from, when it just changed.
     previous: Option<usize>,
     hovered: Option<usize>,
+    notice: Option<(usize, AnyElement)>,
     tools: Vec<AnyElement>,
     on_select: Option<Callback<usize>>,
     on_hover: Option<Callback<Option<usize>>>,
@@ -151,6 +175,7 @@ impl Rail {
             selected,
             previous: None,
             hovered: None,
+            notice: None,
             tools: Vec::new(),
             on_select: None,
             on_hover: None,
@@ -165,6 +190,13 @@ impl Rail {
 
     pub fn hovered(mut self, hovered: Option<usize>) -> Self {
         self.hovered = hovered;
+        self
+    }
+
+    /// Shown beside the item at its index in place of the item's name, such as a notice about
+    /// clicking it.
+    pub fn notice(mut self, notice: Option<(usize, AnyElement)>) -> Self {
+        self.notice = notice;
         self
     }
 
@@ -230,13 +262,18 @@ impl RenderOnce for Rail {
                 bar.top(top(to) + dp(8.)).into_any_element(),
             ],
         };
+        let mut notice = self.notice;
         let buttons = self.items.into_iter().enumerate().map(|(index, item)| {
+            let notice = notice
+                .take_if(|(at, _)| *at == index)
+                .map(|(_, notice)| notice);
             let on_select = self.on_select.clone();
             let on_hover = self.on_hover.clone();
             RailButton::new(("rail", index), item.icon, item.name)
                 .selected(index == self.selected)
                 .dimmed(item.dimmed)
-                .hovered(self.hovered == Some(index))
+                .hovered(self.hovered == Some(index) && notice.is_none())
+                .notice(notice)
                 .on_click(move |window, cx| {
                     if let Some(handler) = &on_select {
                         handler(index, window, cx)
