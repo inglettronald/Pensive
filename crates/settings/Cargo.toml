@@ -11,3 +11,6 @@ gpui.workspace = true
 serde.workspace = true
 toml.workspace = true
 toml_edit.workspace = true
+
+[dev-dependencies]
+gpui = { workspace = true, features = ["test-support"] }
