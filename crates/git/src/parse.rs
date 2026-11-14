@@ -243,6 +243,8 @@ pub(crate) const LOG: &[&str] = &[
     "-M",
     "--raw",
     "--numstat",
+    // `log.showSignature` would check every commit's signature and print the result.
+    "--no-show-signature",
     "--format=%x1e%H%x1f%s%x1f%b",
 ];
 

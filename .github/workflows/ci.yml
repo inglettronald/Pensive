@@ -70,10 +70,18 @@ jobs:
         run: script/bootstrap
       - run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
-      - run: cargo clippy --all-targets
+      # Every feature, so code behind `demo` and `mocks` is checked too.
+      - run: cargo clippy --all-targets --all-features
       - run: cargo build
       - if: runner.os != 'Windows'
         run: cargo test
+      - if: always() && runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: mocks-linux
+          path: target/mocks
+          if-no-files-found: ignore
+          retention-days: 14
       # GitHub's Windows runner has no Vulkan driver, so mocks can't render there yet (PEN-24).
       # This also skips any other integration test on Windows.
       - if: runner.os == 'Windows'

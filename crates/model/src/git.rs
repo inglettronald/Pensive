@@ -32,6 +32,10 @@ pub trait GitBackend: Send + Sync + Debug {
 
     /// Replaces the file at `path` in the worktree with `text`.
     fn write_file(&self, worktree: &Path, path: &Path, text: &str) -> Result<()>;
+
+    /// Stages all of each file at `paths`, relative to the worktree's root, or unstages it back
+    /// to its committed state. A path can be a deleted file, or the old path of a rename.
+    fn set_staged(&self, worktree: &Path, paths: &[PathBuf], staged: bool) -> Result<()>;
 }
 
 /// A repository as Git reports it.

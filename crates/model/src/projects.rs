@@ -12,7 +12,7 @@ use gpui::{AppContext as _, Context, Entity, SharedString, Subscription, Task};
 
 use crate::{
     Backend, Changes, Document, DocumentEvent, FileKey, FileVersions, GitBackend, Origin,
-    Repository, Source, document::Contents,
+    Repository, Source, clock, document::Contents,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -78,7 +78,8 @@ pub enum WorkKind {
 /// Every known project, cached so that reading it never runs Git.
 pub struct Projects {
     pub projects: Vec<Project>,
-    /// When this was last refreshed. Ages are measured from here, so views never read the clock.
+    /// The time ages are measured from, fixed in fixtures so mocks don't change. The clock
+    /// otherwise.
     pub as_of: Option<SystemTime>,
     /// Each worktree's changes, by its path, once they've been read.
     changes: HashMap<PathBuf, Changes>,
@@ -90,6 +91,9 @@ pub struct Projects {
     /// Files with a binary version, which have no lines to show.
     binary: HashSet<(PathBuf, FileKey)>,
     git: Backend<dyn GitBackend>,
+    /// The last write to Git's index. The next one waits for it, since two writes at once would
+    /// both need the index's lock.
+    staging: Option<Task<()>>,
     _saves: Vec<Subscription>,
 }
 
@@ -104,6 +108,7 @@ impl Projects {
             opening: HashSet::new(),
             binary: HashSet::new(),
             git: Backend::new(git, Origin::Git),
+            staging: None,
             _saves: Vec::new(),
         }
     }
@@ -116,7 +121,7 @@ impl Projects {
         cx.spawn(async move |this, cx| {
             let repository = read.await?;
             this.update(cx, |this, cx| {
-                let id = this.add(repository, SystemTime::now());
+                let id = this.add(repository, clock::now());
                 cx.notify();
                 id
             })
@@ -125,7 +130,6 @@ impl Projects {
 
     /// Adds `repository` as opened at `opened`, or updates the project already at its root.
     pub(crate) fn add(&mut self, repository: Repository, opened: SystemTime) -> ProjectId {
-        self.as_of = Some(opened);
         let root = &repository.root;
         if let Some(known) = self
             .projects
@@ -285,8 +289,9 @@ impl Projects {
         }
     }
 
-    /// Stages or unstages one file in the cached changes. Git's index follows once a backend
-    /// writes it.
+    /// Stages all of the uncommitted file at `path`, or unstages it. The cached changes show it
+    /// at once. Then Git's index is written, after any write before it, and the changes are read
+    /// again, so they end up as Git has them even when the write fails.
     pub fn set_staged(
         &mut self,
         worktree: &Path,
@@ -294,18 +299,72 @@ impl Projects {
         staged: bool,
         cx: &mut Context<Self>,
     ) {
-        if let Some(changes) = self.changes.get_mut(worktree) {
-            changes.set_staged(path, staged);
-            cx.notify();
-        }
+        self.write_staging(worktree, vec![path.to_path_buf()], staged, cx);
     }
 
-    /// [`Self::set_staged`] for every file.
+    /// [`Self::set_staged`] for every uncommitted file.
     pub fn set_all_staged(&mut self, worktree: &Path, staged: bool, cx: &mut Context<Self>) {
-        if let Some(changes) = self.changes.get_mut(worktree) {
-            changes.set_all_staged(staged);
-            cx.notify();
+        let paths = self.changes(worktree).map_or_else(Vec::new, |changes| {
+            changes
+                .uncommitted
+                .iter()
+                .map(|file| file.path.clone())
+                .collect()
+        });
+        self.write_staging(worktree, paths, staged, cx);
+    }
+
+    fn write_staging(
+        &mut self,
+        worktree: &Path,
+        paths: Vec<PathBuf>,
+        staged: bool,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(changes) = self.changes.get_mut(worktree) else {
+            return;
+        };
+        let mut pathspecs = Vec::new();
+        for path in paths {
+            changes.set_staged(&path, staged);
+            // A rename is staged or unstaged with the path it came from.
+            if let Some(from) = changes
+                .file(&path)
+                .and_then(|file| file.renamed_from.clone())
+            {
+                pathspecs.push(from);
+            }
+            pathspecs.push(path);
         }
+        cx.notify();
+
+        let title = if staged {
+            "Couldn't stage"
+        } else {
+            "Couldn't unstage"
+        };
+        let worktree = worktree.to_path_buf();
+        let previous = self.staging.take();
+        self.staging = Some(cx.spawn(async move |this, cx| {
+            if let Some(previous) = previous {
+                previous.await;
+            }
+            let path = worktree.clone();
+            let Ok(write) = this.update(cx, |this, cx| {
+                this.git.call(
+                    title,
+                    move |git| git.set_staged(&path, &pathspecs, staged),
+                    cx,
+                )
+            }) else {
+                return;
+            };
+            // The backend reports a write Git refused. The read shows what Git has either way.
+            write.await.ok();
+            if let Ok(read) = this.update(cx, |this, cx| this.read_changes(worktree, cx)) {
+                read.await.ok();
+            }
+        }));
     }
 
     pub fn project(&self, id: ProjectId) -> Option<&Project> {
@@ -370,23 +429,24 @@ impl Projects {
         work
     }
 
-    /// Work that changed within `window` of `as_of`, newest first.
+    pub fn now(&self) -> SystemTime {
+        self.as_of.unwrap_or_else(clock::now)
+    }
+
+    /// Work that changed within `window` of now, newest first.
     pub fn active(&self, window: Duration) -> Vec<Work> {
-        let Some(as_of) = self.as_of else {
-            return Vec::new();
-        };
+        let now = self.now();
         self.work()
             .into_iter()
             .filter(|work| {
-                as_of
-                    .duration_since(work.last_change)
+                now.duration_since(work.last_change)
                     .is_ok_and(|age| age <= window)
             })
             .collect()
     }
 }
 
-#[cfg(all(test, feature = "fixtures"))]
+#[cfg(test)]
 mod tests {
     use std::path::Path;
 
@@ -394,7 +454,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        Notices,
+        Notices, Staging,
         fixtures::{self, FakeGit, HARBOR},
     };
 
@@ -408,6 +468,25 @@ mod tests {
             .collect();
         assert_eq!(scopes.len(), 1);
         assert!(matches!(scopes[0].kind, WorkKind::Linked(_)));
+    }
+
+    #[test]
+    fn ages_count_from_now_not_from_when_a_project_opened() {
+        let mut projects = Projects::new(Arc::new(FakeGit::default()));
+        let opened = SystemTime::UNIX_EPOCH;
+        let repository = Repository {
+            root: "~/code/old".into(),
+            worktrees: vec![Worktree {
+                path: "~/code/old".into(),
+                branch: Some("main".into()),
+                last_change: opened,
+            }],
+            branches: Vec::new(),
+        };
+        projects.add(repository, opened);
+        let day = Duration::from_secs(24 * 60 * 60);
+        assert!(projects.now() > opened + day);
+        assert!(projects.active(day).is_empty());
     }
 
     #[test]
@@ -425,7 +504,7 @@ mod tests {
         let repository = FakeGit::default()
             .repository(Path::new("~/Projects/pensive-wt/palette-scopes"))
             .unwrap();
-        let id = projects.add(repository, SystemTime::now());
+        let id = projects.add(repository, SystemTime::UNIX_EPOCH);
         let project = projects.project(id).unwrap();
         assert_eq!(project.repository.root, Path::new("~/Projects/pensive"));
         assert_eq!(project.repository.worktrees.len(), 4);
@@ -439,7 +518,7 @@ mod tests {
             worktrees: Vec::new(),
             branches: Vec::new(),
         };
-        let id = projects.add(repository, SystemTime::now());
+        let id = projects.add(repository, SystemTime::UNIX_EPOCH);
         assert_eq!(projects.projects.len(), 7);
         assert_eq!(projects.project(id).unwrap().name, "new");
     }
@@ -475,6 +554,44 @@ mod tests {
             // FakeGit has no such repository, which is a gap in the samples, not a Git failure.
             assert_eq!(held[0].notice.origin, Origin::Fixture);
         });
+    }
+
+    #[gpui::test]
+    async fn staging_is_written_to_git_and_survives_the_next_read(cx: &mut TestAppContext) {
+        let root = PathBuf::from(fixtures::PENSIVE_ROOT);
+        let projects = cx.new(|_| Projects::new(Arc::new(FakeGit::default())));
+        let staging = |cx: &mut TestAppContext, path: &Path| {
+            projects.read_with(cx, |projects, _| {
+                projects
+                    .changes(&root)
+                    .unwrap()
+                    .file(path)
+                    .unwrap()
+                    .staging()
+            })
+        };
+        projects
+            .update(cx, |projects, cx| projects.read_changes(root.clone(), cx))
+            .await
+            .unwrap();
+        let path = projects.read_with(cx, |projects, _| {
+            let changes = projects.changes(&root).unwrap();
+            let unstaged = changes.uncommitted.iter();
+            let mut unstaged = unstaged.filter(|file| file.staging() == Staging::Unstaged);
+            unstaged.next().unwrap().path.clone()
+        });
+
+        projects.update(cx, |projects, cx| {
+            projects.set_staged(&root, &path, true, cx)
+        });
+        assert_eq!(staging(cx, &path), Staging::Staged);
+        cx.run_until_parked();
+        // Saving a file reads the changes again, as here.
+        projects
+            .update(cx, |projects, cx| projects.read_changes(root.clone(), cx))
+            .await
+            .unwrap();
+        assert_eq!(staging(cx, &path), Staging::Staged);
     }
 
     #[gpui::test]

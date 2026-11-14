@@ -4,13 +4,10 @@ use std::time::SystemTime;
 
 use gpui::SharedString;
 
-/// How long before `as_of` something happened, as the palette and the notice list print it:
-/// `4m`, `2h`, `3d`, `5w`.
-pub(crate) fn age(as_of: Option<SystemTime>, time: SystemTime) -> SharedString {
-    let Some(seconds) = as_of
-        .and_then(|as_of| as_of.duration_since(time).ok())
-        .map(|age| age.as_secs())
-    else {
+/// How long before `now` something happened, as the palette and the notice list print it:
+/// `4m`, `2h`, `3d`, `5w`. Nothing for a time after `now`.
+pub(crate) fn age(now: SystemTime, time: SystemTime) -> SharedString {
+    let Ok(seconds) = now.duration_since(time).map(|age| age.as_secs()) else {
         return SharedString::default();
     };
     const MINUTE: u64 = 60;
@@ -36,7 +33,7 @@ mod tests {
     #[test]
     fn ages_use_the_largest_whole_unit() {
         let now = SystemTime::UNIX_EPOCH + Duration::from_secs(10_000_000);
-        let ago = |seconds| age(Some(now), now - Duration::from_secs(seconds));
+        let ago = |seconds| age(now, now - Duration::from_secs(seconds));
         assert_eq!(ago(30), "1m");
         assert_eq!(ago(26 * 60), "26m");
         assert_eq!(ago(3 * 60 * 60), "3h");

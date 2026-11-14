@@ -1,11 +1,15 @@
 //! The app's notices: warnings and errors held until dismissed, and the errors and successes
 //! waiting to show as toasts.
 
-use std::{cmp::Reverse, time::SystemTime};
+use std::{
+    cmp::Reverse,
+    collections::{HashMap, HashSet},
+    time::SystemTime,
+};
 
 use gpui::{App, AppContext, Context, Entity, Global};
 
-use crate::{Notice, Severity};
+use crate::{Notice, Severity, clock};
 
 /// A warning or error the user hasn't dismissed. A repeat counts here instead of adding a row.
 #[derive(Clone, Debug)]
@@ -22,22 +26,13 @@ pub struct Notices {
     next_id: u64,
     held: Vec<Held>,
     toasts: Vec<(u64, Notice)>,
+    /// Toasts under the pointer, by id, with how many windows hold each.
+    paused: HashMap<u64, usize>,
+    /// Paused toasts whose time ran out in some window.
+    due: HashSet<u64>,
     /// The time ages are measured from, fixed in fixtures so mocks don't change. The clock
     /// otherwise.
     pub as_of: Option<SystemTime>,
-}
-
-/// `SystemTime::now` panics in a browser, so there it reads the browser's clock.
-fn clock() -> SystemTime {
-    #[cfg(target_family = "wasm")]
-    {
-        let since = web_time::SystemTime::now()
-            .duration_since(web_time::UNIX_EPOCH)
-            .unwrap_or_default();
-        SystemTime::UNIX_EPOCH + since
-    }
-    #[cfg(not(target_family = "wasm"))]
-    SystemTime::now()
 }
 
 struct GlobalNotices(Entity<Notices>);
@@ -93,7 +88,7 @@ impl Notices {
     }
 
     pub fn now(&self) -> SystemTime {
-        self.as_of.unwrap_or_else(clock)
+        self.as_of.unwrap_or_else(clock::now)
     }
 
     /// Errors first, then warnings, newest first within each.
@@ -131,7 +126,43 @@ impl Notices {
     /// Done toasting: an error stays held, a success is gone.
     pub fn fold(&mut self, id: u64, cx: &mut Context<Self>) {
         self.toasts.retain(|(toast, _)| *toast != id);
+        self.paused.remove(&id);
+        self.due.remove(&id);
         cx.notify();
+    }
+
+    /// A window's time for the toast ran out. It folds unless another window has it under the
+    /// pointer, in which case that window's own time decides.
+    pub fn expire(&mut self, id: u64, cx: &mut Context<Self>) {
+        if self.paused.contains_key(&id) {
+            self.due.insert(id);
+        } else {
+            self.fold(id, cx);
+        }
+    }
+
+    /// Keeps the toast from expiring while a window has it under the pointer.
+    pub fn pause(&mut self, id: u64) {
+        *self.paused.entry(id).or_default() += 1;
+    }
+
+    /// The pointer left the toast in one window, which then lets the rest of its time run.
+    pub fn resume(&mut self, id: u64) {
+        if let Some(count) = self.paused.get_mut(&id) {
+            *count -= 1;
+            if *count == 0 {
+                self.paused.remove(&id);
+            }
+        }
+    }
+
+    /// A window that held the toast closed, so it has no time left to run. The toast folds now if
+    /// another window's time already ran out.
+    pub fn let_go(&mut self, id: u64, cx: &mut Context<Self>) {
+        self.resume(id);
+        if !self.paused.contains_key(&id) && self.due.contains(&id) {
+            self.fold(id, cx);
+        }
     }
 }
 

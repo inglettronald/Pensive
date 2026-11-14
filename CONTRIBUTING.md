@@ -48,8 +48,9 @@ The first build takes a few minutes while it downloads and compiles dependencies
 | Command | What it does |
 |---|---|
 | `cargo run <path>...` | The app, on real repositories |
-| `cargo demo` | The app on the sample projects, so you can click around without real repositories. Ctrl Shift M opens the mock browser, which lists every mock with its thumbnail and opens any of them in the window. |
+| `cargo demo` | The app on the sample projects, so you can click around without real repositories. Settings stay in memory, so it never reads or changes your config folder. Ctrl Shift M opens the mock browser, which lists every mock with its thumbnail and opens any of them in the window. |
 | `cargo mocks [filter]` | Renders mocks to PNGs in `target/mocks`, without opening a window |
+| `cargo mocks --save-baseline` | Renders mocks and keeps a copy, so later runs list the mocks that changed |
 
 `cargo demo` and `cargo mocks` are aliases in `.cargo/config.toml`. `cargo demo` is `cargo run -p pensive --features demo`: it builds the `pensive` crate with its `demo` feature, which compiles in the sample projects and the mock browser.
 
@@ -82,9 +83,10 @@ Then point your debugger at `target/debug-deps/pensive` (`pensive.exe` on Window
 
 ## Before opening a pull request
 
-CI rejects formatting differences and any compiler or clippy warning. To run the same checks locally:
+CI rejects formatting differences, any compiler or clippy warning, and failing tests. To run the same checks locally:
 
 ```sh
 cargo fmt --check
-cargo clippy --all-targets -- -D warnings
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test
 ```

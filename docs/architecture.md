@@ -21,7 +21,7 @@ Every crate except `git` and `config` also depends on `gpui`.
 
 ## Rules
 
-- Views can trigger I/O but never perform it. Git, the filesystem, the clock, the network, environment variables and randomness go through a model. That way any view can render from mock data.
+- Views can trigger I/O but never perform it. Git, the filesystem, the clock, the network, environment variables and randomness go through a model. That way any view can render from mock data. Clippy enforces this: the root `clippy.toml` disallows the standard library's file, environment, process and clock calls, and `git`, `config` and `pensive` each have their own `clippy.toml` that drops those rules.
 - Each crate declares the settings it reads, and code reads and changes a setting through its declaration.
 - Components never see models. They render from the props they're given.
 - Backends implement traits defined in `model`. `ui` never depends on a backend crate, so only `pensive` sees both sides.
@@ -33,7 +33,9 @@ Every crate except `git` and `config` also depends on `gpui`.
 
 Each view declares named mocks next to its code: the view built from fixed data. They sit behind a `mocks` feature on `ui` and `components`, so they never ship in the app. `pensive` has a `demo` feature that turns them on for the mock browser and opens the sample projects. `cargo demo` runs the app with it.
 
-`cargo mocks` renders every mock to `target/mocks/<subject>/<mock>.png` without opening a window. `cargo mocks root` renders only the mocks whose `<subject>/<mock>` contains `root`. A subject with more than one mock also gets an atlas at `target/mocks/<subject>.png`, with all of its mocks in one numbered grid. The atlas is only written when the filter matches every mock of the subject, so `cargo mocks root/landing` deletes `root.png` instead of leaving one that's out of date. `cargo test` renders them too, so CI checks that every mock renders on Linux and macOS. GitHub's Windows runner can't render them yet (PEN-24). On Windows, mocks render with wgpu rather than the app's DirectX 11 renderer, so fine details of text can differ from the running app.
+`cargo mocks` renders every mock to `target/mocks/<subject>/<mock>.png` without opening a window. `cargo mocks root` renders only the mocks whose `<subject>/<mock>` contains `root`. A subject with more than one mock also gets an atlas at `target/mocks/<subject>.png`, with all of its mocks in one numbered grid. The atlas is only written when the filter matches every mock of the subject, so `cargo mocks root/landing` deletes `root.png` instead of leaving one that's out of date. `cargo test` renders them too, so CI checks that every mock renders on Linux and macOS. A mock that fails or panics is reported by its id, and the others still render. `cargo test <name>` renders only the mocks whose id contains `<name>`, and passes if none do, as any other test binary would.
+
+`cargo mocks --save-baseline` also copies each render to `target/mocks-baseline`. While that folder exists, `cargo mocks` lists every mock whose render differs from its copy, and writes a picture of the change to `target/mocks-diff`, with the changed pixels in magenta. Renders on one machine come out identical every run, so any difference is a real change. Baselines stay on your machine: renders differ between GPUs and operating systems. GitHub's Windows runner can't render them yet (PEN-24). On Windows, mocks render with wgpu rather than the app's DirectX 11 renderer, so fine details of text can differ from the running app.
 
 ## GPUI
 

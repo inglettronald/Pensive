@@ -303,8 +303,9 @@ fn active(query: &Query) -> Results {
     let age = |work: &Work| {
         query
             .projects
-            .as_of
-            .and_then(|as_of| as_of.duration_since(work.last_change).ok())
+            .now()
+            .duration_since(work.last_change)
+            .ok()
             .unwrap_or_default()
     };
     // Active keeps work up to `days` old, so Earlier only shows when that's longer than a week.
@@ -498,7 +499,7 @@ fn project_item(query: &Query, project: &Project, matches: Vec<Range<usize>>) ->
     let when = if query.current == Some(project.id) {
         "This window".into()
     } else {
-        age(query.projects.as_of, project.last_opened)
+        age(query.projects.now(), project.last_opened)
     };
     let mut entry = PaletteEntry::new(project.name.clone())
         .leading(Leading::Tile(project.initial()))
@@ -563,7 +564,7 @@ fn work_item(
         .icon(icon)
         .code()
         .matches(matches)
-        .when(age(query.projects.as_of, work.last_change))
+        .when(age(query.projects.now(), work.last_change))
         .hints(open_hints("Switch"));
     if let Some(detail) = detail {
         entry = entry.detail(detail);

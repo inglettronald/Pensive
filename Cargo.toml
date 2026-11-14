@@ -49,13 +49,18 @@ gpui_wgpu = { git = "https://github.com/zed-industries/zed", tag = "v1.27.0" }
 refineable = { git = "https://github.com/zed-industries/zed", tag = "v1.27.0" }
 
 # Line tables keep file and line numbers in backtraces through gpui, and
-# take far less disk than full debug info.
+# take far less disk than full debug info. Optimized dependencies make
+# `cargo mocks` about 8 times faster; Pensive's own crates stay unoptimized,
+# so they still build fast.
 [profile.dev.package."*"]
 debug = "line-tables-only"
+opt-level = 2
 
-# Opt-in full debug info for dependencies. See CONTRIBUTING.md.
+# Opt-in full debug info for dependencies, unoptimized so a debugger can step
+# through them. See CONTRIBUTING.md.
 [profile.debug-deps]
 inherits = "dev"
 
 [profile.debug-deps.package."*"]
 debug = "full"
+opt-level = 0

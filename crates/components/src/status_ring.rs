@@ -4,7 +4,7 @@ use gpui::{App, ElementId, Hsla, Pixels, Window, div, prelude::*, px};
 use strum::{IntoStaticStr, VariantArray};
 use theme::{ActiveTheme, ThemeColors};
 
-use crate::{Callback, callback};
+use crate::{Callback, OnClick as _, callback};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, VariantArray, IntoStaticStr)]
 pub enum RingFill {
@@ -69,10 +69,8 @@ impl RenderOnce for StatusRing {
             .when(self.fill == RingFill::Half, |ring| {
                 ring.child(div().w(inner / 2.).h(inner).rounded_l(inner / 2.).bg(color))
             })
-            .when_some(self.on_click, |ring, handler| {
-                ring.cursor_pointer()
-                    .on_click(move |_, window, cx| handler((), window, cx))
-            })
+            .when(self.on_click.is_some(), |ring| ring.cursor_pointer())
+            .on_click_callback(self.on_click)
     }
 }
 

@@ -1,5 +1,5 @@
 [alias]
 # `cargo mocks [FILTER]` renders mocks to target/mocks.
-mocks = "test -p pensive --test render_mocks --"
+mocks = "test -p pensive --test render_mocks -- --only"
 # `cargo demo` runs the app on the sample projects, with the mock browser on Ctrl Shift M.
 demo = "run -p pensive --features demo"
