@@ -86,7 +86,5 @@ Then point your debugger at `target/debug-deps/pensive` (`pensive.exe` on Window
 CI rejects formatting differences, any compiler or clippy warning, and failing tests. To run the same checks locally:
 
 ```sh
-cargo fmt --check
-cargo clippy --all-targets --all-features -- -D warnings
-cargo test
+script/check
 ```
