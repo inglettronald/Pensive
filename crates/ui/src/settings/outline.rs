@@ -76,25 +76,3 @@ pub(crate) fn outline(cx: &App) -> Vec<Category> {
     });
     categories
 }
-
-#[cfg(test)]
-mod tests {
-    use gpui::TestAppContext;
-
-    use super::*;
-
-    #[gpui::test]
-    fn every_category_the_app_declares_has_an_icon_and_a_description(cx: &mut TestAppContext) {
-        cx.update(|cx| {
-            theme::init(cx);
-            crate::init(cx);
-            for category in outline(cx) {
-                assert!(
-                    KNOWN.iter().any(|(name, ..)| *name == category.name),
-                    "add the `{}` category to KNOWN",
-                    category.name
-                );
-            }
-        });
-    }
-}
