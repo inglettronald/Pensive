@@ -14,9 +14,9 @@ use super::{
     Editor,
     keys::CONTEXT,
     line::LineElement,
-    movement,
     rows::{Mode, Row, STEP},
 };
+use crate::text_editing::{self, movement};
 
 impl Editor {
     fn render_row(
@@ -52,15 +52,16 @@ impl Editor {
                     }
                     _ => Vec::new(),
                 };
-                let selection = (self.selection.start <= end
-                    && self.selection.end >= start
-                    && !self.selection.is_empty())
+                let selected = &self.selection.range;
+                let selection = (selected.start <= end
+                    && selected.end >= start
+                    && !selected.is_empty())
                 .then(|| {
-                    let from = self.selection.start.max(start) - start;
-                    let to = self.selection.end.min(end) - start;
-                    (from..to, self.selection.end > end)
+                    let from = selected.start.max(start) - start;
+                    let to = selected.end.min(end) - start;
+                    (from..to, selected.end > end)
                 });
-                let cursor = self.cursor();
+                let cursor = self.selection.cursor();
                 let focused = self.focus_handle.is_focused(window);
                 let element = LineElement {
                     editor: this.clone(),
@@ -71,6 +72,7 @@ impl Editor {
                     cursor: (focused && (start..=end).contains(&cursor)).then(|| cursor - start),
                     highlights,
                     marked: self
+                        .selection
                         .marked
                         .as_ref()
                         .filter(|marked| start <= marked.start && marked.end <= end)
@@ -180,43 +182,24 @@ impl Render for Editor {
         let rows = cx.entity().downgrade();
         let entity = cx.entity();
         let focus_handle = self.focus_handle.clone();
-        div()
+        let editor = div()
             .id("editor")
-            .key_context(CONTEXT)
-            .track_focus(&self.focus_handle)
-            .on_action(cx.listener(Self::left))
-            .on_action(cx.listener(Self::right))
+            .key_context(text_editing::key_context(CONTEXT))
+            .track_focus(&self.focus_handle);
+        text_editing::on_actions(editor, cx)
             .on_action(cx.listener(Self::up))
             .on_action(cx.listener(Self::down))
-            .on_action(cx.listener(Self::select_left))
-            .on_action(cx.listener(Self::select_right))
             .on_action(cx.listener(Self::select_up))
             .on_action(cx.listener(Self::select_down))
-            .on_action(cx.listener(Self::word_left))
-            .on_action(cx.listener(Self::word_right))
-            .on_action(cx.listener(Self::select_word_left))
-            .on_action(cx.listener(Self::select_word_right))
-            .on_action(cx.listener(Self::home))
-            .on_action(cx.listener(Self::end))
-            .on_action(cx.listener(Self::select_home))
-            .on_action(cx.listener(Self::select_end))
             .on_action(cx.listener(Self::top))
             .on_action(cx.listener(Self::bottom))
             .on_action(cx.listener(Self::page_up))
             .on_action(cx.listener(Self::page_down))
-            .on_action(cx.listener(Self::backspace))
-            .on_action(cx.listener(Self::delete))
-            .on_action(cx.listener(Self::delete_word_left))
             .on_action(cx.listener(Self::newline))
             .on_action(cx.listener(Self::indent))
-            .on_action(cx.listener(Self::select_all))
-            .on_action(cx.listener(Self::copy))
-            .on_action(cx.listener(Self::cut))
-            .on_action(cx.listener(Self::paste))
             .on_action(cx.listener(Self::undo))
             .on_action(cx.listener(Self::redo))
             .on_action(cx.listener(Self::save))
-            .on_action(cx.listener(Self::show_character_palette))
             .on_mouse_down(MouseButton::Left, cx.listener(Self::on_mouse_down))
             .on_mouse_up(MouseButton::Left, cx.listener(Self::on_mouse_up))
             .on_mouse_up_out(MouseButton::Left, cx.listener(Self::on_mouse_up))

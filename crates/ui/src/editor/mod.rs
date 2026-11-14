@@ -4,7 +4,6 @@
 mod input;
 mod keys;
 mod line;
-mod movement;
 mod render;
 mod rows;
 mod saving;
@@ -12,9 +11,8 @@ mod saving;
 use std::ops::Range;
 
 use gpui::{
-    App, ClipboardItem, Context, Entity, FocusHandle, Focusable, ListAlignment, ListState,
-    MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, ScrollEvent, Subscription, Window,
-    px,
+    App, Context, Entity, FocusHandle, Focusable, ListAlignment, ListState, MouseDownEvent,
+    MouseMoveEvent, MouseUpEvent, Pixels, Point, ScrollEvent, Subscription, Window, px,
 };
 use model::{Document, Rope};
 use theme::ActiveTheme;
@@ -26,6 +24,8 @@ pub use rows::Mode;
 use rows::{Row, rows};
 use saving::AUTO_SAVE_DELAY;
 pub(crate) use saving::{SAVE, SaveMode, declare_settings};
+
+use crate::text_editing::{Selection, TextEditing, movement};
 
 /// What Tab inserts, unless the line is indented with tabs.
 const INDENT: &str = "    ";
@@ -44,11 +44,7 @@ pub struct Editor {
     revealed: Vec<Range<usize>>,
     rows: Vec<Row>,
     list: ListState,
-    /// In bytes. The cursor is its end, or its start when `reversed`.
-    selection: Range<usize>,
-    reversed: bool,
-    /// Text the input method is composing.
-    marked: Option<Range<usize>>,
+    selection: Selection,
     /// The column Up and Down aim for, kept across short lines.
     goal_column: Option<usize>,
     selecting: bool,
@@ -77,9 +73,7 @@ impl Editor {
             revealed: Vec::new(),
             rows: Vec::new(),
             list: ListState::new(0, ListAlignment::Top, OVERDRAW),
-            selection: 0..0,
-            reversed: false,
-            marked: None,
+            selection: Selection::default(),
             goal_column: None,
             selecting: false,
             scroll_x: Pixels::ZERO,
@@ -119,9 +113,7 @@ impl Editor {
             text.line_to_byte(line.min(text.len_lines() - 1))
         });
         self.document = document;
-        self.selection = first_change..first_change;
-        self.reversed = false;
-        self.marked = None;
+        self.selection = Selection::at(first_change);
         self.goal_column = None;
         self.revealed.clear();
         self.scroll_x = Pixels::ZERO;
@@ -143,8 +135,7 @@ impl Editor {
     /// Types `text` at `offset`, as clicking there and typing would.
     #[cfg(feature = "mocks")]
     pub fn type_at(&mut self, offset: usize, text: &str, cx: &mut Context<Self>) {
-        self.move_to(offset, cx);
-        self.insert(None, text, cx);
+        self.insert(Some(offset..offset), text, cx);
     }
 
     fn text<'a>(&self, cx: &'a App) -> Option<&'a Rope> {
@@ -176,17 +167,9 @@ impl Editor {
     /// Keeps the selection inside the text and between characters, for when the text changed
     /// without the editor, as reloading does.
     fn clamp_selection(&mut self, cx: &App) {
-        let Some(text) = self.text(cx) else {
-            return;
-        };
-        let clamp =
-            |offset: usize| text.char_to_byte(text.byte_to_char(offset.min(text.len_bytes())));
-        self.selection = clamp(self.selection.start)..clamp(self.selection.end);
-        self.marked = self
-            .marked
-            .take()
-            .map(|marked| clamp(marked.start)..clamp(marked.end))
-            .filter(|marked| !marked.is_empty());
+        if let Some(text) = self.text(cx) {
+            self.selection.clamp(text);
+        }
     }
 
     /// Rebuilds the rows from the document and tells the list which ones changed height.
@@ -194,7 +177,7 @@ impl Editor {
         let rows = match &self.document {
             Some(document) => {
                 let document = document.read(cx);
-                let cursor = document.text().byte_to_line(self.cursor());
+                let cursor = document.text().byte_to_line(self.selection.cursor());
                 rows(
                     document.diff(),
                     self.line_count(cx),
@@ -231,33 +214,6 @@ impl Editor {
         cx.notify();
     }
 
-    fn cursor(&self) -> usize {
-        if self.reversed {
-            self.selection.start
-        } else {
-            self.selection.end
-        }
-    }
-
-    fn move_to(&mut self, offset: usize, cx: &mut Context<Self>) {
-        self.selection = offset..offset;
-        self.reversed = false;
-        self.cursor_moved(cx);
-    }
-
-    fn select_to(&mut self, offset: usize, cx: &mut Context<Self>) {
-        if self.reversed {
-            self.selection.start = offset;
-        } else {
-            self.selection.end = offset;
-        }
-        if self.selection.end < self.selection.start {
-            self.reversed = !self.reversed;
-            self.selection = self.selection.end..self.selection.start;
-        }
-        self.cursor_moved(cx);
-    }
-
     fn cursor_moved(&mut self, cx: &mut Context<Self>) {
         if let Some(document) = &self.document {
             document.update(cx, |document, _| document.break_undo_group());
@@ -267,7 +223,10 @@ impl Editor {
 
     /// Shows the cursor's line, which a fold never hides, then scrolls to it.
     fn reveal_cursor(&mut self, cx: &mut Context<Self>) {
-        let Some(line) = self.text(cx).map(|text| text.byte_to_line(self.cursor())) else {
+        let Some(line) = self
+            .text(cx)
+            .map(|text| text.byte_to_line(self.selection.cursor()))
+        else {
             return;
         };
         self.update_rows(cx);
@@ -292,29 +251,10 @@ impl Editor {
         }
     }
 
-    /// Moves or extends the selection to `target`, given the text and the cursor.
-    fn motion(
-        &mut self,
-        select: bool,
-        target: impl FnOnce(&Rope, usize) -> usize,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(text) = self.text(cx) else {
-            return;
-        };
-        let offset = target(text, self.cursor());
-        self.goal_column = None;
-        if select {
-            self.select_to(offset, cx);
-        } else {
-            self.move_to(offset, cx);
-        }
-    }
-
     /// The offset `rows` text rows away from the cursor, aiming for the goal column.
     fn vertical(&mut self, rows: isize, cx: &App) -> Option<usize> {
         let text = self.text(cx)?;
-        let cursor = self.cursor();
+        let cursor = self.selection.cursor();
         let line = text.byte_to_line(cursor);
         let column = *self
             .goal_column
@@ -331,17 +271,19 @@ impl Editor {
         }
     }
 
-    fn move_vertically(&mut self, rows: isize, select: bool, cx: &mut Context<Self>) {
+    fn move_vertically(
+        &mut self,
+        rows: isize,
+        select: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let goal = self.goal_column;
         let Some(offset) = self.vertical(rows, cx) else {
             return;
         };
         let goal_column = self.goal_column.or(goal);
-        if select {
-            self.select_to(offset, cx);
-        } else {
-            self.move_to(offset, cx);
-        }
+        self.move_cursor(offset, select, window, cx);
         self.goal_column = goal_column;
     }
 
@@ -352,101 +294,38 @@ impl Editor {
         ((height / line_height) as isize - 1).max(1)
     }
 
-    fn left(&mut self, _: &Left, _: &mut Window, cx: &mut Context<Self>) {
-        if self.selection.is_empty() {
-            self.motion(false, movement::previous, cx);
-        } else {
-            self.move_to(self.selection.start, cx);
+    fn up(&mut self, _: &Up, window: &mut Window, cx: &mut Context<Self>) {
+        self.move_vertically(-1, false, window, cx);
+    }
+
+    fn down(&mut self, _: &Down, window: &mut Window, cx: &mut Context<Self>) {
+        self.move_vertically(1, false, window, cx);
+    }
+
+    fn select_up(&mut self, _: &SelectUp, window: &mut Window, cx: &mut Context<Self>) {
+        self.move_vertically(-1, true, window, cx);
+    }
+
+    fn select_down(&mut self, _: &SelectDown, window: &mut Window, cx: &mut Context<Self>) {
+        self.move_vertically(1, true, window, cx);
+    }
+
+    fn top(&mut self, _: &Top, window: &mut Window, cx: &mut Context<Self>) {
+        self.move_cursor(0, false, window, cx);
+    }
+
+    fn bottom(&mut self, _: &Bottom, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(len) = self.text(cx).map(Rope::len_bytes) {
+            self.move_cursor(len, false, window, cx);
         }
-    }
-
-    fn right(&mut self, _: &Right, _: &mut Window, cx: &mut Context<Self>) {
-        if self.selection.is_empty() {
-            self.motion(false, movement::next, cx);
-        } else {
-            self.move_to(self.selection.end, cx);
-        }
-    }
-
-    fn up(&mut self, _: &Up, _: &mut Window, cx: &mut Context<Self>) {
-        self.move_vertically(-1, false, cx);
-    }
-
-    fn down(&mut self, _: &Down, _: &mut Window, cx: &mut Context<Self>) {
-        self.move_vertically(1, false, cx);
-    }
-
-    fn select_left(&mut self, _: &SelectLeft, _: &mut Window, cx: &mut Context<Self>) {
-        self.motion(true, movement::previous, cx);
-    }
-
-    fn select_right(&mut self, _: &SelectRight, _: &mut Window, cx: &mut Context<Self>) {
-        self.motion(true, movement::next, cx);
-    }
-
-    fn select_up(&mut self, _: &SelectUp, _: &mut Window, cx: &mut Context<Self>) {
-        self.move_vertically(-1, true, cx);
-    }
-
-    fn select_down(&mut self, _: &SelectDown, _: &mut Window, cx: &mut Context<Self>) {
-        self.move_vertically(1, true, cx);
-    }
-
-    fn word_left(&mut self, _: &WordLeft, _: &mut Window, cx: &mut Context<Self>) {
-        self.motion(false, movement::previous_word, cx);
-    }
-
-    fn word_right(&mut self, _: &WordRight, _: &mut Window, cx: &mut Context<Self>) {
-        self.motion(false, movement::next_word, cx);
-    }
-
-    fn select_word_left(&mut self, _: &SelectWordLeft, _: &mut Window, cx: &mut Context<Self>) {
-        self.motion(true, movement::previous_word, cx);
-    }
-
-    fn select_word_right(&mut self, _: &SelectWordRight, _: &mut Window, cx: &mut Context<Self>) {
-        self.motion(true, movement::next_word, cx);
-    }
-
-    fn home(&mut self, _: &Home, _: &mut Window, cx: &mut Context<Self>) {
-        self.motion(false, movement::home, cx);
-    }
-
-    fn end(&mut self, _: &End, _: &mut Window, cx: &mut Context<Self>) {
-        self.motion(false, movement::end, cx);
-    }
-
-    fn select_home(&mut self, _: &SelectHome, _: &mut Window, cx: &mut Context<Self>) {
-        self.motion(true, movement::home, cx);
-    }
-
-    fn select_end(&mut self, _: &SelectEnd, _: &mut Window, cx: &mut Context<Self>) {
-        self.motion(true, movement::end, cx);
-    }
-
-    fn top(&mut self, _: &Top, _: &mut Window, cx: &mut Context<Self>) {
-        self.motion(false, |_, _| 0, cx);
-    }
-
-    fn bottom(&mut self, _: &Bottom, _: &mut Window, cx: &mut Context<Self>) {
-        self.motion(false, |text, _| text.len_bytes(), cx);
     }
 
     fn page_up(&mut self, _: &PageUp, window: &mut Window, cx: &mut Context<Self>) {
-        self.move_vertically(-self.page(window, cx), false, cx);
+        self.move_vertically(-self.page(window, cx), false, window, cx);
     }
 
     fn page_down(&mut self, _: &PageDown, window: &mut Window, cx: &mut Context<Self>) {
-        self.move_vertically(self.page(window, cx), false, cx);
-    }
-
-    fn select_all(&mut self, _: &SelectAll, _: &mut Window, cx: &mut Context<Self>) {
-        let Some(len) = self.text(cx).map(Rope::len_bytes) else {
-            return;
-        };
-        self.selection = 0..len;
-        self.reversed = false;
-        cx.notify();
+        self.move_vertically(self.page(window, cx), false, window, cx);
     }
 
     /// Replaces the selection, or the bytes in `range`, with `text`, and puts the cursor after
@@ -458,9 +337,7 @@ impl Editor {
         if !self.editable(cx) {
             return;
         }
-        let range = range
-            .or(self.marked.clone())
-            .unwrap_or(self.selection.clone());
+        let range = self.selection.replaced(range);
         let lines = document.read(cx).text();
         let first = lines.byte_to_line(range.start);
         let removed = lines.byte_to_line(range.end) - first;
@@ -471,10 +348,7 @@ impl Editor {
                 document.save_after(AUTO_SAVE_DELAY, cx);
             }
         });
-        let cursor = range.start + text.len();
-        self.selection = cursor..cursor;
-        self.reversed = false;
-        self.marked = None;
+        self.selection = Selection::at(range.start + text.len());
         self.goal_column = None;
         self.reveal_cursor(cx);
     }
@@ -495,40 +369,12 @@ impl Editor {
         self.revealed.retain(|range| !range.is_empty());
     }
 
-    /// Deletes the selection, or from the cursor to `target` when nothing is selected.
-    fn delete_to(&mut self, target: fn(&Rope, usize) -> usize, cx: &mut Context<Self>) {
-        let Some(text) = self.text(cx) else {
-            return;
-        };
-        let range = if self.selection.is_empty() {
-            let (cursor, target) = (self.cursor(), target(text, self.cursor()));
-            cursor.min(target)..cursor.max(target)
-        } else {
-            self.selection.clone()
-        };
-        if !range.is_empty() {
-            self.insert(Some(range), "", cx);
-        }
-    }
-
-    fn backspace(&mut self, _: &Backspace, _: &mut Window, cx: &mut Context<Self>) {
-        self.delete_to(movement::previous, cx);
-    }
-
-    fn delete(&mut self, _: &Delete, _: &mut Window, cx: &mut Context<Self>) {
-        self.delete_to(movement::next, cx);
-    }
-
-    fn delete_word_left(&mut self, _: &DeleteWordLeft, _: &mut Window, cx: &mut Context<Self>) {
-        self.delete_to(movement::previous_word, cx);
-    }
-
     /// Starts a new line with the current line's indentation and line ending.
     fn newline(&mut self, _: &Newline, _: &mut Window, cx: &mut Context<Self>) {
         let Some(text) = self.text(cx) else {
             return;
         };
-        let index = text.byte_to_line(self.selection.start);
+        let index = text.byte_to_line(self.selection.range.start);
         let (_, line) = movement::line(text, index);
         let indent = &line[..line.len() - line.trim_start().len()];
         let ending = if text.line(index).to_string().ends_with("\r\n") {
@@ -543,46 +389,23 @@ impl Editor {
         let Some(text) = self.text(cx) else {
             return;
         };
-        let (_, line) = movement::line(text, text.byte_to_line(self.selection.start));
+        let (_, line) = movement::line(text, text.byte_to_line(self.selection.range.start));
         let indent = if line.starts_with('\t') { "\t" } else { INDENT };
         self.insert(None, indent, cx);
     }
 
-    fn selected_text(&self, cx: &App) -> Option<String> {
-        let text = self.text(cx)?;
-        (!self.selection.is_empty()).then(|| text.byte_slice(self.selection.clone()).to_string())
+    fn undo(&mut self, _: &Undo, window: &mut Window, cx: &mut Context<Self>) {
+        self.history(Document::undo, window, cx);
     }
 
-    fn copy(&mut self, _: &Copy, _: &mut Window, cx: &mut Context<Self>) {
-        if let Some(text) = self.selected_text(cx) {
-            cx.write_to_clipboard(ClipboardItem::new_string(text));
-        }
-    }
-
-    fn cut(&mut self, _: &Cut, _: &mut Window, cx: &mut Context<Self>) {
-        if let Some(text) = self.selected_text(cx) {
-            cx.write_to_clipboard(ClipboardItem::new_string(text));
-            self.insert(None, "", cx);
-        }
-    }
-
-    fn paste(&mut self, _: &Paste, _: &mut Window, cx: &mut Context<Self>) {
-        if let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) {
-            self.insert(None, &text, cx);
-        }
-    }
-
-    fn undo(&mut self, _: &Undo, _: &mut Window, cx: &mut Context<Self>) {
-        self.history(Document::undo, cx);
-    }
-
-    fn redo(&mut self, _: &Redo, _: &mut Window, cx: &mut Context<Self>) {
-        self.history(Document::redo, cx);
+    fn redo(&mut self, _: &Redo, window: &mut Window, cx: &mut Context<Self>) {
+        self.history(Document::redo, window, cx);
     }
 
     fn history(
         &mut self,
         step: fn(&mut Document, &mut Context<Document>) -> Option<usize>,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let Some(document) = self.document.clone() else {
@@ -596,17 +419,8 @@ impl Editor {
             cursor
         });
         if let Some(cursor) = cursor {
-            self.move_to(cursor, cx);
+            self.move_cursor(cursor, false, window, cx);
         }
-    }
-
-    fn show_character_palette(
-        &mut self,
-        _: &ShowCharacterPalette,
-        window: &mut Window,
-        _: &mut Context<Self>,
-    ) {
-        window.show_character_palette();
     }
 
     /// Shows lines hidden in a fold.
@@ -636,26 +450,30 @@ impl Editor {
             return;
         };
         self.selecting = true;
-        if event.modifiers.shift {
-            self.select_to(offset, cx);
-        } else if event.click_count == 2
+        if event.click_count == 2
+            && !event.modifiers.shift
             && let Some(text) = self.text(cx)
         {
             let start = movement::previous_word(text, movement::next(text, offset));
             let end = movement::next_word(text, start);
-            self.selection = start..end;
-            self.reversed = false;
+            self.selection.select(start..end);
+            window.notify_text_selection_changed(&self.focus_handle);
             cx.notify();
         } else {
-            self.move_to(offset, cx);
+            self.move_cursor(offset, event.modifiers.shift, window, cx);
         }
     }
 
-    fn on_mouse_move(&mut self, event: &MouseMoveEvent, _: &mut Window, cx: &mut Context<Self>) {
+    fn on_mouse_move(
+        &mut self,
+        event: &MouseMoveEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if self.selecting
             && let Some(offset) = self.offset_at(event.position)
         {
-            self.select_to(offset, cx);
+            self.move_cursor(offset, true, window, cx);
         }
     }
 
@@ -675,6 +493,48 @@ impl Editor {
         if sideways != Pixels::ZERO {
             self.set_scroll_x((self.scroll_x - sideways).max(Pixels::ZERO), cx);
         }
+    }
+}
+
+impl TextEditing for Editor {
+    fn rope(&self, cx: &App) -> Option<Rope> {
+        self.text(cx).cloned()
+    }
+
+    fn selection(&self) -> &Selection {
+        &self.selection
+    }
+
+    fn move_cursor(
+        &mut self,
+        offset: usize,
+        select: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.selection.move_cursor(offset, select);
+        self.goal_column = None;
+        window.notify_text_selection_changed(&self.focus_handle);
+        self.cursor_moved(cx);
+    }
+
+    fn select_all(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(len) = self.text(cx).map(Rope::len_bytes) else {
+            return;
+        };
+        self.selection.select(0..len);
+        window.notify_text_selection_changed(&self.focus_handle);
+        cx.notify();
+    }
+
+    fn replace(
+        &mut self,
+        range: Option<Range<usize>>,
+        text: &str,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.insert(range, text, cx);
     }
 }
 
@@ -722,7 +582,7 @@ mod tests {
         let (editor, cx) = cx.add_window_view(Editor::new);
         editor.update_in(cx, |editor, window, cx| {
             editor.set_document(document, cx);
-            editor.move_to(0, cx);
+            editor.move_cursor(0, false, window, cx);
             window.focus(&editor.focus_handle, cx);
         });
         cx.run_until_parked();
@@ -802,7 +662,7 @@ mod tests {
         editor.update_in(cx, |editor, window, cx| editor.undo(&Undo, window, cx));
         cx.run_until_parked();
         editor.read_with(cx, |editor, cx| {
-            let line = editor.text(cx).unwrap().byte_to_line(editor.cursor());
+            let line = editor.text(cx).unwrap().byte_to_line(editor.selection.cursor());
             assert!(editor.row_of(line).is_some());
         });
     }

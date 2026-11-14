@@ -18,6 +18,7 @@ mod settings;
 mod smooth_scroll;
 #[cfg(test)]
 mod test_support;
+mod text_editing;
 mod text_input;
 mod window_frame;
 
@@ -35,6 +36,7 @@ pub use root::{Pensive, open_window};
 /// Binds every view's keys and declares the views' settings.
 pub fn init(cx: &mut App) {
     declare_settings(cx);
+    text_editing::bind_keys(cx);
     text_input::bind_keys(cx);
     editor::bind_keys(cx);
     palette::bind_keys(cx);
