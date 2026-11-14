@@ -549,8 +549,10 @@ mod tests {
         repo.commit_all("first");
         repo.write("kept.rs", "a\nb\n");
         fs::remove_file(repo.path().join("gone.rs")).unwrap();
-        repo.write("new *.rs", "other\n");
-        let paths: Vec<PathBuf> = ["kept.rs", "gone.rs", "new *.rs"].map(PathBuf::from).into();
+        repo.write("new [a].rs", "other\n");
+        let paths: Vec<PathBuf> = ["kept.rs", "gone.rs", "new [a].rs"]
+            .map(PathBuf::from)
+            .into();
         let staging = |repo: &Repo| -> Vec<Staging> {
             let changes = repo.changes();
             paths
@@ -571,7 +573,7 @@ mod tests {
         GitCli.set_staged(&repo.path(), &paths, false).unwrap();
         assert_eq!(staging(&repo), [Staging::Unstaged; 3]);
         let new = repo.changes();
-        let new = new.file(Path::new("new *.rs")).unwrap();
+        let new = new.file(Path::new("new [a].rs")).unwrap();
         assert_eq!(new.worktree, Some(FileStatus::Untracked));
     }
 
