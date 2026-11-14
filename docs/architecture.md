@@ -44,16 +44,16 @@ crates.io stops at gpui 0.2.2, which can't render headless. We pin `gpui` and `g
 
 ## The browser build
 
-`pensive` also builds for `wasm32-unknown-unknown`, where `gpui_web` draws the window to a canvas. A browser has no `git` command or config folder, so `git` and `config` are desktop-only dependencies. It runs single-threaded, because threads in wasm need a nightly toolchain, so `gpui_platform`'s default features are off.
+`pensive` also builds for `wasm32-unknown-unknown`, where `gpui_web` draws the window to a canvas. A browser has no `git` command or config folder, so `git` and `config` are desktop-only dependencies, and the table below says what takes their place. It runs single-threaded, because threads in wasm need a nightly toolchain, so `gpui_platform`'s default features are off.
 
 ## Backends in each build
 
-`crates/pensive/src/backends.rs` picks each model's backend when the app starts.
+`crates/pensive/src/backends.rs` picks the Git and config backends when the app starts. The clock is `model::clock`, which reads the browser's clock in a browser build.
 
 | Backend | Desktop | `cargo demo` | Browser |
 |---|---|---|---|
 | Git | The `git` command, on the repositories named on the command line | The sample projects from `model::fixtures` | The sample projects |
-| Config | The config folder, watched for edits | Memory, so each run starts from the defaults and the config folder is never read | The tab's session storage, so a reload keeps the settings and a new tab starts from the defaults. Memory if the browser denies storage. There are no user themes |
+| Config | The config folder, watched for edits. Without a home folder there's no config, and every setting stays at its default | Memory, so each run starts from the defaults and the config folder is never read | The tab's session storage, so a reload keeps the settings and a new tab starts from the defaults. A duplicated tab copies its original's settings. Memory if the browser won't let the page store anything. There are no user themes |
 | Clock | The system clock | The system clock | The browser's clock, through `web-time` |
 
 The sample projects measure how long ago each one was opened from a fixed time, so they read the same in every run.

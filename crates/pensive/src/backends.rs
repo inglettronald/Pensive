@@ -49,7 +49,7 @@ fn sample_config() -> Arc<dyn ConfigBackend> {
     match crate::session_storage::SessionStorageConfig::open() {
         Some(storage) => Arc::new(storage),
         None => {
-            log::warn!("The browser denied session storage, so settings last until a reload");
+            log::warn!("The browser won't store settings, so they last until a reload");
             Arc::new(model::fixtures::FakeConfig::default())
         }
     }

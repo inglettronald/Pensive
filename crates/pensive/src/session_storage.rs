@@ -3,18 +3,25 @@
 
 use anyhow::{Context, Result, anyhow};
 use model::ConfigBackend;
-use web_sys::{Storage, wasm_bindgen::JsValue};
+use web_sys::{
+    Storage, js_sys,
+    wasm_bindgen::{JsCast, JsValue},
+};
 
 const SETTINGS_KEY: &str = "pensive.settings";
+const PROBE_KEY: &str = "pensive.probe";
 
 #[derive(Debug)]
 pub struct SessionStorageConfig;
 
 impl SessionStorageConfig {
-    /// `None` when the browser denies this page session storage, as it can when site data is
-    /// blocked.
+    /// `None` when the browser won't let this page store anything, as when site data is blocked
+    /// or the storage quota is zero.
     pub fn open() -> Option<Self> {
-        storage().ok().map(|_| Self)
+        let storage = storage().ok()?;
+        storage.set_item(PROBE_KEY, "").ok()?;
+        storage.remove_item(PROBE_KEY).ok()?;
+        Some(Self)
     }
 }
 
@@ -48,6 +55,11 @@ fn storage() -> Result<Storage> {
         .context("the browser has no session storage")
 }
 
+/// The message of what JavaScript threw, which is usually an `Error` such as a `DOMException`.
 fn js_error(error: JsValue) -> anyhow::Error {
-    anyhow!("{error:?}")
+    let message = error.as_string().or_else(|| {
+        let error = error.dyn_ref::<js_sys::Error>()?;
+        Some(error.message().into())
+    });
+    anyhow!(message.unwrap_or_else(|| format!("{error:?}")))
 }
