@@ -129,7 +129,8 @@ mod tests {
     #[test]
     fn keeps_the_config_contract() {
         let dir = tempfile::tempdir().unwrap();
-        model::fixtures::contract::config(&ConfigFolder::new(dir.path().join("pensive")));
+        let not_created_yet = dir.path().join("pensive");
+        model::fixtures::contract::config(&ConfigFolder::new(not_created_yet));
     }
 
     #[test]
