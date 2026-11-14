@@ -7,7 +7,7 @@ use gpui::{
 };
 use theme::{ActiveTheme, Typeset, dp};
 
-use super::{LIST_IN, LIST_OUT, SettingsView, Spot, Tool, outline::Category, search::Hits};
+use super::{CATEGORY_IN, CATEGORY_OUT, SettingsView, Spot, Tool, outline::Category, search::Hits};
 use crate::{notices, view_callback, view_callback_with};
 
 impl SettingsView {
@@ -178,11 +178,11 @@ impl SettingsView {
                 .into_any_element()
         };
         let to = self.current.category;
-        let Some(from) = self.fading.as_ref().map(|(from, _)| *from) else {
+        let Some(from) = self.fading.as_ref().map(|(from, ..)| *from) else {
             return list(to, cx);
         };
-        let total = (LIST_OUT + LIST_IN).as_secs_f32();
-        let out_share = LIST_OUT.as_secs_f32() / total;
+        let total = (CATEGORY_OUT + CATEGORY_IN).as_secs_f32();
+        let out_share = CATEGORY_OUT.as_secs_f32() / total;
         let ease = ease_out_quint();
         div()
             .relative()
@@ -192,14 +192,14 @@ impl SettingsView {
                     .inset_0()
                     .child(list(from, cx))
                     .with_animation(
-                        ("list-out", from * 1000 + to),
-                        Animation::new(LIST_OUT),
+                        ("list-out", self.changes),
+                        Animation::new(CATEGORY_OUT),
                         |layer, delta| layer.opacity(1. - delta),
                     ),
             )
             .child(div().child(list(to, cx)).with_animation(
-                ("list-in", from * 1000 + to),
-                Animation::new(LIST_OUT + LIST_IN),
+                ("list-in", self.changes),
+                Animation::new(CATEGORY_OUT + CATEGORY_IN),
                 move |layer, delta| {
                     let fading_in = ((delta - out_share) / (1. - out_share)).max(0.);
                     layer.opacity(ease(fading_in))

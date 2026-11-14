@@ -130,11 +130,11 @@ The gear, the palette's Settings command or Ctrl , opens Settings in place of th
 
 A rail of category icons runs down the left edge. The current category is filled and marked by a white bar, and hovering an icon names it. Beside the rail, the list shows the current category's pages on a guide line. Together they're as wide as the project's sidebar, so opening Settings reads as a change of view rather than a new place.
 
-Every setting is in one scroll: a category's heading, then its pages, each a card of rows. The rail and the list follow the scroll. A page becomes current once its heading passes a line near the top, and the list's highlight and the rail's fill slide to it. Clicking the list or the rail scrolls there smoothly. Each category ends with a card that leads to the next. Every category has a description, which its heading and that card show.
+The page shows one category: its heading, then its pages, each a card of rows. The wheel scrolls through them and stops at the category's end. A page becomes current once its heading passes a line near the top, and the list's highlight slides to it. The heading counts as part of the first page. Clicking the list scrolls smoothly and puts that page at the top, and the page leaves room under its last page so every page can get there. Clicking the rail fades the page over to that category, which rises slightly as it comes in. Once the last page is current, a card leading to the next category docks at the bottom. Every category has a description, which its heading and that card show.
 
 Rows stop at a reading width, so a control stays near its name in a wide window. A changed setting shows its default and a button that resets it. There's no third level of headings: a page with too many settings becomes two pages.
 
-Search matches names, pages and descriptions. Matches in the category being read come first, then every other category's together. The rail dims categories with no match, and clicking a result shows it in place.
+Search matches names, pages and descriptions. Matches in the category being read come first, then every other category's together. The rail dims categories with no match, and clicking a result shows it on its category's page.
 
 A setting with a preview will get an eye button that opens a drawer under its row, one at a time, drawn with the real components.
 

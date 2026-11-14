@@ -1,7 +1,7 @@
 //! The card at the end of a settings category that leads on to the next one.
 
 use gpui::{App, ElementId, SharedString, Window, div, prelude::*};
-use theme::{ActiveTheme, Typeset, dp};
+use theme::{ActiveTheme, Density, Dp, Typeset, dp};
 
 use crate::{Callback, Icon, IconName, callback};
 
@@ -42,7 +42,16 @@ impl NextCard {
         self.on_click = Some(callback(handler));
         self
     }
+
+    /// How tall the card is, so a page can leave room for it: its three lines, its padding and
+    /// its border. The tile is shorter than the lines.
+    pub fn height(density: &Density) -> Dp {
+        density.small.line_height * 2. + density.body.line_height + PADDING * 2. + dp(2.)
+    }
 }
+
+/// Above and below the card's text.
+const PADDING: Dp = dp(12.);
 
 impl RenderOnce for NextCard {
     fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
@@ -59,9 +68,8 @@ impl RenderOnce for NextCard {
             .flex()
             .items_center()
             .gap_3()
-            .mt_6()
             .px_3p5()
-            .py_3()
+            .py(PADDING)
             .rounded(density.radius_lg)
             .border_1()
             .border_color(colors.border_subtle)

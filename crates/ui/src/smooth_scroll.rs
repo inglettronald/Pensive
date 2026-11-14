@@ -30,6 +30,11 @@ impl SmoothScroll {
         &self.handle
     }
 
+    /// Whether a glide is still moving the page.
+    pub fn is_gliding(&self) -> bool {
+        self.target.get().is_some()
+    }
+
     /// Glides to vertical offset `to`, kept within the content, over `duration`.
     pub fn glide_to<V: 'static>(&mut self, to: Pixels, duration: Duration, cx: &mut Context<V>) {
         let to = self.clamp(to);

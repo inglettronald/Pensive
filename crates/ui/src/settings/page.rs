@@ -2,7 +2,7 @@
 //! matches.
 
 use components::{
-    Card, CategoryHeading, Icon, IconName, NavItem, NavList, NextCard, PageHeading, SettingRow,
+    Card, CategoryHeading, Icon, IconName, NavItem, NavList, PageHeading, SettingRow,
 };
 use gpui::{AnyElement, App, Context, SharedString, div, prelude::*};
 use settings::AnySetting;
@@ -13,7 +13,7 @@ use super::{
     outline::Category,
     search::{Hit, Hits},
 };
-use crate::{setting_control::setting_control, view_callback, view_callback_with};
+use crate::{setting_control::setting_control, view_callback_with};
 
 impl SettingsView {
     /// The search results, the home category's first.
@@ -111,55 +111,51 @@ impl SettingsView {
         .on_reset(move |_, cx| setting.reset(cx))
     }
 
-    /// Every category with its pages, then the card that leads to the next category. Each is
-    /// one child of the scroll, with its anchor.
-    pub(super) fn every_page(
+    /// `category`'s heading and its pages, each one child of the scroll with its anchor. The
+    /// heading is part of the first page, so it's current while the heading shows.
+    pub(super) fn category_page(
         &self,
         outline: &[Category],
+        category: usize,
         cx: &mut Context<Self>,
     ) -> Vec<(Anchor, AnyElement)> {
-        let mut blocks = Vec::new();
-        for (index, category) in outline.iter().enumerate() {
-            blocks.push((
-                Anchor::Category(index),
-                CategoryHeading::new(category.icon, category.name, category.description)
-                    .into_any_element(),
-            ));
-            for (page_index, page) in category.pages.iter().enumerate() {
-                let heading = PageHeading::new(page.name);
-                let heading = if page_index == 0 {
-                    heading.first()
-                } else {
-                    heading
+        let Some(entry) = outline.get(category) else {
+            return Vec::new();
+        };
+        entry
+            .pages
+            .iter()
+            .enumerate()
+            .map(|(index, page)| {
+                let spot = Spot {
+                    category,
+                    page: index,
                 };
                 let rows = page
                     .settings
                     .iter()
                     .map(|setting| Self::row(*setting, None, cx));
-                blocks.push((
-                    Anchor::Page(Spot {
-                        category: index,
-                        page: page_index,
-                    }),
-                    div()
-                        .child(heading)
-                        .child(
-                            div()
-                                .mt_1p5()
-                                .child(Card::new(("page", index * 100 + page_index)).rows(rows)),
-                        )
-                        .into_any_element(),
-                ));
-            }
-            if let Some(next) = outline.get(index + 1) {
-                let card = NextCard::new(("next", index), next.icon, next.name, next.description)
-                    .on_click(view_callback(cx, move |view: &mut Self, _, cx| {
-                        view.show_category(index + 1, cx)
-                    }));
-                blocks.push((Anchor::Other, card.into_any_element()));
-            }
-        }
-        blocks
+                let block = div()
+                    .when(index == 0, |block| {
+                        block.child(CategoryHeading::new(
+                            entry.icon,
+                            entry.name,
+                            entry.description,
+                        ))
+                    })
+                    .child(match index {
+                        0 => PageHeading::new(page.name).first(),
+                        _ => PageHeading::new(page.name),
+                    })
+                    .child(
+                        div()
+                            .mt_1p5()
+                            .child(Card::new(("page", category * 100 + index)).rows(rows)),
+                    )
+                    .into_any_element();
+                (Anchor::Page(spot), block)
+            })
+            .collect()
     }
 
     /// The matching settings, the home category's under its heading and the others' under
