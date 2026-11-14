@@ -15,8 +15,8 @@ use serde::{Deserialize, Serialize};
 use settings::{AnySetting, ControlState, Settings};
 
 use crate::{
-    key_binding,
-    text_input::{self, Changed, TextInput},
+    key_binding, text_editing,
+    text_input::{Changed, TextInput},
     view_callback_with,
 };
 pub(crate) use options::{OPEN_ON, declare as declare_settings, scrim};
@@ -374,7 +374,7 @@ impl PaletteView {
 
     /// → at the end of the query applies the selected row's keyword, such as `project:`, or
     /// moves the selected setting to its next choice.
-    fn narrow(&mut self, _: &text_input::Right, _: &mut Window, cx: &mut Context<Self>) {
+    fn narrow(&mut self, _: &text_editing::Right, _: &mut Window, cx: &mut Context<Self>) {
         if self.change_choice(1, cx) {
             return;
         }
@@ -392,7 +392,7 @@ impl PaletteView {
         }
     }
 
-    fn previous_choice(&mut self, _: &text_input::Left, _: &mut Window, cx: &mut Context<Self>) {
+    fn previous_choice(&mut self, _: &text_editing::Left, _: &mut Window, cx: &mut Context<Self>) {
         if !self.change_choice(-1, cx) {
             cx.propagate();
         }
@@ -401,7 +401,7 @@ impl PaletteView {
     /// Backspace in an empty query removes the keyword.
     fn remove_keyword(
         &mut self,
-        _: &text_input::Backspace,
+        _: &text_editing::Backspace,
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -515,6 +515,7 @@ mod tests {
     use model::fixtures;
 
     use super::*;
+    use crate::test_support::word;
 
     /// The palette alone in a window, on the sample projects, with its input focused.
     fn palette_window(cx: &mut TestAppContext) -> (Entity<PaletteView>, &mut VisualTestContext) {
@@ -550,6 +551,54 @@ mod tests {
         assert_eq!(tab(cx), first);
         cx.simulate_keystrokes("shift-tab");
         assert_eq!(tab(cx), *Tab::ALL.last().unwrap());
+    }
+
+    #[gpui::test]
+    fn the_query_moves_by_word(cx: &mut TestAppContext) {
+        let (view, cx) = palette_window(cx);
+        cx.simulate_input("open the file");
+        cx.simulate_keystrokes(&word("left"));
+        cx.simulate_input("x");
+        let query = view.read_with(cx, |view, cx| view.input.read(cx).text().to_string());
+        assert_eq!(query, "open the xfile");
+    }
+
+    #[gpui::test]
+    fn right_applies_the_selected_rows_keyword(cx: &mut TestAppContext) {
+        let (view, cx) = palette_window(cx);
+        view.update(cx, |view, cx| {
+            view.set_keyword(Some(Keyword::Project(None)), cx)
+        });
+        cx.simulate_keystrokes("right");
+        let keyword = view.read_with(cx, |view, _| view.keyword.clone());
+        assert!(
+            matches!(keyword, Some(Keyword::Project(Some(_)))),
+            "{keyword:?}"
+        );
+    }
+
+    #[gpui::test]
+    fn left_steps_the_selected_settings_choice(cx: &mut TestAppContext) {
+        let (view, cx) = palette_window(cx);
+        view.update(cx, |view, cx| {
+            view.set_keyword(Some(Keyword::Setting), cx);
+            view.selected = view
+                .results(cx)
+                .into_items()
+                .position(|item| item.action == Action::Step(OPEN_ON.key))
+                .expect("the settings list has Open on");
+        });
+        let before = cx.update(|_, cx| OPEN_ON.get(cx));
+        cx.simulate_keystrokes("left");
+        assert_ne!(cx.update(|_, cx| OPEN_ON.get(cx)), before);
+    }
+
+    #[gpui::test]
+    fn backspace_in_an_empty_query_removes_the_keyword(cx: &mut TestAppContext) {
+        let (view, cx) = palette_window(cx);
+        view.update(cx, |view, cx| view.set_keyword(Some(Keyword::Branch), cx));
+        cx.simulate_keystrokes("backspace");
+        assert_eq!(view.read_with(cx, |view, _| view.keyword.clone()), None);
     }
 
     #[test]

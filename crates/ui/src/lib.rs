@@ -37,7 +37,6 @@ pub use root::{Pensive, open_window};
 pub fn init(cx: &mut App) {
     declare_settings(cx);
     text_editing::bind_keys(cx);
-    text_input::bind_keys(cx);
     editor::bind_keys(cx);
     palette::bind_keys(cx);
     project::bind_keys(cx);
