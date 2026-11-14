@@ -95,4 +95,4 @@ CI rejects formatting differences, any compiler or clippy warning, and failing t
 script/check
 ```
 
-`script/check` only covers the platform you run it on. CI builds and tests every pull request on Linux, macOS and Windows, so code that only compiles on one of them fails before it merges. Windows skips the integration tests in each crate's `tests/` folder, since its CI runner can't render mocks yet (PEN-24).
+`script/check` only covers the platform you run it on. CI builds and tests every pull request on Linux, macOS and Windows, so code that only compiles on one of them fails before it merges. Windows skips the mock render test, since its CI runner can't render mocks yet (PEN-24).
