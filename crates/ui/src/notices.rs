@@ -66,6 +66,22 @@ struct Shown {
     draining: Option<(SystemTime, Task<()>)>,
 }
 
+impl Shown {
+    fn left_at(&self, now: SystemTime) -> Duration {
+        match &self.draining {
+            Some((since, _)) => self
+                .left
+                .saturating_sub(now.duration_since(*since).unwrap_or_default()),
+            None => self.left,
+        }
+    }
+
+    /// Only an error folds into the badge, so only an error shows the time left until it does.
+    fn shows_timer(&self) -> bool {
+        self.notice.severity == Severity::Error
+    }
+}
+
 /// The toasts in a window's corner, and the list of held notices that the badge opens.
 pub(crate) struct NoticeOverlay {
     notices: Entity<Notices>,
@@ -150,28 +166,33 @@ impl NoticeOverlay {
     /// Holds a toast while the pointer is on it, in every window, and lets it drain again when
     /// the pointer leaves.
     fn hover(&mut self, id: u64, hovered: bool, cx: &mut Context<Self>) {
+        let now = self.notices.read(cx).now();
         let Some(shown) = self.toasts.iter_mut().find(|shown| shown.id == id) else {
             return;
         };
         // Draining means not held, so a repeated hover event changes nothing.
-        match (hovered, shown.draining.take()) {
-            (true, Some((since, _))) => {
-                let now = self.notices.read(cx).now();
-                shown.left = shown
-                    .left
-                    .saturating_sub(now.duration_since(since).unwrap_or_default());
+        match (hovered, shown.draining.is_some()) {
+            (true, true) => {
+                shown.left = shown.left_at(now);
+                shown.draining = None;
                 self.notices.update(cx, |notices, _| notices.pause(id));
             }
-            (false, None) => {
+            (false, false) => {
                 self.notices.update(cx, |notices, _| notices.resume(id));
                 self.drain(id, cx);
             }
-            (_, draining) => shown.draining = draining,
+            _ => {}
         }
         cx.notify();
     }
 
-    fn toast(&self, shown: &Shown, total: Duration, cx: &mut Context<Self>) -> Toast {
+    fn toast(
+        &self,
+        shown: &Shown,
+        total: Duration,
+        now: SystemTime,
+        cx: &mut Context<Self>,
+    ) -> Toast {
         let id = shown.id;
         let notice = &shown.notice;
         let toast = Toast::new(
@@ -191,12 +212,11 @@ impl NoticeOverlay {
             Some(detail) => toast.detail(detail.clone()),
             None => toast,
         };
-        // Only an error folds into the badge, so only an error shows the time left until it does.
-        if notice.severity != Severity::Error {
+        if !shown.shows_timer() {
             return toast;
         }
-        let left = shown.left.as_secs_f32() / total.as_secs_f32().max(f32::EPSILON);
-        toast.timer(left.min(1.), shown.draining.as_ref().map(|_| shown.left))
+        let left = shown.left_at(now).as_secs_f32() / total.as_secs_f32().max(f32::EPSILON);
+        toast.timer(left.min(1.))
     }
 
     fn list(&self, cx: &mut Context<Self>) -> NoticeList {
@@ -233,9 +253,10 @@ impl NoticeOverlay {
 }
 
 /// Toasts drop in under the title bar at the top right. The list opens under the badge, and
-/// hides the toasts while it's open.
+/// hides the toasts while it's open. A draining timer is drawn from the notices' clock each
+/// frame, so a mock that fixes that clock draws the same line every time.
 impl Render for NoticeOverlay {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let title_bar = cx.density().row_height + px(12.);
         let total = Duration::from_secs(TOAST_SECONDS.get(cx).into());
         let corner = div()
@@ -248,10 +269,15 @@ impl Render for NoticeOverlay {
         if self.list_open {
             return corner.top(title_bar + px(4.)).child(self.list(cx));
         }
+        let draining = |shown: &Shown| shown.shows_timer() && shown.draining.is_some();
+        if self.toasts.iter().any(draining) {
+            window.request_animation_frame();
+        }
+        let now = self.notices.read(cx).now();
         let toasts: Vec<Toast> = self
             .toasts
             .iter()
-            .map(|shown| self.toast(shown, total, cx))
+            .map(|shown| self.toast(shown, total, now, cx))
             .collect();
         corner.top(title_bar + px(12.)).children(toasts)
     }
