@@ -8,13 +8,13 @@ mod page;
 mod search;
 mod sidebar;
 
-use std::time::Duration;
+use std::{cell::Cell, rc::Rc, time::Duration};
 
 use components::NextCard;
 use gpui::{
     Animation, AnimationExt, AnyElement, App, Context, Entity, EventEmitter, FocusHandle,
-    Focusable, Pixels, Point, ScrollEvent, SharedString, Subscription, Task, Window, actions, div,
-    ease_out_quint, linear_color_stop, linear_gradient, prelude::*, relative,
+    Focusable, Pixels, Point, ScrollEvent, SharedString, Subscription, Task, Window, actions,
+    canvas, div, ease_out_quint, linear_color_stop, linear_gradient, prelude::*, relative,
 };
 #[cfg(feature = "mocks")]
 pub(crate) use mocks::mocks;
@@ -22,7 +22,7 @@ use model::Notice;
 use outline::outline;
 use search::search;
 use settings::Settings;
-use theme::{ActiveTheme, Dp, dp};
+use theme::{ActiveTheme, Density, Dp, dp};
 
 use crate::{
     clear_after, key_binding,
@@ -131,9 +131,12 @@ pub(crate) struct SettingsView {
     /// Where a click scrolled to. It stays current until the glide lands, so the list doesn't
     /// step through the pages on the way.
     pinned: Option<Spot>,
-    /// Whether the next card was docked when last drawn. `None` shows it as it is without
-    /// sliding, such as after a jump.
+    /// Whether the next card is docked, or `None` until the category's settings are measured.
     docked: Option<bool>,
+    /// Docks or hides the next card at once on its next change, as after a jump.
+    dock_snap: bool,
+    /// Where the category's settings end as last painted, unscrolled, with the category.
+    settings_end: Rc<Cell<Option<(usize, Pixels)>>>,
     /// The next card docking or leaving, until it's done.
     docking: Option<Task<()>>,
     /// Counts the next card's moves, so each one's slide starts over.
@@ -185,6 +188,8 @@ impl SettingsView {
             changes: 0,
             pinned: None,
             docked: None,
+            dock_snap: true,
+            settings_end: Rc::default(),
             docking: None,
             dock_moves: 0,
             pending: None,
@@ -212,10 +217,14 @@ impl SettingsView {
         if spot == self.current {
             return;
         }
+        if spot.category != self.current.category || !slide {
+            self.docked = None;
+            self.docking = None;
+        }
         if !slide {
             self.previous = None;
             self.fading = None;
-            self.docked = None;
+            self.dock_snap = true;
             self.current = spot;
             return;
         }
@@ -332,14 +341,28 @@ impl SettingsView {
         self.jump_to(spot, cx);
     }
 
-    /// Slides the next card in or out when `docked` changes, unless it was just jumped to.
-    fn dock(&mut self, docked: bool, cx: &mut Context<Self>) {
-        if self.docked.is_some_and(|was| was != docked) {
+    /// Whether the category's settings end above the docked card's room, as last painted.
+    fn settings_fit(&self, room: Pixels) -> Option<bool> {
+        let (category, end) = self.settings_end.get()?;
+        (category == self.current.category).then(|| {
+            let scroll = self.scroll.handle();
+            (end + scroll.offset().y).round() <= (scroll.bounds().bottom() - room).round()
+        })
+    }
+
+    /// Docks or hides the next card, sliding it unless the page just jumped. `None` leaves it
+    /// as it is until there's a measure.
+    fn dock(&mut self, docked: Option<bool>, cx: &mut Context<Self>) {
+        let Some(docked) = docked else {
+            return;
+        };
+        if self.dock_snap {
+            self.docking = None;
+        } else if docked != self.docked.unwrap_or(false) {
             self.dock_moves += 1;
             self.docking = Some(clear_after(DOCK, |view: &mut Self| view.docking = None, cx));
-        } else if self.docked.is_none() {
-            self.docking = None;
         }
+        self.dock_snap = false;
         self.docked = Some(docked);
     }
 
@@ -403,7 +426,7 @@ impl SettingsView {
     ) -> AnyElement {
         let density = cx.density();
         let gutter = density.row_padding * 2.;
-        let docked_room = NextCard::height(density) + gutter * 2.;
+        let docked_room = docked_room(density);
         let category = self.current.category;
         let has_next = |category: usize| browsing && category + 1 < outline.len();
         let end = |category: usize| {
@@ -422,7 +445,12 @@ impl SettingsView {
             .overflow_hidden()
             .track_scroll(self.scroll.handle())
             .on_scroll(cx.listener(Self::wheel))
-            .children(column(blocks, end(category), gutter));
+            .children(column(
+                blocks,
+                end(category),
+                gutter,
+                Some(self.end_marker()),
+            ));
         let fading = self.fading.as_ref().filter(|_| browsing);
         let page = match fading {
             Some(_) => {
@@ -453,7 +481,7 @@ impl SettingsView {
                         .left_0()
                         .right_0()
                         .top(*offset)
-                        .children(column(old, end(*from), gutter)),
+                        .children(column(old, end(*from), gutter, None)),
                 )
                 .with_animation(
                     ("page-out", self.changes),
@@ -486,6 +514,24 @@ impl SettingsView {
             .children(leaving)
             .children(dock)
             .into_any_element()
+    }
+
+    /// A line where the category's settings end, which notes where it is when painted. A new
+    /// place draws again, so the next card can dock by it.
+    fn end_marker(&self) -> AnyElement {
+        let (settings_end, scroll) = (self.settings_end.clone(), self.scroll.handle().clone());
+        let category = self.current.category;
+        canvas(
+            move |bounds, window, _| {
+                let end = Some((category, bounds.top() - scroll.offset().y));
+                if settings_end.replace(end) != end {
+                    window.refresh();
+                }
+            },
+            |_, _, _, _| {},
+        )
+        .w_full()
+        .into_any_element()
     }
 
     /// The card that leads to `next`, docked under the page with the page fading out above it.
@@ -521,12 +567,20 @@ impl SettingsView {
     }
 }
 
+/// Room under the last page for the docked card: its fade, the card and the gutter below it.
+fn docked_room(density: &Density) -> Dp {
+    let gutter = density.row_padding * 2.;
+    NextCard::height(density) + gutter * 2.
+}
+
 /// The page's blocks at the reading width. Given `end`, the last block is at least as tall as the
-/// page, so it can scroll to the top, and leaves `end` under it for the next card.
+/// page, so it can scroll to the top, and leaves `end` under it for the next card. `marker` goes
+/// right after the last block's settings.
 fn column(
     blocks: Vec<(Anchor, AnyElement)>,
     end: Option<Dp>,
     gutter: Dp,
+    mut marker: Option<AnyElement>,
 ) -> impl Iterator<Item = AnyElement> {
     let last = blocks.len().saturating_sub(1);
     blocks
@@ -541,6 +595,7 @@ fn column(
                     None => block.pb(gutter),
                 })
                 .child(block)
+                .when(index == last, |block| block.children(marker.take()))
                 .into_any_element()
         })
 }
@@ -558,10 +613,12 @@ impl Render for SettingsView {
         };
         self.anchors = blocks.iter().map(|(anchor, _)| *anchor).collect();
         let browsing = hits.is_none();
-        let last_page = outline
-            .get(self.current.category)
-            .map_or(0, |category| category.pages.len().saturating_sub(1));
-        self.dock(browsing && self.current.page == last_page, cx);
+        let room = docked_room(cx.density()).to_pixels(window.rem_size());
+        let fits = match browsing {
+            true => self.settings_fit(room),
+            false => Some(false),
+        };
+        self.dock(fits, cx);
         let list = match &hits {
             Some(hits) => self.results_list(&outline, hits, cx),
             None => self.pages_list(&outline, cx),
@@ -719,6 +776,21 @@ mod tests {
                 page: 0
             }
         );
+    }
+
+    #[gpui::test]
+    fn the_next_card_docks_once_the_settings_end_on_screen(cx: &mut TestAppContext) {
+        let (view, cx) = settings_window(cx);
+        settle(cx);
+        let docked = |cx: &mut VisualTestContext| view.read_with(cx, |view, _| view.docked);
+        // Appearance fits in the test window, though its first page is current.
+        assert_eq!(current(&view, cx).page, 0);
+        assert_eq!(docked(cx), Some(true));
+
+        let search = view.read_with(cx, |view, _| view.search.clone());
+        search.update(cx, |input, cx| input.set_text("font", cx));
+        settle(cx);
+        assert_eq!(docked(cx), Some(false));
     }
 
     #[gpui::test]
