@@ -7,27 +7,12 @@ use gpui::{
 };
 
 use super::Editor;
+use crate::text_editing::utf16;
 
 impl Editor {
-    fn utf16(&self, offset: usize, cx: &App) -> usize {
-        self.text(cx).map_or(0, |text| {
-            text.char_to_utf16_cu(text.byte_to_char(offset.min(text.len_bytes())))
-        })
-    }
-
-    fn offset_of_utf16(&self, offset: usize, cx: &App) -> usize {
-        self.text(cx).map_or(0, |text| {
-            let offset = offset.min(text.len_utf16_cu());
-            text.char_to_byte(text.utf16_cu_to_char(offset))
-        })
-    }
-
-    fn range_utf16(&self, range: &Range<usize>, cx: &App) -> Range<usize> {
-        self.utf16(range.start, cx)..self.utf16(range.end, cx)
-    }
-
-    fn range_from_utf16(&self, range: &Range<usize>, cx: &App) -> Range<usize> {
-        self.offset_of_utf16(range.start, cx)..self.offset_of_utf16(range.end, cx)
+    /// `range`, counted in UTF-16, as bytes.
+    fn bytes(&self, range: Option<Range<usize>>, cx: &App) -> Option<Range<usize>> {
+        Some(utf16::range_from_utf16(self.text(cx)?, &range?))
     }
 }
 
@@ -43,9 +28,10 @@ impl EntityInputHandler for Editor {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<String> {
-        let range = self.range_from_utf16(&range_utf16, cx);
-        actual_range.replace(self.range_utf16(&range, cx));
-        Some(self.text(cx)?.byte_slice(range).to_string())
+        let text = self.text(cx)?;
+        let range = utf16::range_from_utf16(text, &range_utf16);
+        actual_range.replace(utf16::range_to_utf16(text, &range));
+        Some(text.byte_slice(range).to_string())
     }
 
     fn selected_text_range(
@@ -54,10 +40,7 @@ impl EntityInputHandler for Editor {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<UTF16Selection> {
-        Some(UTF16Selection {
-            range: self.range_utf16(&self.selection, cx),
-            reversed: self.reversed,
-        })
+        Some(self.selection.to_utf16(self.text(cx)?))
     }
 
     fn set_selected_text_range(
@@ -66,9 +49,11 @@ impl EntityInputHandler for Editor {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.selection = self.range_from_utf16(&range_utf16, cx);
-        self.reversed = false;
-        cx.notify();
+        if let Some(range) = self.bytes(Some(range_utf16), cx) {
+            self.selection.select(range);
+            self.goal_column = None;
+            cx.notify();
+        }
     }
 
     fn text_length_utf16(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> Option<usize> {
@@ -80,13 +65,12 @@ impl EntityInputHandler for Editor {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<Range<usize>> {
-        self.marked
-            .as_ref()
-            .map(|range| self.range_utf16(range, cx))
+        let marked = self.selection.marked.as_ref()?;
+        Some(utf16::range_to_utf16(self.text(cx)?, marked))
     }
 
     fn unmark_text(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        self.marked = None;
+        self.selection.marked = None;
         cx.notify();
     }
 
@@ -97,7 +81,7 @@ impl EntityInputHandler for Editor {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let range = range_utf16.map(|range| self.range_from_utf16(&range, cx));
+        let range = self.bytes(range_utf16, cx);
         self.insert(range, new_text, cx);
     }
 
@@ -112,20 +96,13 @@ impl EntityInputHandler for Editor {
         if !self.editable(cx) {
             return;
         }
-        let range = range_utf16
-            .map(|range| self.range_from_utf16(&range, cx))
-            .or(self.marked.clone())
-            .unwrap_or(self.selection.clone());
+        let range = self.selection.replaced(self.bytes(range_utf16, cx));
         self.insert(Some(range.clone()), new_text, cx);
-        if new_text.is_empty() {
+        let Some(text) = self.text(cx) else {
             return;
-        }
-        self.marked = Some(range.start..range.start + new_text.len());
-        if let Some(selected) = new_selected_range_utf16 {
-            let base = self.utf16(range.start, cx);
-            self.selection =
-                self.range_from_utf16(&(base + selected.start..base + selected.end), cx);
-        }
+        };
+        self.selection
+            .mark(text, range.start, new_text, new_selected_range_utf16);
         cx.notify();
     }
 
@@ -136,8 +113,9 @@ impl EntityInputHandler for Editor {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<Bounds<Pixels>> {
-        let range = self.range_from_utf16(&range_utf16, cx);
-        let line = self.text(cx)?.byte_to_line(range.start);
+        let text = self.text(cx)?;
+        let range = utf16::range_from_utf16(text, &range_utf16);
+        let line = text.byte_to_line(range.start);
         let layouts = self.layouts.borrow();
         let layout = layouts.iter().find(|layout| layout.line == line)?;
         let end = range.end.min(layout.start + layout.shaped.text.len());
@@ -154,6 +132,6 @@ impl EntityInputHandler for Editor {
         cx: &mut Context<Self>,
     ) -> Option<usize> {
         let offset = self.offset_at(point)?;
-        Some(self.utf16(offset, cx))
+        Some(utf16::to_utf16(self.text(cx)?, offset))
     }
 }
