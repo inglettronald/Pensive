@@ -4,22 +4,22 @@
 use std::time::Duration;
 
 use gpui::{
-    Animation, AnimationExt, AnyElement, App, ElementId, Pixels, SharedString, Window, deferred,
-    div, ease_out_quint, prelude::*, px,
+    Animation, AnimationExt, AnyElement, App, ElementId, SharedString, Window, deferred, div,
+    ease_out_quint, prelude::*,
 };
-use theme::ActiveTheme;
+use theme::{ActiveTheme, Dp, dp};
 
 use crate::{Callback, Icon, IconName, OnClick as _, Tooltip, callback};
 
 /// How long the fill and the bar take to reach a new category.
 const SLIDE: Duration = Duration::from_millis(150);
-const ICON: Pixels = px(18.);
+const ICON: Dp = dp(18.);
 /// Between buttons, and between the bar and the button it marks.
-const GAP: Pixels = px(4.);
+const GAP: Dp = dp(4.);
 
 /// A button is a row and 8 px tall, so it grows and shrinks with the density.
-fn button_size(cx: &App) -> Pixels {
-    cx.density().row_height + px(8.)
+fn button_size(cx: &App) -> Dp {
+    cx.density().row_height + dp(8.)
 }
 
 /// One button on the rail, with its name in a tooltip while hovered.
@@ -194,7 +194,7 @@ impl RenderOnce for Rail {
         let colors = &cx.theme().colors;
         let density = cx.density();
         let size = button_size(cx);
-        let inset = px(8.);
+        let inset = dp(8.);
         let top = move |index: usize| inset + (size + GAP) * index as f32;
         let fill = div()
             .absolute()
@@ -205,9 +205,9 @@ impl RenderOnce for Rail {
         let bar = div()
             .absolute()
             .left_0()
-            .w(px(2.))
-            .h(size - px(16.))
-            .rounded_r(px(2.))
+            .w(dp(2.))
+            .h(size - dp(16.))
+            .rounded_r(dp(2.))
             .bg(colors.text_strong);
         let to = self.selected;
         let marks = match self.previous.filter(|from| *from != to) {
@@ -220,14 +220,14 @@ impl RenderOnce for Rail {
                     })
                     .into_any_element(),
                     bar.with_animation(("rail-bar", from * 1000 + to), slide, {
-                        move |bar, delta| bar.top(between(delta) + px(8.))
+                        move |bar, delta| bar.top(between(delta) + dp(8.))
                     })
                     .into_any_element(),
                 ]
             }
             None => vec![
                 fill.top(top(to)).into_any_element(),
-                bar.top(top(to) + px(8.)).into_any_element(),
+                bar.top(top(to) + dp(8.)).into_any_element(),
             ],
         };
         let buttons = self.items.into_iter().enumerate().map(|(index, item)| {
@@ -271,7 +271,7 @@ impl RenderOnce for Rail {
 
 #[cfg(feature = "mocks")]
 pub(crate) fn mocks() -> Vec<mock::Mock> {
-    use gpui::size;
+    use gpui::{px, size};
 
     fn items(dimmed: &[usize]) -> Vec<RailItem> {
         [
@@ -290,7 +290,7 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
     }
     fn rail(selected: usize, hovered: Option<usize>, dimmed: &[usize]) -> AnyElement {
         div()
-            .h(px(240.))
+            .h(dp(240.))
             .child(Rail::new(items(dimmed), selected).hovered(hovered).tools([
                 RailButton::new("file", IconName::FileCog, "Open settings.toml").into_any_element(),
             ]))

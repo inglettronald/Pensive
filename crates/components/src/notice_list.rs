@@ -1,12 +1,12 @@
 //! The notices that are held, errors first, each dismissable, with Clear all at the top.
 
 use gpui::{App, BoxShadow, ElementId, SharedString, Window, div, hsla, prelude::*, px};
-use theme::{ActiveTheme, Typeset};
+use theme::{ActiveTheme, Dp, Typeset, dp};
 
 use crate::{Callback, IconButton, IconName, Tag, Tone, callback};
 
 /// Wider than a toast, since a row has its age and dismiss button too.
-const WIDTH: f32 = 380.;
+const WIDTH: Dp = dp(380.);
 
 #[derive(IntoElement)]
 pub struct NoticeList {
@@ -152,7 +152,7 @@ impl RenderOnce for NoticeList {
                                 .group_hover(group, |dismiss| dismiss.visible())
                                 .child(
                                     IconButton::new("dismiss", IconName::X)
-                                        .size(px(20.))
+                                        .size(dp(20.))
                                         .color(|colors| colors.text_faint)
                                         .when_some(row.on_dismiss, |button, handler| {
                                             button
@@ -166,7 +166,7 @@ impl RenderOnce for NoticeList {
         div()
             .flex()
             .flex_col()
-            .w(px(WIDTH))
+            .w(WIDTH)
             .overflow_hidden()
             .rounded(density.radius_lg)
             .border_1()
@@ -179,7 +179,7 @@ impl RenderOnce for NoticeList {
                 div()
                     .flex()
                     .items_center()
-                    .h(density.row_height + px(8.))
+                    .h(density.row_height + dp(8.))
                     .pl_3()
                     .pr_2()
                     .typeset(density.body)

@@ -2,8 +2,8 @@
 
 use std::rc::Rc;
 
-use gpui::{App, ClickEvent, ElementId, Window, div, prelude::*, px};
-use theme::ActiveTheme;
+use gpui::{App, ClickEvent, ElementId, Window, div, prelude::*};
+use theme::{ActiveTheme, dp};
 
 use crate::Callback;
 
@@ -49,12 +49,12 @@ impl RenderOnce for Toggle {
                 |track| track.justify_end(),
                 |track| track.justify_start(),
             )
-            .w(px(28.))
-            .h(px(16.))
-            .p(px(2.))
+            .w(dp(28.))
+            .h(dp(16.))
+            .p(dp(2.))
             .rounded_full()
             .bg(track)
-            .child(div().size(px(12.)).rounded_full().bg(knob))
+            .child(div().size(dp(12.)).rounded_full().bg(knob))
             .when_some(self.on_change, |track, handler| {
                 track.on_click(move |_: &ClickEvent, window, cx| {
                     cx.stop_propagation();
@@ -66,7 +66,7 @@ impl RenderOnce for Toggle {
 
 #[cfg(feature = "mocks")]
 pub(crate) fn mocks() -> Vec<mock::Mock> {
-    use gpui::size;
+    use gpui::{px, size};
 
     vec![
         mock::Mock::component("toggle", "gallery", || {
@@ -86,7 +86,7 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
 mod tests {
     use std::{cell::Cell, rc::Rc};
 
-    use gpui::{Context, Modifiers, TestAppContext, point};
+    use gpui::{Context, Modifiers, TestAppContext, point, px};
 
     use super::*;
 

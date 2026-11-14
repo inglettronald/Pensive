@@ -1,9 +1,9 @@
 //! A small uppercase label, such as the origin of a notice.
 
 use gpui::{
-    App, FontWeight, IntoElement, ParentElement, RenderOnce, SharedString, Styled, Window, div, px,
+    App, FontWeight, IntoElement, ParentElement, RenderOnce, SharedString, Styled, Window, div,
 };
-use theme::{ActiveTheme, Typeset};
+use theme::{ActiveTheme, Typeset, dp};
 
 #[derive(IntoElement)]
 pub struct Tag {
@@ -37,12 +37,12 @@ impl RenderOnce for Tag {
         };
         div()
             .flex_none()
-            .px(px(5.))
+            .px(dp(5.))
             .rounded(density.radius_sm)
             .bg(fill)
             .text_color(text)
             .typeset(density.label)
-            .text_size(density.label.size - px(1.))
+            .text_size(density.label.size - dp(1.))
             .font_weight(FontWeight::SEMIBOLD)
             .whitespace_nowrap()
             .child(self.label.to_uppercase())
@@ -51,7 +51,7 @@ impl RenderOnce for Tag {
 
 #[cfg(feature = "mocks")]
 pub(crate) fn mocks() -> Vec<mock::Mock> {
-    use gpui::size;
+    use gpui::{px, size};
 
     vec![
         mock::Mock::component("tag", "gallery", || {

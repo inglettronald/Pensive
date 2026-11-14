@@ -1,7 +1,7 @@
 //! The palette's search row: keyword chips, the query, and the tab strip.
 
-use gpui::{AnyElement, Div, SharedString, div, prelude::*, px};
-use theme::{Density, Theme, Typeset};
+use gpui::{AnyElement, Div, SharedString, div, prelude::*};
+use theme::{Density, Theme, Typeset, dp};
 
 use crate::{Icon, IconName, TabStrip};
 
@@ -40,7 +40,7 @@ impl PaletteChip {
             .flex_none()
             .items_center()
             .gap_1()
-            .h(px(24.))
+            .h(dp(24.))
             .px_2()
             .rounded(density.radius_sm)
             .border_1()
@@ -61,7 +61,7 @@ impl PaletteChip {
             .when(self.removable, |chip| {
                 chip.child(
                     Icon::new(IconName::X)
-                        .size(px(12.))
+                        .size(dp(12.))
                         .color(colors.text_faint),
                 )
             })
@@ -88,7 +88,7 @@ impl Field {
             .flex_none()
             .items_center()
             .gap_2()
-            .h(density.row_height * 2. - px(8.))
+            .h(density.row_height * 2. - dp(8.))
             .pl_4()
             .pr_3()
             .border_b_1()

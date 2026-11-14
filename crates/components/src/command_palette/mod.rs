@@ -15,7 +15,7 @@ use std::rc::Rc;
 use gpui::{
     AnyElement, App, BoxShadow, ScrollHandle, SharedString, Window, div, hsla, prelude::*, px,
 };
-use theme::{ActiveTheme, Typeset};
+use theme::{ActiveTheme, Typeset, dp};
 
 use crate::{Callback, Icon, IconButton, IconName, Kbd, TabStrip, callback};
 use field::Field;
@@ -268,7 +268,7 @@ impl RenderOnce for CommandPalette {
                     .child(
                         div().mb_1().child(
                             Icon::new(IconName::SearchX)
-                                .size(px(20.))
+                                .size(dp(20.))
                                 .color(colors.text_faint),
                         ),
                     )
@@ -290,9 +290,9 @@ impl RenderOnce for CommandPalette {
         let mut index = 0;
         for (position, section) in self.sections.into_iter().enumerate() {
             let top = if position == 0 && !has_empty {
-                px(8.)
+                dp(8.)
             } else {
-                px(12.)
+                dp(12.)
             };
             results.push(
                 div()
@@ -327,7 +327,7 @@ impl RenderOnce for CommandPalette {
 
         div()
             .occlude()
-            .w(px(576.))
+            .w(dp(576.))
             .min_h_0()
             .flex()
             .flex_col()
@@ -361,7 +361,7 @@ impl RenderOnce for CommandPalette {
                     .flex_none()
                     .items_center()
                     .gap_4()
-                    .h(density.row_height + px(8.))
+                    .h(density.row_height + dp(8.))
                     .pl_3()
                     .pr_1p5()
                     .border_t_1()

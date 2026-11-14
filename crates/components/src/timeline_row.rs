@@ -2,16 +2,16 @@
 //! content.
 
 use gpui::{
-    AnyElement, App, Bounds, Div, Hsla, Pixels, StyleRefinement, Window, canvas, div, fill,
-    linear_color_stop, linear_gradient, point, prelude::*, px, relative, size,
+    AnyElement, App, Bounds, Div, Hsla, StyleRefinement, Window, canvas, div, fill,
+    linear_color_stop, linear_gradient, point, prelude::*, relative, size,
 };
 use strum::{IntoStaticStr, VariantArray};
-use theme::ActiveTheme;
+use theme::{ActiveTheme, Dp, dp};
 
 /// The width of the line's column. The content starts after it.
-const LINE_COLUMN: Pixels = px(24.);
-const LINE: Pixels = px(2.);
-const DASH: Pixels = px(3.);
+const LINE_COLUMN: Dp = dp(24.);
+const LINE: Dp = dp(2.);
+const DASH: Dp = dp(3.);
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, VariantArray, IntoStaticStr)]
 pub enum TimelineLine {
@@ -45,7 +45,7 @@ pub struct TimelineRow {
     above: TimelineLine,
     below: TimelineLine,
     node: TimelineNode,
-    node_y: Option<Pixels>,
+    node_y: Option<Dp>,
     children: Vec<AnyElement>,
 }
 
@@ -88,7 +88,7 @@ impl TimelineRow {
     }
 
     /// Where the node sits, from the top. Centered unless set, which suits a row that can grow.
-    pub fn node_y(mut self, y: Pixels) -> Self {
+    pub fn node_y(mut self, y: Dp) -> Self {
         self.node_y = Some(y);
         self
     }
@@ -111,7 +111,7 @@ impl RenderOnce for TimelineRow {
         let colors = &cx.theme().colors;
         let line_color = colors.border;
         let segment = |line: TimelineLine| {
-            let base = div().absolute().left(px(11.)).w(LINE);
+            let base = div().absolute().left(dp(11.)).w(LINE);
             match line {
                 TimelineLine::None => None,
                 TimelineLine::Solid => Some(base.bg(line_color)),
@@ -131,12 +131,12 @@ impl RenderOnce for TimelineRow {
             Some(y) => line.top(y).bottom_0(),
             None => line.top(relative(0.5)).bottom_0(),
         });
-        let dot = |size: Pixels, color: Hsla| div().size(size).rounded_full().bg(color);
+        let dot = |size: Dp, color: Hsla| div().size(size).rounded_full().bg(color);
         let node = match self.node {
             TimelineNode::None => None,
             TimelineNode::Commit { pushed } => Some(
                 dot(
-                    px(10.),
+                    dp(10.),
                     if pushed {
                         colors.text_faint
                     } else {
@@ -150,17 +150,17 @@ impl RenderOnce for TimelineRow {
                     .flex()
                     .items_center()
                     .justify_center()
-                    .size(px(18.))
+                    .size(dp(18.))
                     .rounded_full()
                     .border_1()
                     .border_color(colors.text_muted)
                     .bg(colors.surface_panel)
-                    .child(dot(px(12.), colors.text_strong))
+                    .child(dot(dp(12.), colors.text_strong))
                     .into_any_element(),
             ),
             TimelineNode::Tick => Some(
                 div()
-                    .w(px(16.))
+                    .w(dp(16.))
                     .h(LINE)
                     .bg(colors.text_muted)
                     .into_any_element(),
@@ -204,14 +204,15 @@ fn dashes(color: Hsla) -> impl IntoElement {
     canvas(
         |_, _, _| {},
         move |bounds, (), window, _| {
+            let dash = DASH.to_pixels(window.rem_size());
             let mut y = bounds.top();
             while y < bounds.bottom() {
-                let height = DASH.min(bounds.bottom() - y);
+                let height = dash.min(bounds.bottom() - y);
                 window.paint_quad(fill(
                     Bounds::new(point(bounds.left(), y), size(bounds.size.width, height)),
                     color,
                 ));
-                y += DASH * 2.;
+                y += dash * 2.;
             }
         },
     )
@@ -220,6 +221,8 @@ fn dashes(color: Hsla) -> impl IntoElement {
 
 #[cfg(feature = "mocks")]
 pub(crate) fn mocks() -> Vec<mock::Mock> {
+    use gpui::px;
+
     use crate::{RingFill, StatusRing, gallery::Panel};
 
     #[derive(Clone, Copy, VariantArray, IntoStaticStr)]
@@ -249,13 +252,13 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
                             Shown::Ring => TimelineNode::Mark(
                                 StatusRing::new("ring", RingFill::Half)
                                     .color(|colors| colors.diff_modified)
-                                    .size(px(14.))
+                                    .size(dp(14.))
                                     .into_any_element(),
                             ),
                         };
                         Panel::new(
-                            LINE_COLUMN + px(8.),
-                            [TimelineRow::new().h(px(40.)).line(line).node(node)],
+                            LINE_COLUMN + dp(8.),
+                            [TimelineRow::new().h(dp(40.)).line(line).node(node)],
                         )
                         .into_any_element()
                     },

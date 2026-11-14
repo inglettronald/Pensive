@@ -339,9 +339,9 @@ impl Editor {
     }
 
     /// Text rows that fit in the viewport, for Page Up and Page Down.
-    fn page(&self, cx: &App) -> isize {
+    fn page(&self, window: &Window, cx: &App) -> isize {
         let height = self.list.viewport_bounds().size.height;
-        let line_height = cx.density().code.line_height;
+        let line_height = cx.density().code.line_height.to_pixels(window.rem_size());
         ((height / line_height) as isize - 1).max(1)
     }
 
@@ -425,12 +425,12 @@ impl Editor {
         self.motion(false, |text, _| text.len_bytes(), cx);
     }
 
-    fn page_up(&mut self, _: &PageUp, _: &mut Window, cx: &mut Context<Self>) {
-        self.move_vertically(-self.page(cx), false, cx);
+    fn page_up(&mut self, _: &PageUp, window: &mut Window, cx: &mut Context<Self>) {
+        self.move_vertically(-self.page(window, cx), false, cx);
     }
 
-    fn page_down(&mut self, _: &PageDown, _: &mut Window, cx: &mut Context<Self>) {
-        self.move_vertically(self.page(cx), false, cx);
+    fn page_down(&mut self, _: &PageDown, window: &mut Window, cx: &mut Context<Self>) {
+        self.move_vertically(self.page(window, cx), false, cx);
     }
 
     fn select_all(&mut self, _: &SelectAll, _: &mut Window, cx: &mut Context<Self>) {
@@ -657,8 +657,9 @@ impl Editor {
     }
 
     /// Scrolls the text sideways. The list scrolls it up and down.
-    fn on_scroll(&mut self, event: &ScrollEvent, _: &mut Window, cx: &mut Context<Self>) {
-        let delta = event.delta.pixel_delta(cx.density().code.line_height);
+    fn on_scroll(&mut self, event: &ScrollEvent, window: &mut Window, cx: &mut Context<Self>) {
+        let line_height = cx.density().code.line_height.to_pixels(window.rem_size());
+        let delta = event.delta.pixel_delta(line_height);
         let sideways = if event.modifiers.shift && delta.x == px(0.) {
             delta.y
         } else {

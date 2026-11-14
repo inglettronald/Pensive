@@ -5,7 +5,7 @@ use gpui::{
     size,
 };
 use mock::Mock;
-use theme::{ActiveTheme, DensityPreset, TextRole, ThemeOverride, Typeset, VariantArray, gray};
+use theme::{ActiveTheme, DensityPreset, TextRole, ThemeOverride, Typeset, VariantArray, dp, gray};
 
 use crate::Gallery;
 
@@ -91,9 +91,9 @@ impl RenderOnce for ThemeGallery {
 
 fn swatch(color: Hsla, border: Hsla, width: f32) -> AnyElement {
     div()
-        .w(px(width))
-        .h(px(40.))
-        .rounded(px(6.))
+        .w(dp(width))
+        .h(dp(40.))
+        .rounded(dp(6.))
         .border_1()
         .border_color(border)
         .bg(color)

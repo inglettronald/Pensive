@@ -5,10 +5,10 @@ use std::ops::Range;
 use components::{Button, DiffRow, IconName, LineKind};
 use gpui::{
     AnyElement, App, Context, CursorStyle, ElementId, ElementInputHandler, HighlightStyle,
-    MouseButton, StyledText, WeakEntity, Window, canvas, div, list, prelude::*, px,
+    MouseButton, StyledText, WeakEntity, Window, canvas, div, list, prelude::*,
 };
 use model::changed_words;
-use theme::{ActiveTheme, Typeset};
+use theme::{ActiveTheme, Typeset, dp};
 
 use super::{
     Editor,
@@ -132,7 +132,7 @@ impl Editor {
             .w_full()
             .items_center()
             .gap_1()
-            .h(density.row_height + px(4.))
+            .h(density.row_height + dp(4.))
             .my_0p5()
             .px_2()
             .border_y_1()

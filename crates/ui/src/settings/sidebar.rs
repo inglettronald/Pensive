@@ -3,9 +3,9 @@
 use components::{Icon, IconName, Kbd, NavItem, NavList, Rail, RailButton, RailItem};
 use gpui::{
     Animation, AnimationExt, AnyElement, Context, Focusable, Window, deferred, div, ease_out_quint,
-    prelude::*, px,
+    prelude::*,
 };
-use theme::{ActiveTheme, Typeset};
+use theme::{ActiveTheme, Typeset, dp};
 
 use super::{LIST_IN, LIST_OUT, SettingsView, Spot, Tool, outline::Category, search::Hits};
 use crate::{notices, view_callback, view_callback_with};
@@ -113,7 +113,7 @@ impl SettingsView {
             .typeset(density.body)
             .child(
                 Icon::new(IconName::Search)
-                    .size(px(14.))
+                    .size(dp(14.))
                     .color(colors.text_faint),
             )
             .child(div().flex_1().min_w_0().child(self.search.clone()))
