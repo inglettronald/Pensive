@@ -1,5 +1,6 @@
 //! Stateless building blocks that render from props and the theme.
 
+mod activity;
 mod breadcrumb;
 mod button;
 mod card;
@@ -13,10 +14,12 @@ mod icon;
 mod icon_button;
 mod kbd;
 mod list_row;
+mod menu;
 mod nav_list;
 mod next_card;
 mod notice_list;
 mod rail;
+mod run_button;
 mod scroll_to_change;
 mod segmented_control;
 mod select;
@@ -40,6 +43,7 @@ use std::{rc::Rc, sync::Arc};
 
 use gpui::{App, ElementId, SharedString, StatefulInteractiveElement, Window};
 
+pub use activity::Activity;
 pub use breadcrumb::Breadcrumb;
 pub use button::{Button, ButtonStyle};
 pub use card::Card;
@@ -59,6 +63,7 @@ pub use nav_list::{NavItem, NavList};
 pub use next_card::NextCard;
 pub use notice_list::{NoticeList, NoticeRow};
 pub use rail::{Rail, RailButton, RailItem};
+pub use run_button::{RunAction, RunButton, RunChoice, RunState};
 pub use scroll_to_change::ScrollToChange;
 pub use segmented_control::SegmentedControl;
 pub use select::Select;
@@ -121,6 +126,8 @@ pub fn mocks() -> Vec<mock::Mock> {
         select::mocks(),
         segmented_control::mocks(),
         stepper::mocks(),
+        activity::mocks(),
+        run_button::mocks(),
         scroll_to_change::mocks(),
         tab_strip::mocks(),
         button::mocks(),

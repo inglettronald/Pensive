@@ -39,6 +39,9 @@ pub use root::{Pensive, open_window};
 /// uses one width, so switching between them reads as a change of view rather than a new place.
 const PANEL: Dp = dp(280.);
 
+/// How long a notice stays on the control it's about.
+const NOTICE_FOR: Duration = Duration::from_secs(3);
+
 /// Binds every view's keys and declares the views' settings.
 pub fn init(cx: &mut App) {
     declare_settings(cx);

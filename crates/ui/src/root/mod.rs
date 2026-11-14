@@ -5,27 +5,27 @@
 #[cfg(feature = "mocks")]
 mod mocks;
 
-use components::{TitleBar, TitleBarProject};
+use components::{RunAction, RunButton, RunChoice, TitleBar, TitleBarProject};
 use gpui::{
     App, Bounds, Context, DisplayId, Entity, FocusHandle, Focusable, MouseButton, Pixels, Size,
-    Subscription, TitlebarOptions, Window, WindowBounds, WindowDecorations, WindowOptions, actions,
-    div, prelude::*, px, size, svg,
+    Subscription, Task, TitlebarOptions, Window, WindowBounds, WindowDecorations, WindowOptions,
+    actions, div, prelude::*, px, size, svg,
 };
 #[cfg(feature = "mocks")]
 pub(crate) use mocks::mocks;
-use model::{ProjectId, Projects};
+use model::{Notice, ProjectId, Projects};
 use theme::{ActiveTheme, Typeset, dp};
 
 #[cfg(feature = "mocks")]
 use crate::mock_browser::{MockBrowser, MockBrowserEvent, MockMode, ViewMocks};
 use crate::{
-    key_binding,
-    notices::NoticeOverlay,
+    NOTICE_FOR, clear_after, key_binding,
+    notices::{self, NoticeOverlay},
     palette::{Keyword, OPEN_ON, PaletteEvent, PaletteView, Tab, scrim},
     project::ProjectView,
     rail_gear::GearClicked,
     settings::{SettingsEvent, SettingsView},
-    view_callback,
+    view_callback, view_callback_with,
     window_frame::{draws_window_controls, window_frame},
 };
 
@@ -69,6 +69,10 @@ pub struct Pensive {
     /// Shown in place of the project or the landing screen while open.
     settings: Option<(Entity<SettingsView>, [Subscription; 2])>,
     notices: Entity<NoticeOverlay>,
+    /// The run configuration the Run button starts, by its place in the project's list.
+    run_choice: usize,
+    /// What the Run button had to say when last clicked, until the task clears it.
+    run_notice: Option<(Notice, Task<()>)>,
     /// Set while the window shows the mock browser, or a mock opened from it.
     #[cfg(feature = "mocks")]
     mocks: Option<MockMode>,
@@ -96,6 +100,8 @@ impl Pensive {
             palette_open: false,
             settings: None,
             notices,
+            run_choice: 0,
+            run_notice: None,
             #[cfg(feature = "mocks")]
             mocks: None,
             focus_handle: cx.focus_handle(),
@@ -205,6 +211,10 @@ impl Pensive {
             let view = cx.new(|cx| ProjectView::new(projects, project, window, cx));
             self.project_gear = Some(cx.subscribe_in(&view, window, Self::use_gear));
             self.project = Some((project, view));
+            self.run_choice = 0;
+            self.projects
+                .update(cx, |projects, cx| projects.read_run_configs(project, cx))
+                .detach();
         }
         if let Some((_, view)) = &self.project {
             window.focus(&view.focus_handle(cx), cx);
@@ -361,24 +371,62 @@ impl Pensive {
                 this.notices.update(cx, NoticeOverlay::toggle_list)
             }))
             .settings_open(settings_open);
+        let Some(project) = self.project_id().filter(|_| has_project) else {
+            return title_bar;
+        };
+        let title_bar = title_bar.run(self.run_button(project, cx));
         if settings_open {
             let back = view_callback(cx, |this: &mut Self, window, cx| {
                 this.close_settings(window, cx)
             });
-            return if has_project {
-                title_bar.on_project(back).on_palette(open(None))
-            } else {
-                title_bar
-            };
+            return title_bar.on_project(back);
         }
-        if has_project {
-            title_bar
-                .on_project(open(Some(Keyword::Project(None))))
-                .on_branch(open(Some(Keyword::Branch)))
-                .on_palette(open(None))
-        } else {
-            title_bar
-        }
+        title_bar
+            .on_project(open(Some(Keyword::Project(None))))
+            .on_branch(open(Some(Keyword::Branch)))
+    }
+
+    /// The Run button for `project`'s saved configurations. Nothing runs them yet, so running
+    /// answers with a notice.
+    fn run_button(&self, project: ProjectId, cx: &Context<Self>) -> RunButton {
+        let choices: Vec<RunChoice> = self
+            .projects
+            .read(cx)
+            .run_configs(project)
+            .iter()
+            .map(|config| RunChoice {
+                name: config.name.clone().into(),
+                command: config.command.clone().into(),
+            })
+            .collect();
+        let selected = (self.run_choice < choices.len()).then_some(self.run_choice);
+        RunButton::new(choices, selected)
+            .notice(
+                self.run_notice
+                    .as_ref()
+                    .map(|(notice, _)| notices::tooltip(notice).into_any_element()),
+            )
+            .on_action(view_callback_with(
+                cx,
+                |this: &mut Self, action: RunAction, _, cx| {
+                    let notice = match action {
+                        RunAction::Choose(index) => {
+                            this.run_choice = index;
+                            cx.notify();
+                            return;
+                        }
+                        RunAction::EditConfigs => Notice::not_wired("Editing run configurations"),
+                        RunAction::OpenLog => Notice::not_wired("The run log"),
+                        RunAction::Run | RunAction::Stop | RunAction::Restart => {
+                            Notice::not_wired("Run")
+                        }
+                    };
+                    let clear =
+                        clear_after(NOTICE_FOR, |this: &mut Self| this.run_notice = None, cx);
+                    this.run_notice = Some((notice, clear));
+                    cx.notify();
+                },
+            ))
     }
 
     fn landing(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -719,6 +767,20 @@ mod tests {
             settings.focus_handle(cx).contains_focused(window, cx)
         });
         assert!(settings_focused);
+    }
+
+    #[gpui::test]
+    fn run_answers_with_a_notice_until_something_runs_it(cx: &mut TestAppContext) {
+        let (view, cx) = pensive_window(cx);
+        let run = cx.debug_bounds("run").unwrap();
+        click(cx, run.center());
+        let notice = view.read_with(cx, |pensive, _| {
+            pensive
+                .run_notice
+                .as_ref()
+                .map(|(notice, _)| notice.title.clone())
+        });
+        assert_eq!(notice.as_deref(), Some("Run isn't wired up yet"));
     }
 
     #[gpui::test]

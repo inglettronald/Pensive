@@ -3,14 +3,13 @@
 
 use std::rc::Rc;
 
-use gpui::{App, ElementId, SharedString, Window, anchored, deferred, div, prelude::*};
-use theme::{ActiveTheme, Dp, Shadow, Typeset, dp};
+use gpui::{App, ElementId, SharedString, Window, div, prelude::*};
+use theme::{ActiveTheme, Typeset, dp};
 
-use crate::{Callback, Icon, IconName, child_id};
-
-/// Wide enough that the dropdowns in a card line up on their right edge.
-const MIN_WIDTH: Dp = dp(160.);
-const CHECK: Dp = dp(14.);
+use crate::{
+    Callback, Icon, IconName, child_id,
+    menu::{Leading, MIN_WIDTH, menu, menu_row},
+};
 
 #[derive(IntoElement)]
 pub struct Select {
@@ -65,38 +64,16 @@ impl RenderOnce for Select {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let opened = window.use_keyed_state(child_id(&self.id, "open"), cx, |_, _| false);
         let open = self.open.unwrap_or(*opened.read(cx)) && !self.options.is_empty();
-        let colors = &cx.theme().colors;
-        let density = cx.density();
         let menu = open.then(|| {
             let rows = self.options.into_iter().enumerate().map(|(index, option)| {
-                let current = self.selected == Some(index);
                 let opened = opened.clone();
                 let on_choose = self.on_choose.clone();
-                div()
-                    .id(index)
-                    .flex()
-                    .items_center()
-                    .gap_2()
-                    .h(density.row_height)
-                    .px_2()
-                    .rounded(density.radius_sm)
-                    .whitespace_nowrap()
-                    .text_color(if current {
-                        colors.text_strong
-                    } else {
-                        colors.text
-                    })
-                    .when(self.hovered == Some(index), |row| {
-                        row.bg(colors.surface_selected)
-                    })
-                    .hover(|row| row.bg(colors.surface_selected))
-                    .child(match current {
-                        true => Icon::new(IconName::Check)
-                            .size(CHECK)
-                            .color(colors.text_strong)
-                            .into_any_element(),
-                        false => div().flex_none().size(CHECK).into_any_element(),
-                    })
+                let leading = if self.selected == Some(index) {
+                    Leading::Check
+                } else {
+                    Leading::Blank
+                };
+                menu_row(index, leading, self.hovered == Some(index), cx)
                     .child(option)
                     .on_click(move |_, window, cx| {
                         cx.stop_propagation();
@@ -105,29 +82,13 @@ impl RenderOnce for Select {
                             handler(index, window, cx)
                         }
                     })
+                    .into_any_element()
             });
             let close = opened.clone();
-            div().absolute().top_full().left_0().mt_1().child(
-                deferred(
-                    anchored().snap_to_window().child(
-                        div()
-                            .id("menu")
-                            .occlude()
-                            .min_w(MIN_WIDTH)
-                            .p_1()
-                            .rounded(density.radius_lg)
-                            .border_1()
-                            .border_color(colors.border)
-                            .bg(colors.surface_raised)
-                            .shadow(Shadow::Medium.layers())
-                            .typeset(density.body)
-                            .children(rows)
-                            .on_mouse_down_out(move |_, _, cx| close.write(cx, false)),
-                    ),
-                )
-                .priority(1),
-            )
+            menu(rows, move |cx| close.write(cx, false), cx)
         });
+        let colors = &cx.theme().colors;
+        let density = cx.density();
         div()
             .id(self.id)
             .relative()

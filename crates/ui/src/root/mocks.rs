@@ -57,6 +57,14 @@ pub(crate) fn mocks() -> Vec<Mock> {
         Mock::new("root", "project", |w, cx| {
             window(Some(PENSIVE), None, untouched, w, cx)
         }),
+        Mock::new("root", "run_not_wired", |w, cx| {
+            let view = mock_window::pensive(Some(PENSIVE), w, cx);
+            view.update(cx, |pensive, cx| {
+                let clear = cx.spawn(async |_, _| {});
+                pensive.run_notice = Some((model::Notice::not_wired("Run"), clear));
+            });
+            view.into()
+        }),
         Mock::new("root", "palette", |w, cx| {
             window(Some(PENSIVE), Some(Tab::All), untouched, w, cx)
         }),

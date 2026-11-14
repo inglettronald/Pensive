@@ -25,7 +25,7 @@ use settings::Settings;
 use theme::{ActiveTheme, Density, Dp, dp};
 
 use crate::{
-    PANEL, clear_after, key_binding,
+    NOTICE_FOR, PANEL, clear_after, key_binding,
     rail_gear::GearClicked,
     smooth_scroll::SmoothScroll,
     text_input::{Changed, TextInput},
@@ -52,9 +52,6 @@ const CATEGORY_IN: Duration = Duration::from_millis(150);
 const RISE: Dp = dp(16.);
 /// How long the next card takes to dock under the last page, or to leave.
 const DOCK: Duration = Duration::from_millis(150);
-/// How long a tool's notice stays on it.
-const NOTICE_FOR: Duration = Duration::from_secs(3);
-
 pub(crate) fn bind_keys(cx: &mut App) {
     cx.bind_keys([
         key_binding("escape", Dismiss, Some(CONTEXT), cx),
