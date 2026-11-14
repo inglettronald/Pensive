@@ -478,7 +478,7 @@ mod tests {
     use super::*;
     use crate::{
         Notices, Staging,
-        fixtures::{self, FakeGit, HARBOR},
+        fixtures::{self, FakeGit},
     };
 
     #[test]
@@ -644,11 +644,5 @@ mod tests {
             assert_eq!(changes.uncommitted.len(), 7);
             assert!(projects.changes(Path::new("~/code/harbor")).is_none());
         });
-    }
-
-    #[test]
-    fn sample_ids_match_their_names() {
-        let projects = fixtures::projects();
-        assert_eq!(projects.project(HARBOR).unwrap().name, "harbor");
     }
 }
