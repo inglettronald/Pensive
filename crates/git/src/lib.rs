@@ -2,6 +2,7 @@
 
 mod changes;
 mod command;
+mod find;
 mod parse;
 mod staging;
 
@@ -15,14 +16,18 @@ use std::{
 use anyhow::{Context as _, Result};
 use model::{Branch, Changes, FileKey, FileVersions, GitBackend, Repository, Version, Worktree};
 
-use crate::{command::git, parse::ListedWorktree};
+pub use crate::find::Git;
+use crate::{find::Finder, parse::ListedWorktree};
 
+/// Runs the `git` command line, with the Git it finds on first use.
 #[derive(Debug)]
-pub struct GitCli;
+pub struct GitCli {
+    finder: Finder,
+}
 
 impl GitBackend for GitCli {
     fn repository(&self, path: &Path) -> Result<Repository> {
-        let listed = parse::worktrees(&git(path, parse::WORKTREES)?);
+        let listed = parse::worktrees(&self.git(path, parse::WORKTREES)?);
         let root = listed
             .first()
             .map(|worktree| worktree.path.clone())
@@ -33,14 +38,14 @@ impl GitBackend for GitCli {
             .filter(|worktree| worktree.checked_out && worktree.path.is_dir())
             .collect();
         Ok(Repository {
-            worktrees: worktrees(&root, listed)?,
-            branches: branches(&root)?,
+            worktrees: worktrees(self, &root, listed)?,
+            branches: branches(self, &root)?,
             root,
         })
     }
 
     fn changes(&self, worktree: &Path) -> Result<Changes> {
-        changes::changes(worktree)
+        changes::changes(self, worktree)
     }
 
     fn versions(
@@ -49,7 +54,7 @@ impl GitBackend for GitCli {
         key: &FileKey,
         renamed_from: Option<&Path>,
     ) -> Result<FileVersions> {
-        changes::versions(worktree, key, renamed_from)
+        changes::versions(self, worktree, key, renamed_from)
     }
 
     fn read_file(&self, worktree: &Path, path: &Path) -> Result<Version> {
@@ -61,11 +66,11 @@ impl GitBackend for GitCli {
     }
 
     fn set_staged(&self, worktree: &Path, paths: &[PathBuf], staged: bool) -> Result<()> {
-        staging::set_staged(worktree, paths, staged)
+        staging::set_staged(self, worktree, paths, staged)
     }
 }
 
-fn worktrees(root: &Path, listed: Vec<ListedWorktree>) -> Result<Vec<Worktree>> {
+fn worktrees(cli: &GitCli, root: &Path, listed: Vec<ListedWorktree>) -> Result<Vec<Worktree>> {
     let heads: Vec<&str> = listed
         .iter()
         .filter_map(|worktree| worktree.head.as_deref())
@@ -74,7 +79,7 @@ fn worktrees(root: &Path, listed: Vec<ListedWorktree>) -> Result<Vec<Worktree>> 
         HashMap::new()
     } else {
         let args = [parse::COMMIT_TIMES, &heads].concat();
-        parse::named_times(&git(root, &args)?).collect()
+        parse::named_times(&cli.git(root, &args)?).collect()
     };
     Ok(listed
         .into_iter()
@@ -83,7 +88,7 @@ fn worktrees(root: &Path, listed: Vec<ListedWorktree>) -> Result<Vec<Worktree>> 
                 .head
                 .and_then(|head| commit_times.get(&head).copied());
             // A worktree whose status Git can't read still shows, dated by its commit.
-            let changed = newest_change(&worktree.path).unwrap_or_default();
+            let changed = newest_change(cli, &worktree.path).unwrap_or_default();
             Worktree {
                 path: worktree.path,
                 branch: worktree.branch.map(Into::into),
@@ -93,8 +98,8 @@ fn worktrees(root: &Path, listed: Vec<ListedWorktree>) -> Result<Vec<Worktree>> 
         .collect())
 }
 
-fn branches(root: &Path) -> Result<Vec<Branch>> {
-    Ok(parse::named_times(&git(root, parse::BRANCHES)?)
+fn branches(cli: &GitCli, root: &Path) -> Result<Vec<Branch>> {
+    Ok(parse::named_times(&cli.git(root, parse::BRANCHES)?)
         .map(|(name, last_commit)| Branch {
             name: name.into(),
             last_commit,
@@ -103,8 +108,8 @@ fn branches(root: &Path) -> Result<Vec<Branch>> {
 }
 
 /// When the newest uncommitted change in the worktree at `path` was saved, if it has any.
-fn newest_change(path: &Path) -> Result<Option<SystemTime>> {
-    let status = git(path, parse::STATUS)?;
+fn newest_change(cli: &GitCli, path: &Path) -> Result<Option<SystemTime>> {
+    let status = cli.git(path, parse::STATUS)?;
     Ok(parse::status_paths(&status)
         .iter()
         // A deleted file has no time to report.
@@ -150,7 +155,7 @@ mod tests {
 
         /// Git in the main worktree, set up as Pensive runs it but ignoring this machine's config.
         fn command(&self) -> Command {
-            let mut command = command::command(&self.path());
+            let mut command = GitCli::from_env().command(&self.path()).unwrap();
             command
                 .env("GIT_CONFIG_GLOBAL", self.dir.path().join("gitconfig"))
                 .env("GIT_CONFIG_NOSYSTEM", "1")
@@ -179,7 +184,7 @@ mod tests {
         }
 
         fn read(&self) -> Repository {
-            GitCli.repository(&self.path()).unwrap()
+            GitCli::from_env().repository(&self.path()).unwrap()
         }
 
         fn write(&self, name: &str, text: &str) {
@@ -199,11 +204,13 @@ mod tests {
         }
 
         fn changes(&self) -> Changes {
-            GitCli.changes(&self.path()).unwrap()
+            GitCli::from_env().changes(&self.path()).unwrap()
         }
 
         fn versions(&self, key: &FileKey, renamed_from: Option<&Path>) -> FileVersions {
-            GitCli.versions(&self.path(), key, renamed_from).unwrap()
+            GitCli::from_env()
+                .versions(&self.path(), key, renamed_from)
+                .unwrap()
         }
     }
 
@@ -250,7 +257,9 @@ mod tests {
         let repo = Repo::new();
         repo.commit(1_000_000_000);
         repo.run(&["worktree", "add", "-q", "-b", "feat", "../linked"]);
-        let from_linked = GitCli.repository(&repo.dir.path().join("linked")).unwrap();
+        let from_linked = GitCli::from_env()
+            .repository(&repo.dir.path().join("linked"))
+            .unwrap();
         assert_eq!(from_linked.root, repo.read().root);
         let branches: Vec<_> = from_linked
             .worktrees
@@ -491,27 +500,37 @@ mod tests {
         repo.write("a.rs", "a\n");
         repo.commit_all("first");
         // A blob's id names an object that exists, but ls-tree can't list it.
-        let blob = String::from_utf8(git(&repo.path(), &["rev-parse", "HEAD:a.rs"]).unwrap());
+        let blob = String::from_utf8(
+            GitCli::from_env()
+                .git(&repo.path(), &["rev-parse", "HEAD:a.rs"])
+                .unwrap(),
+        );
         let key = FileKey {
             source: Source::Commit(blob.unwrap().trim().to_owned().into()),
             path: "a.rs".into(),
         };
-        assert!(GitCli.versions(&repo.path(), &key, None).is_err());
+        assert!(
+            GitCli::from_env()
+                .versions(&repo.path(), &key, None)
+                .is_err()
+        );
     }
 
     #[test]
     fn writing_a_file_replaces_its_text_and_reads_back() {
         let repo = Repo::new();
         repo.write("a.rs", "old\n");
-        GitCli
+        GitCli::from_env()
             .write_file(&repo.path(), Path::new("a.rs"), "new\n")
             .unwrap();
         assert_eq!(
-            GitCli.read_file(&repo.path(), Path::new("a.rs")).unwrap(),
+            GitCli::from_env()
+                .read_file(&repo.path(), Path::new("a.rs"))
+                .unwrap(),
             Version::Text("new\n".into())
         );
         assert_eq!(
-            GitCli
+            GitCli::from_env()
                 .read_file(&repo.path(), Path::new("gone.rs"))
                 .unwrap(),
             Version::Missing
@@ -528,7 +547,7 @@ mod tests {
         let script = repo.path().join("run.sh");
         fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
         symlink("run.sh", repo.path().join("link.sh")).unwrap();
-        GitCli
+        GitCli::from_env()
             .write_file(&repo.path(), Path::new("link.sh"), "echo new\n")
             .unwrap();
         assert!(
@@ -561,16 +580,22 @@ mod tests {
                 .collect()
         };
 
-        GitCli.set_staged(&repo.path(), &paths, true).unwrap();
+        GitCli::from_env()
+            .set_staged(&repo.path(), &paths, true)
+            .unwrap();
         assert_eq!(staging(&repo), [Staging::Staged; 3]);
 
-        GitCli.set_staged(&repo.path(), &paths[..1], false).unwrap();
+        GitCli::from_env()
+            .set_staged(&repo.path(), &paths[..1], false)
+            .unwrap();
         assert_eq!(
             staging(&repo),
             [Staging::Unstaged, Staging::Staged, Staging::Staged]
         );
 
-        GitCli.set_staged(&repo.path(), &paths, false).unwrap();
+        GitCli::from_env()
+            .set_staged(&repo.path(), &paths, false)
+            .unwrap();
         assert_eq!(staging(&repo), [Staging::Unstaged; 3]);
         let new = repo.changes();
         let new = new.file(Path::new("new [a].rs")).unwrap();
@@ -589,13 +614,15 @@ mod tests {
         assert_eq!(renamed.renamed_from.as_deref(), Some(Path::new("old.rs")));
         assert_eq!(renamed.staging(), Staging::Partly);
 
-        GitCli
+        GitCli::from_env()
             .set_staged(&repo.path(), &[PathBuf::from("new.rs")], true)
             .unwrap();
         assert_eq!(repo.changes().uncommitted[0].staging(), Staging::Staged);
 
         let paths = ["new.rs", "old.rs"].map(PathBuf::from);
-        GitCli.set_staged(&repo.path(), &paths, false).unwrap();
+        GitCli::from_env()
+            .set_staged(&repo.path(), &paths, false)
+            .unwrap();
         let changes = repo.changes();
         assert!(
             changes
@@ -610,9 +637,13 @@ mod tests {
         let repo = Repo::new();
         repo.write("a.rs", "a\n");
         let paths = [PathBuf::from("a.rs")];
-        GitCli.set_staged(&repo.path(), &paths, true).unwrap();
+        GitCli::from_env()
+            .set_staged(&repo.path(), &paths, true)
+            .unwrap();
         assert_eq!(repo.changes().uncommitted[0].staging(), Staging::Staged);
-        GitCli.set_staged(&repo.path(), &paths, false).unwrap();
+        GitCli::from_env()
+            .set_staged(&repo.path(), &paths, false)
+            .unwrap();
         assert_eq!(repo.changes().uncommitted[0].staging(), Staging::Unstaged);
     }
 
@@ -620,7 +651,7 @@ mod tests {
     fn staging_a_path_git_doesnt_know_fails_with_gits_reason() {
         let repo = Repo::new();
         repo.write("a.rs", "a\n");
-        let error = GitCli
+        let error = GitCli::from_env()
             .set_staged(&repo.path(), &[PathBuf::from("missing.rs")], true)
             .unwrap_err();
         assert!(error.to_string().contains("missing.rs"), "{error}");
@@ -645,12 +676,12 @@ mod tests {
         repo.write("new.rs", "new\n");
         repo.run(&["mv", "renamed.rs", "moved.rs"]);
         repo.write("moved.rs", "four\nfive\nsix\nseven\n");
-        model::fixtures::contract::git(&GitCli, &repo.path());
+        model::fixtures::contract::git(&GitCli::from_env(), &repo.path());
     }
 
     #[test]
     fn a_folder_outside_any_repository_fails() {
         let dir = tempfile::tempdir().unwrap();
-        assert!(GitCli.repository(dir.path()).is_err());
+        assert!(GitCli::from_env().repository(dir.path()).is_err());
     }
 }

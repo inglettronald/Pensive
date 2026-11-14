@@ -1,13 +1,17 @@
-//! How Pensive starts `git`: in a clean environment, with no prompts and no console window.
+//! How Pensive starts `git`: the one it found, in a clean environment, with no prompts and no
+//! console window.
 
 use std::{
     ffi::OsStr,
-    io::Write as _,
+    io::{self, Write as _},
     path::Path,
-    process::{Command, Stdio},
+    process::{Child, Command, Stdio},
 };
 
 use anyhow::{Context as _, Result, bail};
+use model::GitProblem;
+
+use crate::GitCli;
 
 /// The variables that point Git at one repository, as `git rev-parse --local-env-vars` lists
 /// them. Inherited from a Git hook or a shell, they would override `-C`.
@@ -29,12 +33,10 @@ const LOCAL_ENV_VARS: &[&str] = &[
     "GIT_COMMON_DIR",
 ];
 
-/// `git -C dir`, ready for arguments.
-pub(crate) fn command(dir: &Path) -> Command {
-    let mut command = Command::new("git");
+/// The Git at `git`, set up as every command runs it.
+pub(crate) fn clean(git: &Path) -> Command {
+    let mut command = Command::new(git);
     command
-        .arg("-C")
-        .arg(dir)
         // Git must never wait for a password on a terminal nobody can see.
         .env("GIT_TERMINAL_PROMPT", "0")
         // Skipping optional locks keeps reads from failing the user's own Git commands.
@@ -53,29 +55,57 @@ pub(crate) fn command(dir: &Path) -> Command {
     command
 }
 
-/// Runs `git -C dir args` and returns what it printed, or fails with its error output.
-pub(crate) fn git(dir: &Path, args: &[impl AsRef<OsStr>]) -> Result<Vec<u8>> {
-    git_with_input(dir, args, None)
+impl GitCli {
+    /// `git -C dir`, ready for arguments, or why there's no Git to run.
+    pub(crate) fn command(&self, dir: &Path) -> Result<Command, GitProblem> {
+        let mut command = clean(&self.finder.git()?.path);
+        command.arg("-C").arg(dir);
+        Ok(command)
+    }
+
+    /// Runs `git -C dir args` and returns what it printed, or fails with its error output.
+    pub(crate) fn git(&self, dir: &Path, args: &[impl AsRef<OsStr>]) -> Result<Vec<u8>> {
+        self.git_with_input(dir, args, None)
+    }
+
+    /// [`Self::git`], writing `input` to its standard input when there is some. Git's output is
+    /// read after the input is written, so it suits commands that read their input before printing
+    /// much.
+    pub(crate) fn git_with_input(
+        &self,
+        dir: &Path,
+        args: &[impl AsRef<OsStr>],
+        input: Option<&[u8]>,
+    ) -> Result<Vec<u8>> {
+        let mut command = self.command(dir)?;
+        command
+            .args(args)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        if input.is_some() {
+            command.stdin(Stdio::piped());
+        }
+        let child = match command.spawn() {
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                // Git was uninstalled since it was found. This call says why, unless another Git
+                // turned up, which the next call runs.
+                self.finder.forget();
+                self.finder.git()?;
+                return Err(error).context("couldn't start Git");
+            }
+            started => started.context("couldn't start Git")?,
+        };
+        finish(child, dir, args, input)
+    }
 }
 
-/// [`git`], writing `input` to its standard input when there is some. Git's output is read after
-/// the input is written, so it suits commands that read their input before printing much.
-pub(crate) fn git_with_input(
+/// Writes `input` to the started `child`, waits for it, and returns what it printed.
+fn finish(
+    mut child: Child,
     dir: &Path,
     args: &[impl AsRef<OsStr>],
     input: Option<&[u8]>,
 ) -> Result<Vec<u8>> {
-    let mut command = command(dir);
-    command
-        .args(args)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    if input.is_some() {
-        command.stdin(Stdio::piped());
-    }
-    let mut child = command
-        .spawn()
-        .context("couldn't run `git`. Is Git installed?")?;
     // Dropping stdin closes it, which ends the input.
     let written = match (input, child.stdin.take()) {
         (Some(input), Some(mut stdin)) => stdin.write_all(input),
@@ -83,7 +113,7 @@ pub(crate) fn git_with_input(
     };
     let output = child
         .wait_with_output()
-        .context("couldn't run `git`. Is Git installed?")?;
+        .context("couldn't read what Git printed")?;
     if !output.status.success() {
         let args: Vec<_> = args
             .iter()
