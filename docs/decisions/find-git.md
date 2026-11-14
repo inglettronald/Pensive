@@ -27,21 +27,25 @@ Who 2.36 leaves out:
 
 | Platform | Its Git | New enough |
 |---|---|---|
+| Ubuntu 20.04 | [2.25.1](https://launchpad.net/ubuntu/focal/+source/git) | No |
 | Ubuntu 22.04 | [2.34.1](https://packages.ubuntu.com/search?keywords=git&searchon=names&exact=1&suite=all&section=all) | No |
 | Ubuntu 24.04 | 2.43.0 | Yes |
 | Debian 11 | [2.30.2](https://packages.debian.org/search?keywords=git&searchon=names&exact=1&suite=all&section=all) | No |
 | Debian 12 | 2.39.5 | Yes |
+| RHEL 8.10 | 2.43.7, from [RHSA-2025:11534](https://access.redhat.com/errata/RHSA-2025:11534) | Yes |
 | macOS, command line tools 26 | 2.50.1 | Yes |
 | Git for Windows | [2.56.1](https://git-scm.com/install/windows) | Yes |
 
-Ubuntu 22.04 is the one that matters. Dropping to 2.34 would mean parsing `ls-tree`'s default output, which is easy, and giving up `worktree list -z`, which isn't. Before 2.36, `--porcelain` didn't quote paths with unusual bytes, so a worktree whose path holds a newline would split into two entries. Pensive keeps 2.36, and the Linux fix points Ubuntu users at the git-core PPA.
+Debian 11's long-term support [ended in August 2026](https://www.debian.org/News/2026/20260831), so Ubuntu 22.04 is the one that matters. Dropping to 2.34 would mean parsing `ls-tree`'s default output, which is easy, and giving up `worktree list -z`, which isn't. Before 2.36, `--porcelain` didn't quote paths with unusual bytes, so a worktree whose path holds a newline would split into two entries. Pensive keeps 2.36, and the Linux fix points Ubuntu users at the git-core PPA.
 
 ## Where Pensive looks
 
-1. Each folder on the `PATH`, in order. Relative entries such as `.` are skipped, since they'd run whatever `git` sits in the folder Pensive started from.
+1. Each folder on the `PATH`, in order. Relative entries such as `.` are skipped, since they'd run whatever `git` sits in the folder Pensive started from. A folder listed twice is tried once.
 2. Then folders where Git lands but that aren't always on an app's `PATH`. On macOS that's `/opt/homebrew/bin`, `/usr/local/bin` and `/opt/local/bin`, for Homebrew on Apple silicon, Homebrew on Intel and MacPorts. On Windows it's `%ProgramFiles%\Git\cmd` and `%LOCALAPPDATA%\Programs\Git\cmd`, where Git for Windows installs for all users or for one. Linux has none.
 
-Pensive runs `git version` on each file it finds and keeps the first that's new enough. If none is, it reports the first one's problem, since that's the Git the user's terminal runs. It keeps the Git it found until it quits, but not a failure, so after installing Git the user can open a repository again without restarting.
+Pensive runs `git version` on each file it finds that could be a program (on Unix, one with an execute bit) and keeps the first that's new enough. If none is, it reports the first one's problem, since that's the Git the user's terminal runs.
+
+It keeps the Git it found until that file disappears. It keeps a problem for 10 seconds, then looks again. Opening a repository runs about ten commands in under a second, so they share one look instead of each running `git version` on every candidate. Commands that arrive while it looks wait for its answer. Installing Git takes longer than 10 seconds, so after installing it the user can open a repository again without restarting.
 
 Every command then runs that file by its full path, so the Git whose version was checked is the Git that runs.
 
@@ -49,18 +53,18 @@ Every command then runs that file by its full path, so the Git whose version was
 
 An app opened from the Dock or Finder gets launchd's `PATH`, `/usr/bin:/bin:/usr/sbin:/sbin`, and never sees the folders a shell profile adds. The extra folders above let Pensive find a Homebrew Git, but Git then starts its own helpers from that same short `PATH`: `git-lfs`, credential helpers such as Git Credential Manager, `gpg` for signing. Those would still go missing.
 
-Zed handles this by starting the user's login shell when it wasn't launched from a terminal and copying that shell's environment into its own (`load_login_shell_environment` in Zed's `util` crate, called from `crates/zed/src/main.rs` at v1.27.0). Pensive should do the same, in its own ticket, since it changes the environment of every program Pensive starts and not only how it finds Git.
+Zed handles this by starting the user's login shell when it wasn't launched from a terminal and copying that shell's environment into its own (`load_login_shell_environment` in Zed's `util` crate, called from `crates/zed/src/main.rs` at v1.27.0). Pensive should do the same, in a follow-up ticket, since it changes the environment of every program Pensive starts and not only how it finds Git.
 
-`/usr/bin/git` on macOS is a stand-in. With Xcode or its command line tools installed it runs Apple's Git. Without them, [running it prompts](https://developer.apple.com/documentation/xcode/installing-the-command-line-tools) the user to install the tools and fails. Pensive's first `git version` can therefore open that prompt, which is the fix the notice would suggest anyway.
+`/usr/bin/git` on macOS is a stand-in. With Xcode or its command line tools installed it runs Apple's Git. Without them, [running it prompts](https://developer.apple.com/documentation/xcode/installing-the-command-line-tools) the user to install the tools and fails. Pensive's `git version` can therefore open that prompt, at most once every 10 seconds while the tools are missing. The prompt is the fix the notice suggests anyway.
 
 ## What the user sees
 
-When the app starts, the problem shows as an error notice from Git. It toasts, then stays in the badge's list. Every Git call after that fails with the same text, so a repository that won't open says why instead of showing a failed command.
+When the app starts, it looks for Git off the UI thread and shows a problem as an error notice from Git. Like every error, it toasts for the toast duration setting (3 seconds by default), then folds into the badge's list. Every Git call after that fails with the same text, so a repository that won't open says why instead of showing a failed command.
 
 | Problem | Title | Detail |
 |---|---|---|
 | No Git found | Couldn't find Git | Pensive needs Git 2.36 or newer. Then the platform's fix |
-| A Git that won't run, such as macOS's stand-in without the tools | Git won't run | `<path> version` failed: Git's error output. Then the fix |
+| A Git that won't run, such as macOS's stand-in without the tools | Git won't run | `<path> version` didn't work: the first line of its error output, cut at 120 characters. Then the fix |
 | Too old | Git 2.34.1 is too old | Pensive needs Git 2.36 or newer, and `<path>` is 2.34.1. Then the fix |
 
 The fix for each platform, from [git-scm.com](https://git-scm.com/install/linux)'s install pages:
@@ -69,11 +73,11 @@ The fix for each platform, from [git-scm.com](https://git-scm.com/install/linux)
 |---|---|---|
 | macOS | Run `xcode-select --install` for Apple's Git, or `brew install git` | Run `brew install git`, or update the command line tools |
 | Windows | Get Git for Windows at https://git-scm.com/install/windows, or run `winget install --id Git.Git -e --source winget` | Get the latest at https://git-scm.com/install/windows, or run `git update-git-for-windows` |
-| Linux and the BSDs | Install it with your package manager. https://git-scm.com/install/linux has the command for each system | https://git-scm.com/install/linux lists newer packages, such as the git-core PPA for Ubuntu |
+| Linux and the BSDs | Install it with your package manager, such as `sudo apt install git`. See https://git-scm.com/install/linux for other systems | On Ubuntu, run `sudo add-apt-repository ppa:git-core/ppa`, then `sudo apt update && sudo apt install git`. See https://git-scm.com/install/linux for other systems |
 
 ### A proposal that needs a design
 
-A notice's detail is plain text, so the user can't click the link or copy the command. Without Git, Pensive can't open anything, so a notice undersells the problem. A better experience is a screen in place of the project view: the version found, the command with a copy button, the link, and a button to look again. That needs a design and is not built.
+A notice's detail is plain text, so the user can't click the link or copy the command, and the toast folds away after a few seconds over an app that can't open anything. A notice undersells the problem. A better experience is a screen in place of the project view: the version found, the command with a copy button, the link, and a button to look again. That needs a design and is not built.
 
 ## Bundling
 
