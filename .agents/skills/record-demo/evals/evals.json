@@ -1,0 +1,42 @@
+{
+  "skill_name": "record-demo",
+  "evals": [
+    {
+      "id": 1,
+      "name": "palette-from-project",
+      "prompt": "/record-demo root/project: open the palette with Ctrl K and type \"font\"",
+      "expected_output": "An MP4 in target/demos that opens on the project mock, shows the palette opening and the query being typed, and a contact sheet the agent read before replying. The agent's own server is stopped at the end.",
+      "assertions": [
+        "The agent checks for trunk, ffmpeg and ffprobe and loads the recording tools before it opens a preview tab",
+        "The agent starts its own trunk serve with --port on a free port, not 8765",
+        "The preview tab opens that port with the path /?mock=root/project",
+        "The agent runs keep-painting.js in the tab before it starts recording",
+        "The agent pauses with preview_evaluate and a setTimeout promise, never a foreground sleep",
+        "The video is saved under target/demos with a name that starts with root-project",
+        "The agent runs contact-sheet.sh, reads the sheet, and describes its first and last frames",
+        "The agent closes the tab it opened and stops the server it started"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "unknown-mock",
+      "prompt": "/record-demo root/nope: open the palette",
+      "expected_output": "The snapshot's console shows the panic for the unknown mock, and the agent tells the user without recording.",
+      "assertions": [
+        "The agent never calls preview_recording_start",
+        "The final message says no mock is called root/nope",
+        "The agent closes the tab it opened and stops the server it started"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "no-flow",
+      "prompt": "/record-demo settings/command_palette",
+      "expected_output": "The agent asks what flow to record and records nothing.",
+      "assertions": [
+        "The final message asks for the flow",
+        "The agent never starts a server or opens a preview tab"
+      ]
+    }
+  ]
+}
