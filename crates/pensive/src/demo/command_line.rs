@@ -1,29 +1,19 @@
-//! The options `cargo demo` takes: the mock to start on, and the window's size.
+//! Reads a demo's options from the command line, such as `--mock project/unsaved`.
 
 use gpui::{Pixels, Size, px, size};
 
+use super::Options;
+
 const USAGE: &str = "usage: cargo demo -- [--mock <subject>/<mock>] [--size <width>x<height>]";
 
-#[derive(Debug, Default, PartialEq)]
-pub struct Options {
-    /// A mock's id, such as `project/unsaved`, to open in place of the landing screen.
-    pub mock: Option<String>,
-    pub size: Option<Size<Pixels>>,
+pub fn given() -> Result<Options, String> {
+    parse(std::env::args().skip(1))
 }
 
-impl Options {
-    /// Reads the command line, or says what's wrong with it and how to write it.
-    pub fn from_args() -> Result<Self, String> {
-        let options = parse(std::env::args().skip(1))?;
-        if let Some(id) = &options.mock
-            && !ui::every_mock().iter().any(|mock| mock.id() == *id)
-        {
-            return Err(format!(
-                "no mock is called `{id}`. Ctrl Shift M in the demo lists them."
-            ));
-        }
-        Ok(options)
-    }
+/// Exits with code 2, as a command does when it's run wrong.
+pub fn stop(problem: &str) -> ! {
+    eprintln!("{problem}");
+    std::process::exit(2)
 }
 
 fn parse(mut args: impl Iterator<Item = String>) -> Result<Options, String> {

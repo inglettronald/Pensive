@@ -6,9 +6,11 @@
 
 use std::sync::Arc;
 
+#[cfg(not(target_family = "wasm"))]
+use gpui::{AppContext, Result};
 use gpui::{
-    AppContext, Context, IntoElement, ParentElement, Pixels, Render, RenderImage, Result,
-    SharedString, Size, Styled, Window, div, img, px, size,
+    Context, IntoElement, ParentElement, Pixels, Render, RenderImage, SharedString, Size, Styled,
+    Window, div, img, px, size,
 };
 use image::{Frame, RgbaImage};
 use theme::{ActiveTheme, Dp, Typeset};
@@ -55,12 +57,6 @@ impl Atlas {
         });
     }
 
-    /// Renders like `Mock::render`, at twice its size so each mock keeps the pixels of its PNG.
-    pub fn render(self) -> Result<Option<RgbaImage>> {
-        let window_size = self.window_size();
-        crate::render_headless(window_size, |_, cx| cx.new(|_| self))
-    }
-
     fn columns(&self) -> usize {
         columns(self.cards.len())
     }
@@ -77,6 +73,19 @@ impl Atlas {
         )
     }
 
+    fn summary(&self) -> SharedString {
+        summary(self.subject, self.cards.len(), self.largest_mock())
+    }
+}
+
+#[cfg(not(target_family = "wasm"))]
+impl Atlas {
+    /// Renders like `Mock::render`, at twice its size so each mock keeps the pixels of its PNG.
+    pub fn render(self) -> Result<Option<RgbaImage>> {
+        let window_size = self.window_size();
+        crate::headless::render_headless(window_size, |_, cx| cx.new(|_| self))
+    }
+
     fn window_size(&self) -> Size<Pixels> {
         let columns = self.columns();
         let rows = self.cards.len().div_ceil(columns);
@@ -85,10 +94,6 @@ impl Atlas {
             PADDING * 2. + card_size.width * columns as f32 + GAP * (columns - 1) as f32,
             PADDING * 2. + TITLE_HEIGHT + (GAP + card_size.height) * rows as f32,
         )
-    }
-
-    fn summary(&self) -> SharedString {
-        summary(self.subject, self.cards.len(), self.largest_mock())
     }
 }
 
