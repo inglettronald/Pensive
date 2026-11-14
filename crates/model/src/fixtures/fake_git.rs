@@ -11,7 +11,7 @@ use anyhow::Result;
 
 use crate::{
     Changes, FileKey, FileVersions, FixtureGap, GitBackend, PROJECT_FILE, Repository, Source,
-    Version,
+    Version, WorktreeFiles,
 };
 
 /// The pensive sample's `.pensive/project.toml`. The other samples have none.
@@ -119,6 +119,14 @@ impl GitBackend for FakeGit {
     }
 
     /// A saved file, or else the sample's new version, or else missing.
+    fn files(&self, worktree: &Path) -> Result<WorktreeFiles> {
+        self.repository(worktree)?;
+        if worktree != Path::new(super::PENSIVE_ROOT) {
+            return Ok(WorktreeFiles::default());
+        }
+        Ok(super::worktree_files())
+    }
+
     fn read_file(&self, worktree: &Path, path: &Path) -> Result<Version> {
         if path == Path::new(PROJECT_FILE) {
             self.repository(worktree)?;

@@ -120,6 +120,23 @@ pub(crate) fn mocks() -> Vec<Mock> {
             cx.set_global(DensityPreset::Dense.density());
             framed(untouched, window, cx)
         }),
+        Mock::new("files_panel", "calm", |window, cx| {
+            framed(|view, _, cx| view.show_panel(Panel::Files, cx), window, cx)
+        }),
+        Mock::new("files_panel", "filtered", |window, cx| {
+            framed(
+                |view, _, cx| {
+                    view.show_panel(Panel::Files, cx);
+                    view.set_file_filter("palette", cx);
+                },
+                window,
+                cx,
+            )
+        }),
+        Mock::new("files_panel", "dense", |window, cx| {
+            cx.set_global(DensityPreset::Dense.density());
+            framed(|view, _, cx| view.show_panel(Panel::Files, cx), window, cx)
+        }),
     ]
 }
 

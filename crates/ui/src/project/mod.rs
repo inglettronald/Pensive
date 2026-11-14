@@ -2,21 +2,25 @@
 //! selected file's diff beside them.
 
 mod changes_panel;
+mod file_tree;
 mod files;
+pub(crate) mod files_options;
+mod files_panel;
 mod main_view;
 #[cfg(feature = "mocks")]
 mod mocks;
 mod tree;
 
 use std::{
+    collections::HashSet,
     path::{Path, PathBuf},
     time::Duration,
 };
 
 use components::{IconName, Rail, RailItem};
 use gpui::{
-    App, ClipboardItem, Context, Entity, EventEmitter, FocusHandle, Focusable, SharedString,
-    Subscription, Task, Window, actions, div, prelude::*,
+    App, ClipboardItem, Context, Entity, EventEmitter, FocusHandle, Focusable, ScrollHandle,
+    SharedString, Subscription, Task, Window, actions, div, prelude::*,
 };
 use model::{Changes, FileChange, FileKey, Notice, ProjectId, Projects, Source, Staging};
 use strum::VariantArray;
@@ -26,14 +30,14 @@ use crate::{
     editor::Editor,
     key_binding, notices,
     rail_gear::{GearClicked, rail_gear},
-    text_input::TextInput,
+    text_input::{Changed, TextInput},
     view_callback_with,
 };
 
 #[cfg(feature = "mocks")]
 pub(crate) use mocks::mocks;
 
-actions!(project, [CopyPath, CommitStaged]);
+actions!(project, [CopyPath, CommitStaged, FilterFiles]);
 
 const CONTEXT: &str = "ProjectView";
 /// How long the pointer rests on a file before its path shows.
@@ -45,6 +49,7 @@ pub(crate) fn bind_keys(cx: &mut App) {
     cx.bind_keys([
         key_binding("secondary-shift-c", CopyPath, Some(CONTEXT), cx),
         key_binding("secondary-enter", CommitStaged, Some(CONTEXT), cx),
+        key_binding("secondary-p", FilterFiles, Some(CONTEXT), cx),
     ]);
 }
 
@@ -120,6 +125,7 @@ pub enum Control {
     Pull,
     Push,
     Commit,
+    NewFile,
     /// A panel on the rail with nothing in it yet.
     Panel(Panel),
 }
@@ -132,6 +138,7 @@ impl Control {
             Control::Pull => "Pull",
             Control::Push => "Push",
             Control::Commit => "Commit",
+            Control::NewFile => "New file",
             Control::Panel(panel) => panel.name(),
         })
     }
@@ -157,13 +164,20 @@ pub struct ProjectView {
     copied: Option<Task<()>>,
     /// What the control used last had to say, until the task clears it.
     notice: Option<(Control, Notice, Task<()>)>,
+    /// What the panel beside the rail shows.
+    panel: Panel,
     rail_hovered: Option<usize>,
     gear_hovered: bool,
+    /// The Files panel's open folders, by their paths.
+    files_open: HashSet<PathBuf>,
+    files_hovered: bool,
+    files_scroll: ScrollHandle,
+    file_filter: Entity<TextInput>,
     message: Entity<TextInput>,
     /// Shows the selected file.
     editor: Entity<Editor>,
     focus_handle: FocusHandle,
-    _subscriptions: [Subscription; 2],
+    _subscriptions: [Subscription; 3],
 }
 
 impl ProjectView {
@@ -201,6 +215,17 @@ impl ProjectView {
             this.show_selected(cx);
             cx.notify()
         });
+        if projects.read(cx).files(&worktree).is_none() {
+            projects
+                .update(cx, |projects, cx| projects.read_files(worktree.clone(), cx))
+                .detach();
+        }
+        let file_filter = cx.new(|cx| {
+            let mut input = TextInput::new(cx);
+            input.set_placeholder("Filter files", cx);
+            input
+        });
+        let filtered = cx.subscribe(&file_filter, |_, _, _: &Changed, cx| cx.notify());
         let editor = cx.new(|cx| Editor::new(window, cx));
         // The header shows whether the file has unsaved edits.
         let editing = cx.observe(&editor, |_, _, cx| cx.notify());
@@ -219,12 +244,17 @@ impl ProjectView {
             tooltip_delay: None,
             copied: None,
             notice: None,
+            panel: Panel::Changes,
             rail_hovered: None,
             gear_hovered: false,
+            files_open: HashSet::new(),
+            files_hovered: false,
+            files_scroll: ScrollHandle::new(),
+            file_filter,
             message,
             editor,
             focus_handle: cx.focus_handle(),
-            _subscriptions: [subscription, editing],
+            _subscriptions: [subscription, editing, filtered],
         };
         view.select_first(cx);
         view
@@ -378,6 +408,9 @@ impl ProjectView {
                 projects.open_document(worktree, key.clone(), cx)
             })
             .detach();
+        if key.source == Source::Uncommitted {
+            self.follow(&key.path, cx);
+        }
         self.selected = Some(key);
         self.selected_symbol = symbol;
         self.show_selected(cx);
@@ -465,8 +498,26 @@ impl ProjectView {
         cx.notify();
     }
 
+    /// The change to the file `key` names. An uncommitted file with no changes, opened from the
+    /// Files panel, has an empty one.
     fn file(&self, key: &FileKey, cx: &App) -> Option<FileChange> {
-        self.changes(cx).find(key).cloned()
+        if let Some(change) = self.changes(cx).find(key) {
+            return Some(change.clone());
+        }
+        let listed = self
+            .projects
+            .read(cx)
+            .files(&self.worktree)
+            .is_some_and(|files| files.files.contains(&key.path));
+        (key.source == Source::Uncommitted && listed).then(|| FileChange {
+            path: key.path.clone(),
+            renamed_from: None,
+            index: None,
+            worktree: None,
+            added: 0,
+            removed: 0,
+            symbols: Vec::new(),
+        })
     }
 
     fn copy_path(&mut self, _: &CopyPath, _window: &mut Window, cx: &mut Context<Self>) {
@@ -489,7 +540,23 @@ impl ProjectView {
         self.use_control(Control::Commit, cx);
     }
 
-    /// Changes, then the panels with nothing in them yet, which answer with a notice, and the
+    /// Shows `panel` beside the rail, or answers with a notice for one with nothing in it yet.
+    pub fn show_panel(&mut self, panel: Panel, cx: &mut Context<Self>) {
+        match panel {
+            Panel::Changes | Panel::Files => {
+                self.panel = panel;
+                cx.notify();
+            }
+            Panel::Search | Panel::History => self.use_control(Control::Panel(panel), cx),
+        }
+    }
+
+    fn filter_files(&mut self, _: &FilterFiles, window: &mut Window, cx: &mut Context<Self>) {
+        self.show_panel(Panel::Files, cx);
+        window.focus(&self.file_filter.focus_handle(cx), cx);
+    }
+
+    /// The panels on the rail, those with nothing in them yet answering with a notice, and the
     /// gear at the foot.
     fn rail(&self, cx: &mut Context<Self>) -> Rail {
         let items = Panel::VARIANTS
@@ -509,7 +576,7 @@ impl ProjectView {
                 }
                 _ => None,
             });
-        Rail::new(items, Panel::Changes.index())
+        Rail::new(items, self.panel.index())
             .hovered(self.rail_hovered)
             .notice(notice)
             .tools([rail_gear(
@@ -519,10 +586,7 @@ impl ProjectView {
                 cx,
             )])
             .on_select(view_callback_with(cx, |this: &mut Self, index, _, cx| {
-                let panel = Panel::VARIANTS[index];
-                if panel != Panel::Changes {
-                    this.use_control(Control::Panel(panel), cx);
-                }
+                this.show_panel(Panel::VARIANTS[index], cx)
             }))
             .on_hover(view_callback_with(cx, |this: &mut Self, index, _, cx| {
                 this.rail_hovered = index;
@@ -540,7 +604,7 @@ impl Focusable for ProjectView {
 }
 
 impl Render for ProjectView {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let changes = self.changes(cx);
         div()
             .id("project")
@@ -548,11 +612,15 @@ impl Render for ProjectView {
             .track_focus(&self.focus_handle)
             .on_action(cx.listener(Self::copy_path))
             .on_action(cx.listener(Self::commit_staged))
+            .on_action(cx.listener(Self::filter_files))
             .flex()
             .flex_1()
             .min_h_0()
             .child(self.rail(cx))
-            .child(self.render_changes_panel(&changes, cx))
+            .child(match self.panel {
+                Panel::Files => self.render_files_panel(window, cx).into_any_element(),
+                _ => self.render_changes_panel(&changes, cx).into_any_element(),
+            })
             .child(self.render_main_view(cx))
     }
 }

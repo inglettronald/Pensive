@@ -2,6 +2,7 @@
 
 mod changes;
 mod command;
+mod files;
 mod find;
 mod parse;
 mod staging;
@@ -14,7 +15,10 @@ use std::{
 };
 
 use anyhow::{Context as _, Result};
-use model::{Branch, Changes, FileKey, FileVersions, GitBackend, Repository, Version, Worktree};
+use model::{
+    Branch, Changes, FileKey, FileVersions, GitBackend, Repository, Version, Worktree,
+    WorktreeFiles,
+};
 
 pub use crate::find::Git;
 use crate::{find::Finder, parse::ListedWorktree};
@@ -55,6 +59,10 @@ impl GitBackend for GitCli {
         renamed_from: Option<&Path>,
     ) -> Result<FileVersions> {
         changes::versions(self, worktree, key, renamed_from)
+    }
+
+    fn files(&self, worktree: &Path) -> Result<WorktreeFiles> {
+        files::files(self, worktree)
     }
 
     fn read_file(&self, worktree: &Path, path: &Path) -> Result<Version> {

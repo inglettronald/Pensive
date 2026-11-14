@@ -7,7 +7,7 @@ use std::{
 
 use anyhow::Result;
 
-use crate::{Branch, Changes, FileKey, FileVersions, Version, Worktree};
+use crate::{Branch, Changes, FileKey, FileVersions, Version, Worktree, WorktreeFiles};
 
 /// Calls block, so models run them off the UI thread.
 pub trait GitBackend: Send + Sync + Debug {
@@ -26,6 +26,9 @@ pub trait GitBackend: Send + Sync + Debug {
         key: &FileKey,
         renamed_from: Option<&Path>,
     ) -> Result<FileVersions>;
+
+    /// Lists every file in the worktree at `worktree`, and what `.gitignore` leaves out.
+    fn files(&self, worktree: &Path) -> Result<WorktreeFiles>;
 
     /// Reads the file at `path` in the worktree as it is on disk.
     fn read_file(&self, worktree: &Path, path: &Path) -> Result<Version>;

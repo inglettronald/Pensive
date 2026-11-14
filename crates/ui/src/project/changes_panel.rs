@@ -119,7 +119,7 @@ impl ProjectView {
             })
     }
 
-    fn on_use(
+    pub(super) fn on_use(
         &self,
         control: Control,
         cx: &mut Context<Self>,
@@ -131,7 +131,11 @@ impl ProjectView {
 
     /// `control` with its notice in a tooltip, right-aligned to it: below in the header, above at
     /// the bottom of the panel.
-    fn with_notice(&self, control: Control, element: impl IntoElement) -> impl IntoElement {
+    pub(super) fn with_notice(
+        &self,
+        control: Control,
+        element: impl IntoElement,
+    ) -> impl IntoElement {
         let notice = self
             .notice
             .as_ref()

@@ -18,6 +18,7 @@ pub fn git(backend: &dyn GitBackend, worktree: &Path) {
     uncommitted_versions_match_the_files(backend, worktree);
     commit_versions_match_the_changes(backend, worktree);
     staging_shows_in_the_changes(backend, worktree);
+    files_are_what_is_on_disk(backend, worktree);
 }
 
 /// Checks `backend` before anything is stored in it. For `ConfigFolder` that's a folder that
@@ -210,5 +211,27 @@ fn written_settings_read_back(backend: &dyn ConfigBackend) {
     ] {
         backend.write_settings(text).unwrap();
         assert_eq!(backend.read_settings().unwrap(), text, "{text:?}");
+    }
+}
+
+/// Every uncommitted file on disk is listed, and a deleted one isn't.
+fn files_are_what_is_on_disk(backend: &dyn GitBackend, worktree: &Path) {
+    let listed = backend.files(worktree).unwrap();
+    for file in backend.changes(worktree).unwrap().uncommitted {
+        let deleted = [file.index, file.worktree].contains(&Some(FileStatus::Deleted));
+        assert_eq!(
+            listed.files.contains(&file.path),
+            !deleted,
+            "{} listed: {:?}",
+            file.path.display(),
+            listed.files
+        );
+    }
+    for ignored in listed.ignored_files.iter().chain(&listed.ignored_folders) {
+        assert!(
+            !listed.files.contains(ignored),
+            "{} is ignored",
+            ignored.display()
+        );
     }
 }

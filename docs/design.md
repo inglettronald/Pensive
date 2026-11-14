@@ -70,7 +70,7 @@ Saving is a setting. Auto, the default, saves a second after typing stops and wh
 
 Navigation sits on the top and left edges only. Nothing docks on the right, so content is never boxed in from both sides.
 
-A rail of icons runs down the window's left edge in every view. Its top holds the project's panels: Changes, Files, Search and History. The gear sits at its foot and opens Settings.
+A rail of icons runs down the window's left edge in every view. Its top holds the project's panels: Changes, Files, Search and History. Search and History answer with a notice until they're built. The gear sits at its foot and opens Settings.
 
 Projects switch from the title bar or from the command palette. There is no rail of projects by default, because many people only ever work in one or two projects.
 
@@ -107,6 +107,14 @@ A file's ring takes its status color and fills when it's staged, or half fills w
 Every file row shows its added and removed line counts. The folder isn't on the row. Hovering the file shows its full path in a tooltip, and Ctrl Shift C copies it while the tooltip is open, leaving plain Ctrl C alone. The tooltip then says Copied path for a second, outlined in green.
 
 The tree draws a guide under each folder's chevron and folds a chain of single-child folders into one row. By symbol, each file lists the functions, types and headings its hunks touch, each with an icon and its own line counts.
+
+## Files
+
+The Files panel shows the project's tree. A child starts where its parent's name starts, folder or file, so every level steps by the same amount: one arrow and its gap, which follows the density. The panel's title, its filter's icon and the top-level arrows share one column.
+
+The header holds new file, select the open file, and collapse all. Names take their Git status color, and a folder with changes inside gets a dot. Ignored files are dimmed. A chain of single-child folders folds into one row, as in the changes tree. Ctrl P filters the tree, opening every folder above a match.
+
+Settings: Git status, ignored files, dotfiles, folding, sort, indent guides, following the open file, and opening with one click or two.
 
 ## Notices
 
