@@ -2,10 +2,13 @@ mod backends;
 mod config_sync;
 #[cfg(feature = "demo")]
 mod demo;
-#[cfg(feature = "demo")]
+#[cfg(all(feature = "demo", not(target_family = "wasm")))]
 mod mock_thumbnails;
 
 use gpui::{App, AppContext};
+
+#[cfg(all(target_family = "wasm", not(feature = "demo")))]
+compile_error!("the browser build is a demo build: build it with `--features demo`");
 
 fn main() {
     #[cfg(target_family = "wasm")]
@@ -15,10 +18,7 @@ fn main() {
         log::set_max_level(log::LevelFilter::Info);
     }
     #[cfg(feature = "demo")]
-    let demo = demo::Options::from_args().unwrap_or_else(|problem| {
-        eprintln!("{problem}");
-        std::process::exit(2);
-    });
+    let demo = demo::Options::read().unwrap_or_else(|problem| demo::stop(&problem));
     let backends::Startup {
         projects,
         paths,
@@ -30,7 +30,7 @@ fn main() {
         .run(move |cx: &mut App| {
             theme::init(cx);
             ui::init(cx);
-            #[cfg(feature = "demo")]
+            #[cfg(all(feature = "demo", not(target_family = "wasm")))]
             mock_thumbnails::start(cx);
             if let Some(config) = config {
                 config_sync::init(config, cx);

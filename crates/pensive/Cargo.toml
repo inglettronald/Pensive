@@ -26,10 +26,12 @@ mock = { workspace = true, optional = true }
 [target.'cfg(target_family = "wasm")'.dependencies]
 log.workspace = true
 model = { workspace = true, features = ["fixtures"] }
+web-sys = { workspace = true, features = ["Location", "UrlSearchParams", "Window"] }
 
 [features]
-# The sample projects in place of real ones, and the mock browser on Ctrl Shift M with thumbnails
-# rendered at launch. `cargo demo` turns it on. It never ships in the app.
+# The sample projects in place of real ones, and the mock browser on Ctrl Shift M, with thumbnails
+# rendered at launch on the desktop. `cargo demo` and the browser build turn it on. The desktop app
+# never does, and the browser build is never released.
 demo = ["ui/mocks", "model/fixtures", "dep:image", "dep:mock"]
 
 [dev-dependencies]

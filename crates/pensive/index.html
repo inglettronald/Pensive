@@ -4,8 +4,9 @@
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <title>Pensive</title>
-        <!-- wasm-opt is off: it needs binaryen, and these builds are for local use. -->
-        <link data-trunk rel="rust" data-bin="pensive" data-wasm-opt="0" />
+        <!-- wasm-opt is off: it needs binaryen, and these builds are for local use. The demo
+             feature adds the mock browser, and `?mock=<subject>/<mock>` opens on that mock. -->
+        <link data-trunk rel="rust" data-bin="pensive" data-wasm-opt="0" data-cargo-features="demo" />
         <style>
             html,
             body {

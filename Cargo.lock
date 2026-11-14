@@ -3762,6 +3762,7 @@ dependencies = [
  "settings",
  "theme",
  "ui",
+ "web-sys",
 ]
 
 [[package]]
