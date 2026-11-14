@@ -287,7 +287,7 @@ impl Render for NoticeOverlay {
 pub(crate) fn mocks() -> Vec<mock::Mock> {
     use gpui::AnyView;
     use mock::Mock;
-    use model::fixtures::PENSIVE;
+    use model::{GitProblem, GitVersion, Platform, fixtures::PENSIVE};
 
     use crate::mock_window;
 
@@ -355,10 +355,25 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
         notices.as_of = Some(start + Duration::from_secs(240));
     }
 
+    /// What Pensive shows when it starts with a Git older than it needs, on Linux, so the text
+    /// doesn't change with the machine that renders it.
+    fn git_too_old(window: &mut Window, cx: &mut App) -> AnyView {
+        let problem = GitProblem::TooOld {
+            path: "/usr/bin/git".into(),
+            version: GitVersion::new(2, 34, 1),
+        };
+        Notices::global(cx).update(cx, |notices, cx| {
+            notices.as_of = Some(SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_000_000));
+            notices.report(problem.notice(Platform::Linux), cx);
+        });
+        mock_window::pensive(Some(PENSIVE), window, cx).into()
+    }
+
     vec![
         Mock::new("notices", "toasting", |w, cx| window(false, false, w, cx)),
         Mock::new("notices", "folded", |w, cx| window(true, false, w, cx)),
         Mock::new("notices", "list_open", |w, cx| window(true, true, w, cx)),
+        Mock::new("notices", "git_too_old", git_too_old),
     ]
 }
 

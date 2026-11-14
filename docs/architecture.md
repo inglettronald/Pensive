@@ -32,7 +32,7 @@ Every crate except `git` and `config` also depends on `gpui`.
 
 ## Mocks
 
-Each view declares named mocks next to its code: the view built from fixed data. They sit behind a `mocks` feature on `ui` and `components`, so they never ship in the app. `pensive` has a `demo` feature that turns them on for the mock browser and opens the sample projects. `cargo demo` runs the app with it.
+Each view declares named mocks next to its code: the view built from fixed data. They sit behind a `mocks` feature on `ui` and `components`, so they never ship in the app. `pensive` has a `demo` feature that turns them on for the mock browser and opens the sample projects. `cargo demo` runs the app with it, and so does the browser build.
 
 `cargo mocks` renders every mock to `target/mocks/<subject>/<mock>.png` without opening a window. `cargo mocks root` renders only the mocks whose `<subject>/<mock>` contains `root`. A subject with more than one mock also gets an atlas at `target/mocks/<subject>.png`, with all of its mocks in one numbered grid. The atlas is only written when the filter matches every mock of the subject, so `cargo mocks root/landing` deletes `root.png` instead of leaving one that's out of date. `cargo test` renders them too, so CI checks that every mock renders on Linux and macOS. A mock that fails or panics is reported by its id, and the others still render. `cargo test <name>` renders only the mocks whose id contains `<name>`, and passes if none do, as any other test binary would.
 
@@ -45,3 +45,5 @@ crates.io stops at gpui 0.2.2, which can't render headless. We pin `gpui` and `g
 ## The browser build
 
 `pensive` also builds for `wasm32-unknown-unknown`, where `gpui_web` draws the window to a canvas. A browser has no `git` command or config folder, so `git` and `config` are desktop-only dependencies. In their place the app opens the sample projects and keeps settings in memory. It runs single-threaded, because threads in wasm need a nightly toolchain, so `gpui_platform`'s default features are off.
+
+The browser build is always a demo build, for trying Pensive and recording it, and never a release artifact. GPUI's test support doesn't build for wasm, so `mock` can't render mocks there, and each card in the mock browser says "Rendering" where the desktop shows a thumbnail.

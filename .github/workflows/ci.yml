@@ -40,7 +40,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           save-if: ${{ github.ref == 'refs/heads/master' }}
-      - run: cargo clippy -p pensive --target wasm32-unknown-unknown
+      - run: cargo clippy -p pensive --target wasm32-unknown-unknown --features demo
 
   platforms:
     runs-on: ubuntu-24.04

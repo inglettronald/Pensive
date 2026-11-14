@@ -20,7 +20,7 @@ step() {
 
 step fmt cargo fmt --check
 step clippy cargo clippy --all-targets --all-features -- -D warnings
-step web cargo clippy -p pensive --target wasm32-unknown-unknown -- -D warnings
+step web cargo clippy -p pensive --target wasm32-unknown-unknown --features demo -- -D warnings
 step test cargo test --no-fail-fast
 
 for name in "${failed[@]}"; do
