@@ -32,6 +32,15 @@ pub const fn dp(pixels: f32) -> Dp {
     Dp(pixels)
 }
 
+/// The rem size at `zoom`, where 1 is 100%.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "the rem size is what every Dp is measured against"
+)]
+pub(crate) fn zoomed_rem(zoom: f32) -> Pixels {
+    px(REM * zoom)
+}
+
 impl Dp {
     /// The length on screen, for painting and layout math.
     pub fn to_pixels(self, rem_size: Pixels) -> Pixels {

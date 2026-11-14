@@ -1,8 +1,9 @@
 //! The settings view's mocks: a window on the sample project with Settings open.
 
-use gpui::{AnyView, App, Context, Window};
+use gpui::{AnyView, App, Context, UpdateGlobal, Window};
 use mock::Mock;
 use model::fixtures::PENSIVE;
+use settings::Settings;
 use theme::DensityPreset;
 
 use super::{SettingsView, Spot};
@@ -12,6 +13,11 @@ use crate::mock_window;
 const PALETTE: usize = 1;
 /// The Editor category, with one page.
 const EDITOR: usize = 2;
+/// Appearance's Size page.
+const SIZE: Spot = Spot {
+    category: 0,
+    page: 1,
+};
 
 /// A window on pensive with Settings open, set up by `setup`.
 fn window(
@@ -103,6 +109,13 @@ pub(crate) fn mocks() -> Vec<Mock> {
         }),
         Mock::new("settings", "no_results", |w, cx| {
             window(|view, cx| view.search_in(PALETTE, "qwerty", cx), w, cx)
+        }),
+        Mock::new("settings", "size_changed", |w, cx| {
+            let view = window(|view, cx| view.jump_to(SIZE, cx), w, cx);
+            Settings::update_global(cx, |settings, _| {
+                settings.load("zoom = 110\ncode_size = 15\n")
+            });
+            view
         }),
         Mock::new("settings", "dense", |w, cx| {
             cx.set_global(DensityPreset::Dense.density());
