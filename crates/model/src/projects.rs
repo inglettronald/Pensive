@@ -94,6 +94,8 @@ pub struct Projects {
     /// The last write to Git's index. The next one waits for it, since two writes at once would
     /// both need the index's lock.
     staging: Option<Task<()>>,
+    /// How many reads of each worktree's changes have started.
+    reads: HashMap<PathBuf, u64>,
     _saves: Vec<Subscription>,
 }
 
@@ -109,6 +111,7 @@ impl Projects {
             binary: HashSet::new(),
             git: Backend::new(git, Origin::Git),
             staging: None,
+            reads: HashMap::new(),
             _saves: Vec::new(),
         }
     }
@@ -168,8 +171,10 @@ impl Projects {
 
     /// Reads the changes in the worktree at `worktree` off the UI thread, replacing what's
     /// cached. Open uncommitted files are read again too, since they may have changed. A commit's
-    /// files never change.
+    /// files never change. Reads can finish in any order, so one that finishes after a newer one
+    /// started is dropped.
     pub fn read_changes(&mut self, worktree: PathBuf, cx: &mut Context<Self>) -> Task<Result<()>> {
+        let number = self.start_read(&worktree);
         let path = worktree.clone();
         let read = self
             .git
@@ -177,11 +182,29 @@ impl Projects {
         cx.spawn(async move |this, cx| {
             let changes = read.await?;
             this.update(cx, |this, cx| {
-                this.insert_changes(worktree.clone(), changes);
-                this.refresh_documents(&worktree, cx);
-                cx.notify();
+                if this.finish_read(&worktree, number, changes) {
+                    this.refresh_documents(&worktree, cx);
+                    cx.notify();
+                }
             })
         })
+    }
+
+    /// Counts a read of the worktree's changes, and returns its number.
+    fn start_read(&mut self, worktree: &Path) -> u64 {
+        let started = self.reads.entry(worktree.to_path_buf()).or_default();
+        *started += 1;
+        *started
+    }
+
+    /// Caches `changes` from read `number`, unless a newer read started since. Returns whether it
+    /// did.
+    fn finish_read(&mut self, worktree: &Path, number: u64, changes: Changes) -> bool {
+        if self.reads.get(worktree) != Some(&number) {
+            return false;
+        }
+        self.insert_changes(worktree.to_path_buf(), changes);
+        true
     }
 
     pub(crate) fn insert_changes(&mut self, worktree: PathBuf, changes: Changes) {
@@ -592,6 +615,21 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(staging(cx, &path), Staging::Staged);
+    }
+
+    #[test]
+    fn a_read_that_finishes_after_a_newer_one_started_is_dropped() {
+        let mut projects = Projects::new(Arc::new(FakeGit::default()));
+        let root = Path::new(fixtures::PENSIVE_ROOT);
+        let older = projects.start_read(root);
+        let newer = projects.start_read(root);
+        let mut staged = fixtures::changes();
+        staged.set_all_staged(true);
+
+        assert!(projects.finish_read(root, newer, staged));
+        assert!(!projects.finish_read(root, older, fixtures::changes()));
+        let cached = projects.changes(root).unwrap();
+        assert_eq!(cached.staging(), Staging::Staged);
     }
 
     #[gpui::test]
