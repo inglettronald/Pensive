@@ -3,7 +3,7 @@
 use gpui::{
     AnyElement, AnyView, App, BoxShadow, Context, SharedString, Window, div, hsla, prelude::*, px,
 };
-use theme::{ActiveTheme, Typeset};
+use theme::{ActiveTheme, Typeset, dp};
 
 use crate::{Kbd, Tag, Tone};
 
@@ -83,7 +83,7 @@ impl RenderOnce for Tooltip {
             .when(self.detail.is_some(), |tooltip| tooltip.py_1p5().px_2p5())
             // The key cap's border makes it 2 px taller than the text, which this takes back so
             // every one-line tooltip is the same height.
-            .when(self.shortcut.is_some(), |tooltip| tooltip.py(px(3.)))
+            .when(self.shortcut.is_some(), |tooltip| tooltip.py(dp(3.)))
             .child(
                 div()
                     .flex()
@@ -100,7 +100,7 @@ impl RenderOnce for Tooltip {
                     )
                     .children(self.detail.map(|detail| {
                         div()
-                            .max_w(px(280.))
+                            .max_w(dp(280.))
                             .whitespace_normal()
                             .text_color(colors.text_muted)
                             .child(detail)

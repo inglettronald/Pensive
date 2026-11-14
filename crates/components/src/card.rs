@@ -1,8 +1,8 @@
 //! A raised box of rows split by hairlines, each row filling on hover, such as a settings page's
 //! settings.
 
-use gpui::{AnyElement, App, ElementId, Window, div, prelude::*, px};
-use theme::ActiveTheme;
+use gpui::{AnyElement, App, ElementId, Window, div, prelude::*};
+use theme::{ActiveTheme, dp};
 
 #[derive(IntoElement)]
 pub struct Card {
@@ -37,7 +37,7 @@ impl RenderOnce for Card {
     fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
         let colors = &cx.theme().colors;
         // Inside the border, so a filled row keeps the card's corners.
-        let corner = cx.density().radius_lg - px(1.);
+        let corner = cx.density().radius_lg - dp(1.);
         let last = self.rows.len().saturating_sub(1);
         let rows = self.rows.into_iter().enumerate().map(|(index, row)| {
             div()
@@ -70,7 +70,7 @@ impl RenderOnce for Card {
 
 #[cfg(feature = "mocks")]
 pub(crate) fn mocks() -> Vec<mock::Mock> {
-    use gpui::size;
+    use gpui::{px, size};
 
     fn line(text: &'static str) -> impl IntoElement {
         div().px_3().py_2p5().child(text)
@@ -85,14 +85,14 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
                         (
                             "One row",
                             div()
-                                .w(px(280.))
+                                .w(dp(280.))
                                 .child(Card::new("one").rows([line("Theme")]))
                                 .into_any_element(),
                         ),
                         (
                             "Hovering the second",
                             div()
-                                .w(px(280.))
+                                .w(dp(280.))
                                 .child(
                                     Card::new("three")
                                         .rows([line("Tabs"), line("Starting tab"), line("Opacity")])

@@ -3,12 +3,12 @@
 
 use gpui::{
     App, Bounds, Hsla, Pixels, SharedString, Window, canvas, div, fill, linear_color_stop,
-    linear_gradient, point, prelude::*, px, size,
+    linear_gradient, point, prelude::*, size,
 };
-use theme::{ActiveTheme, ThemeColors};
+use theme::{ActiveTheme, Dp, ThemeColors, dp};
 
 /// How far before the end the fade starts.
-const FADE: f32 = 28.;
+const FADE: Dp = dp(28.);
 
 #[derive(IntoElement)]
 pub struct FadeText {
@@ -82,7 +82,7 @@ pub(crate) fn paint_fade(
     background: Hsla,
     window: &mut Window,
 ) {
-    let width = px(FADE).min(bounds.size.width);
+    let width = FADE.to_pixels(window.rem_size()).min(bounds.size.width);
     let (left, angle) = match edge {
         Edge::Start => (bounds.left(), 270.),
         Edge::End => (bounds.right() - width, 90.),
@@ -100,12 +100,14 @@ pub(crate) fn paint_fade(
 
 #[cfg(feature = "mocks")]
 pub(crate) fn mocks() -> Vec<mock::Mock> {
+    use gpui::px;
+
     use crate::gallery::Panel;
 
     vec![
         mock::Mock::component("fade_text", "gallery", || {
             let line = |text: &'static str| {
-                Panel::new(px(200.), [div().px_2().child(FadeText::new(text))]).into_any_element()
+                Panel::new(dp(200.), [div().px_2().child(FadeText::new(text))]).into_any_element()
             };
             crate::Gallery::new("FadeText")
                 .section(

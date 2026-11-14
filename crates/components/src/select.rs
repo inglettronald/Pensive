@@ -1,7 +1,7 @@
 //! The closed state of a dropdown: the current value and a chevron.
 
-use gpui::{App, ElementId, SharedString, Window, div, prelude::*, px};
-use theme::{ActiveTheme, Typeset};
+use gpui::{App, ElementId, SharedString, Window, div, prelude::*};
+use theme::{ActiveTheme, Typeset, dp};
 
 use crate::{Callback, Icon, IconName, OnClick as _, callback};
 
@@ -38,7 +38,7 @@ impl RenderOnce for Select {
             .flex_none()
             .items_center()
             .gap_1p5()
-            .h(px(24.))
+            .h(dp(24.))
             .pl_2()
             .pr_1p5()
             .rounded(density.radius_sm)
@@ -51,7 +51,7 @@ impl RenderOnce for Select {
             .child(self.value)
             .child(
                 Icon::new(IconName::ChevronDown)
-                    .size(px(12.))
+                    .size(dp(12.))
                     .color(colors.text_faint),
             )
             .on_click_callback(self.on_click)
@@ -60,7 +60,7 @@ impl RenderOnce for Select {
 
 #[cfg(feature = "mocks")]
 pub(crate) fn mocks() -> Vec<mock::Mock> {
-    use gpui::size;
+    use gpui::{px, size};
 
     vec![
         mock::Mock::component("select", "gallery", || {

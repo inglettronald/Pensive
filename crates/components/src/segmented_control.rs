@@ -3,8 +3,8 @@
 
 use std::rc::Rc;
 
-use gpui::{App, ElementId, SharedString, Window, div, prelude::*, px};
-use theme::{ActiveTheme, Typeset};
+use gpui::{App, ElementId, SharedString, Window, div, prelude::*};
+use theme::{ActiveTheme, Typeset, dp};
 
 use crate::{Callback, Icon, IconName, tooltip::text_tooltip};
 
@@ -94,7 +94,7 @@ impl RenderOnce for SegmentedControl {
                 match option {
                     Segment::Text(text) => segment
                         .px_2()
-                        .line_height(px(20.))
+                        .line_height(dp(20.))
                         .whitespace_nowrap()
                         .text_color(if selected {
                             colors.text_strong
@@ -106,9 +106,9 @@ impl RenderOnce for SegmentedControl {
                         .flex()
                         .items_center()
                         .justify_center()
-                        .w(px(24.))
-                        .h(px(20.))
-                        .child(Icon::new(icon).size(px(14.)).color(if selected {
+                        .w(dp(24.))
+                        .h(dp(20.))
+                        .child(Icon::new(icon).size(dp(14.)).color(if selected {
                             colors.text_strong
                         } else {
                             colors.text_faint
@@ -129,7 +129,7 @@ impl RenderOnce for SegmentedControl {
 
 #[cfg(feature = "mocks")]
 pub(crate) fn mocks() -> Vec<mock::Mock> {
-    use gpui::size;
+    use gpui::{px, size};
 
     vec![
         mock::Mock::component("segmented_control", "gallery", || {

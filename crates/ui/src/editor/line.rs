@@ -8,14 +8,14 @@ use gpui::{
     Style, TextAlign, TextRun, UnderlineStyle, WeakEntity, Window, fill, point, prelude::*, px,
     relative, size,
 };
-use theme::ActiveTheme;
+use theme::{ActiveTheme, Dp, dp};
 
 use super::Editor;
 
 /// How wide a selected line ending shows.
-const NEWLINE_WIDTH: f32 = 6.;
+const NEWLINE_WIDTH: Dp = dp(6.);
 /// How close to the edge the cursor may get before the text scrolls sideways.
-const SCROLL_MARGIN: f32 = 24.;
+const SCROLL_MARGIN: Dp = dp(24.);
 
 /// Where a line was painted last frame.
 pub(super) struct LineLayout {
@@ -137,7 +137,8 @@ impl Element for LineElement {
         let (selected_color, cursor_color) = (colors.accent_solid.opacity(0.4), colors.text_strong);
         let x = |index: usize| bounds.left() + shaped.x_for_index(index) - self.scroll_x;
         if let Some((selected, past_end)) = &self.selection {
-            let end = x(selected.end) + if *past_end { px(NEWLINE_WIDTH) } else { px(0.) };
+            let newline = NEWLINE_WIDTH.to_pixels(window.rem_size());
+            let end = x(selected.end) + if *past_end { newline } else { px(0.) };
             window.paint_quad(fill(
                 Bounds::from_corners(
                     point(x(selected.start), bounds.top()),
@@ -186,7 +187,9 @@ impl LineElement {
         window: &mut Window,
         cx: &mut App,
     ) {
-        let margin = px(SCROLL_MARGIN).min(bounds.size.width / 2.);
+        let margin = SCROLL_MARGIN
+            .to_pixels(window.rem_size())
+            .min(bounds.size.width / 2.);
         let scroll_x = if cursor_x > bounds.right() - margin {
             self.scroll_x + (cursor_x - (bounds.right() - margin))
         } else if cursor_x < bounds.left() + margin {
