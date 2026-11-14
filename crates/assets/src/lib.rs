@@ -63,12 +63,12 @@ const FILES: &[(&str, &[u8])] = bundled![
     "icons/x.svg",
 ];
 
-/// The app icon, which X11 shows on each window. The build script renders it from `icon.svg`.
+/// The app icon, which X11 shows on each window.
 pub fn app_icon() -> Arc<RgbaImage> {
     static ICON: LazyLock<Arc<RgbaImage>> = LazyLock::new(|| {
-        let png = include_bytes!(concat!(env!("OUT_DIR"), "/icon.png"));
+        let png = include_bytes!("../../../assets/icon.png");
         let image = image::load_from_memory_with_format(png, ImageFormat::Png)
-            .expect("the build script writes a valid PNG");
+            .expect("icon.png is a valid PNG");
         Arc::new(image.into_rgba8())
     });
     ICON.clone()

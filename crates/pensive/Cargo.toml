@@ -34,8 +34,6 @@ demo = ["ui/mocks", "model/fixtures", "dep:image", "dep:mock"]
 
 [build-dependencies]
 embed-resource.workspace = true
-image = { workspace = true, features = ["ico"] }
-resvg.workspace = true
 
 [dev-dependencies]
 gpui = { workspace = true, features = ["test-support"] }
