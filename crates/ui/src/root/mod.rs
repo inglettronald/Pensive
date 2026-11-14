@@ -7,9 +7,9 @@ mod mocks;
 
 use components::{TitleBar, TitleBarProject};
 use gpui::{
-    App, Bounds, Context, Entity, FocusHandle, Focusable, MouseButton, Pixels, Size, Subscription,
-    TitlebarOptions, Window, WindowBounds, WindowDecorations, WindowOptions, actions, div,
-    prelude::*, px, size, svg,
+    App, Bounds, Context, DisplayId, Entity, FocusHandle, Focusable, MouseButton, Pixels, Size,
+    Subscription, TitlebarOptions, Window, WindowBounds, WindowDecorations, WindowOptions, actions,
+    div, prelude::*, px, size, svg,
 };
 #[cfg(feature = "mocks")]
 pub(crate) use mocks::mocks;
@@ -201,7 +201,7 @@ impl Pensive {
                 project,
                 new_window: true,
             } => {
-                open_window(self.projects.clone(), Some(project), cx);
+                open_beside(window, self.projects.clone(), Some(project), false, cx);
                 self.close_palette(window, cx);
             }
             PaletteEvent::Open { project, .. } => {
@@ -324,7 +324,7 @@ impl Pensive {
                 cx,
                 |this: &mut Self, new_window: bool, window, cx| {
                     if new_window {
-                        open_with(this.projects.clone(), this.project_id(), true, cx);
+                        open_beside(window, this.projects.clone(), this.project_id(), true, cx);
                     } else if this.settings.is_some() {
                         this.close_settings(window, cx);
                     } else {
@@ -382,22 +382,60 @@ impl Pensive {
     }
 }
 
-/// Opens a window on `project`, or on the landing screen.
-pub fn open_window(projects: Entity<Projects>, project: Option<ProjectId>, cx: &mut App) {
-    open_with(projects, project, false, cx);
+/// The share of a display's usable area that a windowed window takes.
+const WINDOWED_SHARE: f32 = 0.75;
+/// The windowed size when GPUI reports no display.
+const FALLBACK_SIZE: Size<Pixels> = size(px(1280.), px(800.));
+/// The smallest a window can be resized to.
+const MIN_SIZE: Size<Pixels> = size(px(720.), px(480.));
+
+/// Opens the app's first window on the landing screen.
+pub fn open_window(projects: Entity<Projects>, cx: &mut App) {
+    open_with(projects, None, false, first_window_bounds(cx), cx);
 }
 
-/// The size a window opens at.
-pub(crate) const WINDOW_SIZE: Size<Pixels> = size(px(960.), px(640.));
+/// Opens a window on `project`, with Settings open in it if `settings`. It opens windowed on
+/// `window`'s display, so it doesn't hide the window it was opened from.
+fn open_beside(
+    window: &Window,
+    projects: Entity<Projects>,
+    project: Option<ProjectId>,
+    settings: bool,
+    cx: &mut App,
+) {
+    let bounds = WindowBounds::Windowed(windowed_bounds(window.display(cx).map(|d| d.id()), cx));
+    open_with(projects, project, settings, bounds, cx);
+}
 
-/// A Pensive window of `window_size`, centered on the screen.
-pub(crate) fn window_options(window_size: Size<Pixels>, cx: &App) -> WindowOptions {
+/// The first window fills the screen, and un-maximizing it gives the windowed size.
+pub(crate) fn first_window_bounds(cx: &App) -> WindowBounds {
+    WindowBounds::Maximized(windowed_bounds(None, cx))
+}
+
+/// A window centered on `display`, sized as a share of it. With no display given it uses the
+/// primary one, or the first GPUI knows, since Wayland reports no primary display.
+fn windowed_bounds(display: Option<DisplayId>, cx: &App) -> Bounds<Pixels> {
+    let display = display
+        .and_then(|id| cx.find_display(id))
+        .or_else(|| cx.primary_display())
+        .or_else(|| cx.displays().into_iter().next());
+    let size = display
+        .as_ref()
+        .map_or(FALLBACK_SIZE, |display| {
+            display
+                .visible_bounds()
+                .size
+                .map(|side| side * WINDOWED_SHARE)
+        })
+        .max(&MIN_SIZE);
+    Bounds::centered(display.map(|display| display.id()), size, cx)
+}
+
+/// A Pensive window that opens at `bounds`.
+pub(crate) fn window_options(bounds: WindowBounds) -> WindowOptions {
     WindowOptions {
-        window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
-            None,
-            window_size,
-            cx,
-        ))),
+        window_bounds: Some(bounds),
+        window_min_size: Some(MIN_SIZE),
         titlebar: Some(TitlebarOptions {
             title: Some("Pensive".into()),
             appears_transparent: true,
@@ -409,9 +447,16 @@ pub(crate) fn window_options(window_size: Size<Pixels>, cx: &App) -> WindowOptio
     }
 }
 
-/// Opens a window on `project` or the landing screen, with Settings open in it if `settings`.
-fn open_with(projects: Entity<Projects>, project: Option<ProjectId>, settings: bool, cx: &mut App) {
-    cx.open_window(window_options(WINDOW_SIZE, cx), |window, cx| {
+/// Opens a window at `bounds` on `project` or the landing screen, with Settings open in it if
+/// `settings`.
+fn open_with(
+    projects: Entity<Projects>,
+    project: Option<ProjectId>,
+    settings: bool,
+    bounds: WindowBounds,
+    cx: &mut App,
+) {
+    cx.open_window(window_options(bounds), |window, cx| {
         cx.new(|cx| {
             let mut pensive = Pensive::new(projects, project, window, cx);
             if settings {
@@ -646,8 +691,10 @@ mod tests {
             crate::init(cx);
         });
         let projects = cx.new(|_| model::fixtures::projects());
+        // GPUI's test windows can't maximize, so the demo opens windowed.
+        let size = Some(size(px(960.), px(640.)));
         let opened = cx.update(|cx| {
-            crate::open_demo_window(projects.clone(), Some("project/unsaved"), None, cx)
+            crate::open_demo_window(projects.clone(), Some("project/unsaved"), size, cx)
         });
         assert_eq!(opened, Ok(()));
         cx.run_until_parked();
@@ -661,7 +708,7 @@ mod tests {
         assert_eq!(shown.as_deref(), Some("project/unsaved"));
 
         let missing =
-            cx.update(|cx| crate::open_demo_window(projects, Some("project/nope"), None, cx));
+            cx.update(|cx| crate::open_demo_window(projects, Some("project/nope"), size, cx));
         assert!(missing.unwrap_err().contains("`project/nope`"));
     }
 

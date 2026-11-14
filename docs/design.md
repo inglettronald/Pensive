@@ -74,6 +74,8 @@ Breadcrumbs separate levels with a chevron, never a slash. They are used for pro
 
 The app owns the projects, Settings and the theme. Each window has its own command palette and shows one project. Switching projects replaces the one shown, and Ctrl Enter in the palette opens one in a new window instead.
 
+The first window opens maximized. A window opened from it, with Ctrl Enter or Ctrl-click on the gear, opens windowed on the same display, so it doesn't hide the first.
+
 A window has a title bar, the sidebar on the left and the main view. There is no status bar.
 
 Pensive draws its own title bar. It holds project › branch as a breadcrumb, the palette trigger in the middle, the settings gear and the window controls. Clicking a crumb opens the palette scoped with `project:` or `branch:`. macOS keeps its own window buttons on the left. So does a Linux compositor that decorates windows itself, and Pensive's title bar then sits under the compositor's.
