@@ -1,4 +1,4 @@
-//! The title bar Pensive draws: project › branch, the palette trigger, the gear and the window
+//! The title bar Pensive draws: project › branch, the palette trigger, the notice badge and the window
 //! controls, with the empty space dragging the window.
 
 use gpui::{
@@ -32,7 +32,6 @@ pub struct TitleBar {
     on_branch: Option<Callback<()>>,
     on_palette: Option<Callback<()>>,
     settings_open: bool,
-    on_settings: Option<Callback<bool>>,
 }
 
 impl TitleBar {
@@ -43,7 +42,7 @@ impl TitleBar {
     )]
     pub const TRAFFIC_LIGHTS: Point<Pixels> = point(px(14.), px(13.));
 
-    /// With no project, the bar is empty apart from the gear and the window controls, as on the
+    /// With no project, the bar is empty apart from the window controls, as on the
     /// landing screen, where the palette is the page.
     pub fn new(project: Option<TitleBarProject>) -> Self {
         Self {
@@ -57,7 +56,6 @@ impl TitleBar {
             on_branch: None,
             on_palette: None,
             settings_open: false,
-            on_settings: None,
         }
     }
 
@@ -67,7 +65,7 @@ impl TitleBar {
         self
     }
 
-    /// The badge beside the gear: an icon and a count for the errors and for the warnings held,
+    /// The badge at the right end: an icon and a count for the errors and for the warnings held,
     /// outlined in the worse one. It's gone while both are zero.
     pub fn notices(mut self, errors: usize, warnings: usize, open: bool) -> Self {
         self.notices = (errors, warnings);
@@ -96,17 +94,9 @@ impl TitleBar {
         self
     }
 
-    /// Fills the gear, and names Settings after the project in place of the branch, or alone
-    /// with no project.
+    /// Names Settings after the project in place of the branch, or alone with no project.
     pub fn settings_open(mut self, open: bool) -> Self {
         self.settings_open = open;
-        self
-    }
-
-    /// Called when the gear is clicked, with whether Ctrl (Cmd on macOS) was held to ask for a
-    /// new window.
-    pub fn on_settings(mut self, handler: impl Fn(bool, &mut Window, &mut App) + 'static) -> Self {
-        self.on_settings = Some(std::rc::Rc::new(handler));
         self
     }
 
@@ -122,7 +112,6 @@ impl RenderOnce for TitleBar {
         let theme = cx.theme();
         let colors = &theme.colors;
         let density = cx.density();
-        let (gear_fill, gear_radius) = (colors.surface_selected, density.radius_md);
         let crumb = |id: &'static str| {
             div()
                 .id(id)
@@ -336,26 +325,6 @@ impl RenderOnce for TitleBar {
                     .flex_1()
                     .min_w_0()
                     .children(badge)
-                    .child(
-                        div()
-                            .id("settings")
-                            .debug_selector(|| "settings".into())
-                            .occlude()
-                            .rounded(gear_radius)
-                            .when(self.settings_open, |gear| gear.bg(gear_fill))
-                            .child(
-                                IconButton::new("gear", IconName::Settings)
-                                    .size(dp(28.))
-                                    .when(self.settings_open, |gear| {
-                                        gear.color(|colors| colors.text_strong)
-                                    }),
-                            )
-                            .when_some(self.on_settings, |gear, handler| {
-                                gear.on_click(move |event, window, cx| {
-                                    handler(event.modifiers().secondary(cx), window, cx)
-                                })
-                            }),
-                    )
                     .children(controls),
             )
     }
@@ -449,7 +418,7 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
                 .section(
                     "Settings open",
                     [(
-                        "The gear filled, and Settings in place of the branch",
+                        "Settings in place of the branch",
                         bar(TitleBar::new(Some(TitleBarProject {
                             initial: "P".into(),
                             name: "pensive".into(),
@@ -463,7 +432,7 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
                 .section(
                     "Landing",
                     [(
-                        "No project: only the gear and the controls",
+                        "No project: only the controls",
                         bar(TitleBar::new(None).controls(true)),
                     )],
                 )

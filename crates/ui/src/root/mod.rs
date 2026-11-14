@@ -23,8 +23,9 @@ use crate::{
     notices::NoticeOverlay,
     palette::{Keyword, OPEN_ON, PaletteEvent, PaletteView, Tab, scrim},
     project::ProjectView,
+    rail_gear::GearClicked,
     settings::{SettingsEvent, SettingsView},
-    view_callback, view_callback_with,
+    view_callback,
     window_frame::{draws_window_controls, window_frame},
 };
 
@@ -61,10 +62,12 @@ pub struct Pensive {
     projects: Entity<Projects>,
     /// The project shown, with its view.
     project: Option<(ProjectId, Entity<ProjectView>)>,
+    /// Hears the project view's gear.
+    project_gear: Option<Subscription>,
     palette: Entity<PaletteView>,
     palette_open: bool,
     /// Shown in place of the project or the landing screen while open.
-    settings: Option<(Entity<SettingsView>, Subscription)>,
+    settings: Option<(Entity<SettingsView>, [Subscription; 2])>,
     notices: Entity<NoticeOverlay>,
     /// Set while the window shows the mock browser, or a mock opened from it.
     #[cfg(feature = "mocks")]
@@ -88,6 +91,7 @@ impl Pensive {
         let mut pensive = Self {
             projects,
             project: None,
+            project_gear: None,
             palette,
             palette_open: false,
             settings: None,
@@ -112,17 +116,35 @@ impl Pensive {
             Some((view, _)) => view.clone(),
             None => {
                 let view = cx.new(SettingsView::new);
-                let subscription =
+                let closed =
                     cx.subscribe_in(&view, window, |pensive, _, event, window, cx| match event {
                         SettingsEvent::Close => pensive.close_settings(window, cx),
                     });
-                self.settings = Some((view.clone(), subscription));
+                let gear = cx.subscribe_in(&view, window, Self::use_gear);
+                self.settings = Some((view.clone(), [closed, gear]));
                 view
             }
         };
         self.palette_open = false;
         window.focus(&view.focus_handle(cx), cx);
         cx.notify();
+    }
+
+    /// Opens Settings, or closes it when it's open. `new_window` opens it in a window of its own.
+    fn use_gear<V>(
+        &mut self,
+        _: &Entity<V>,
+        gear: &GearClicked,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if gear.new_window {
+            open_beside(window, self.projects.clone(), self.project_id(), true, cx);
+        } else if self.settings.is_some() {
+            self.close_settings(window, cx);
+        } else {
+            self.open_settings(window, cx);
+        }
     }
 
     /// Back to the project, or to the landing screen and its palette.
@@ -181,6 +203,7 @@ impl Pensive {
         if self.project_id() != Some(project) {
             let projects = self.projects.clone();
             let view = cx.new(|cx| ProjectView::new(projects, project, window, cx));
+            self.project_gear = Some(cx.subscribe_in(&view, window, Self::use_gear));
             self.project = Some((project, view));
         }
         if let Some((_, view)) = &self.project {
@@ -337,19 +360,7 @@ impl Pensive {
             .on_notices(view_callback(cx, |this: &mut Self, _, cx| {
                 this.notices.update(cx, NoticeOverlay::toggle_list)
             }))
-            .settings_open(settings_open)
-            .on_settings(view_callback_with(
-                cx,
-                |this: &mut Self, new_window: bool, window, cx| {
-                    if new_window {
-                        open_beside(window, this.projects.clone(), this.project_id(), true, cx);
-                    } else if this.settings.is_some() {
-                        this.close_settings(window, cx);
-                    } else {
-                        this.open_settings(window, cx);
-                    }
-                },
-            ));
+            .settings_open(settings_open);
         if settings_open {
             let back = view_callback(cx, |this: &mut Self, window, cx| {
                 this.close_settings(window, cx)
@@ -710,6 +721,15 @@ mod tests {
         assert!(settings_focused);
     }
 
+    #[gpui::test]
+    fn the_gear_in_settings_goes_back_to_the_project(cx: &mut TestAppContext) {
+        let (view, cx) = pensive_window(cx);
+        cx.dispatch_action(OpenSettings);
+        let gear = cx.debug_bounds("settings").unwrap();
+        click(cx, gear.center());
+        view.read_with(cx, |pensive, _| assert!(pensive.settings.is_none()));
+    }
+
     #[cfg(feature = "mocks")]
     #[gpui::test]
     fn leaving_a_mock_puts_back_the_settings_it_changed(cx: &mut TestAppContext) {
@@ -735,7 +755,7 @@ mod tests {
 
     #[cfg(feature = "mocks")]
     #[gpui::test]
-    fn the_gear_over_a_component_mock_leaves_the_mocks_for_settings(cx: &mut TestAppContext) {
+    fn opening_settings_over_a_component_mock_leaves_the_mocks(cx: &mut TestAppContext) {
         use crate::mock_browser::ViewMocks;
 
         let (view, cx) = pensive_window(cx);
@@ -749,8 +769,7 @@ mod tests {
         });
         cx.run_until_parked();
 
-        let gear = cx.debug_bounds("settings").unwrap();
-        click(cx, gear.center());
+        cx.dispatch_action(OpenSettings);
         view.read_with(cx, |pensive, _| {
             assert!(pensive.mocks.is_none());
             assert!(pensive.settings.is_some());

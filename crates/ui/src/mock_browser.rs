@@ -15,7 +15,7 @@ use settings::Settings;
 use theme::{ActiveTheme, Density, Theme, Typeset, dp};
 
 use crate::{
-    key_binding, root::OpenSettings, text_editing, text_input::TextInput, view_callback,
+    key_binding, text_editing, text_input::TextInput, view_callback,
     window_frame::draws_window_controls,
 };
 
@@ -442,7 +442,7 @@ impl Render for MockBrowser {
 }
 
 /// The title bar over the mocks, with the window controls and a breadcrumb from Mocks down
-/// through `place`. Its gear leaves the mocks for Settings.
+/// through `place`.
 fn title_bar(place: &[&'static str], window: &Window, cx: &App) -> TitleBar {
     let colors = &cx.theme().colors;
     let crumbs = std::iter::once("Mocks")
@@ -462,7 +462,6 @@ fn title_bar(place: &[&'static str], window: &Window, cx: &App) -> TitleBar {
     TitleBar::new(None)
         .location(div().pl_1p5().typeset(cx.density().body).child(location))
         .controls(draws_window_controls(window))
-        .on_settings(|_, window, cx| window.dispatch_action(Box::new(OpenSettings), cx))
 }
 
 /// A mock opened from the browser.

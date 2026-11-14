@@ -12,6 +12,7 @@ mod mock_window;
 mod notices;
 mod palette;
 mod project;
+mod rail_gear;
 mod root;
 mod setting_control;
 mod settings;
@@ -25,6 +26,7 @@ mod window_frame;
 use std::{rc::Rc, time::Duration};
 
 use gpui::{Action, App, Context, KeyBinding, KeyBindingContextPredicate, Task, Window};
+use theme::{Dp, dp};
 
 #[cfg(feature = "mocks")]
 pub use demo_window::open_demo_window;
@@ -32,6 +34,10 @@ pub use demo_window::open_demo_window;
 pub use mock_browser::MockThumbnails;
 pub use palette::{Keyword, PaletteEvent, PaletteView, Tab};
 pub use root::{Pensive, open_window};
+
+/// A view's panel beside the rail, such as the project's changes or Settings' pages. Every view
+/// uses one width, so switching between them reads as a change of view rather than a new place.
+const PANEL: Dp = dp(280.);
 
 /// Binds every view's keys and declares the views' settings.
 pub fn init(cx: &mut App) {
