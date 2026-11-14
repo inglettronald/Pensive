@@ -4,9 +4,9 @@ use std::ops::Range;
 
 use gpui::{
     AnyElement, Div, FontWeight, HighlightStyle, Hsla, SharedString, Stateful, StyledText, div,
-    prelude::*, px,
+    prelude::*,
 };
-use theme::{Density, Theme, ThemeColors, Typeset};
+use theme::{Density, Theme, ThemeColors, Typeset, dp};
 
 use super::KeyHint;
 use crate::{Icon, IconName, Kbd};
@@ -156,7 +156,7 @@ impl PaletteEntry {
     ) -> Stateful<Div> {
         let colors = &theme.colors;
         let height = if self.description.is_some() {
-            density.row_height + px(16.)
+            density.row_height + dp(16.)
         } else {
             density.row_height
         };
@@ -192,7 +192,7 @@ impl PaletteEntry {
                         .flex_none()
                         .items_center()
                         .justify_center()
-                        .size(px(20.))
+                        .size(dp(20.))
                         .rounded(density.radius_sm)
                         .bg(if selected {
                             colors.border
@@ -206,7 +206,7 @@ impl PaletteEntry {
                         .flex()
                         .flex_none()
                         .justify_center()
-                        .w(px(20.))
+                        .w(dp(20.))
                         .child(Icon::new(icon)),
                 }
             }))
@@ -269,7 +269,7 @@ impl PaletteEntry {
             .children(self.when.map(|when| {
                 div()
                     .flex_none()
-                    .min_w(px(24.))
+                    .min_w(dp(24.))
                     .text_right()
                     .whitespace_nowrap()
                     .typeset(density.small)

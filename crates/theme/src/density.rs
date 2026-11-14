@@ -1,9 +1,11 @@
 //! Sizes that change between the Calm and Dense presets. Spacing doesn't change, so it uses
 //! GPUI's spacing methods (`gap_1`, `p_3`, ...) directly.
 
-use gpui::{FontWeight, Global, Pixels, Styled, px};
+use gpui::{FontWeight, Global, Styled};
 use serde::{Deserialize, Serialize};
 use strum::{IntoStaticStr, VariantArray};
+
+use crate::{Dp, dp};
 
 #[derive(
     Clone, Copy, Debug, PartialEq, Eq, VariantArray, IntoStaticStr, Serialize, Deserialize,
@@ -28,8 +30,8 @@ pub enum TextRole {
 
 #[derive(Clone, Copy, Debug)]
 pub struct TextSize {
-    pub size: Pixels,
-    pub line_height: Pixels,
+    pub size: Dp,
+    pub line_height: Dp,
     pub weight: FontWeight,
 }
 
@@ -43,12 +45,12 @@ pub struct Density {
     /// Code text. Its line height is also the diff line height.
     pub code: TextSize,
     /// List rows such as files and commits.
-    pub row_height: Pixels,
-    pub row_padding: Pixels,
-    pub row_gap: Pixels,
-    pub radius_sm: Pixels,
-    pub radius_md: Pixels,
-    pub radius_lg: Pixels,
+    pub row_height: Dp,
+    pub row_padding: Dp,
+    pub row_gap: Dp,
+    pub radius_sm: Dp,
+    pub radius_md: Dp,
+    pub radius_lg: Dp,
 }
 
 impl Global for Density {}
@@ -56,8 +58,8 @@ impl Global for Density {}
 impl DensityPreset {
     pub fn density(self) -> Density {
         let text = |size: f32, line_height: f32, weight| TextSize {
-            size: px(size),
-            line_height: px(line_height),
+            size: dp(size),
+            line_height: dp(line_height),
             weight,
         };
         let heading = text(18., 24., FontWeight::SEMIBOLD);
@@ -72,12 +74,12 @@ impl DensityPreset {
                 small,
                 label,
                 code: text(13., 20., FontWeight::NORMAL),
-                row_height: px(28.),
-                row_padding: px(12.),
-                row_gap: px(10.),
-                radius_sm: px(4.),
-                radius_md: px(6.),
-                radius_lg: px(8.),
+                row_height: dp(28.),
+                row_padding: dp(12.),
+                row_gap: dp(10.),
+                radius_sm: dp(4.),
+                radius_md: dp(6.),
+                radius_lg: dp(8.),
             },
             Self::Dense => Density {
                 heading,
@@ -86,12 +88,12 @@ impl DensityPreset {
                 small,
                 label,
                 code: text(12., 18., FontWeight::NORMAL),
-                row_height: px(24.),
-                row_padding: px(8.),
-                row_gap: px(8.),
-                radius_sm: px(3.),
-                radius_md: px(4.),
-                radius_lg: px(6.),
+                row_height: dp(24.),
+                row_padding: dp(8.),
+                row_gap: dp(8.),
+                radius_sm: dp(3.),
+                radius_md: dp(4.),
+                radius_lg: dp(6.),
             },
         }
     }

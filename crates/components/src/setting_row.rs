@@ -5,9 +5,8 @@ use std::ops::Range;
 
 use gpui::{
     AnyElement, App, ElementId, HighlightStyle, SharedString, StyledText, Window, div, prelude::*,
-    px,
 };
-use theme::{ActiveTheme, Typeset};
+use theme::{ActiveTheme, Typeset, dp};
 
 use crate::{Callback, IconButton, IconName, callback};
 
@@ -63,7 +62,7 @@ impl RenderOnce for SettingRow {
         let colors = &cx.theme().colors;
         let density = cx.density();
         // The reset button's slot is kept on every row, so the controls in a card line up.
-        let slot = px(20.);
+        let slot = dp(20.);
         let reset = match (&self.default, self.on_reset) {
             (Some(_), Some(handler)) => IconButton::new("reset", IconName::RotateCcw)
                 .size(slot)
@@ -87,7 +86,7 @@ impl RenderOnce for SettingRow {
             .items_center()
             .gap_4()
             .px(density.row_padding)
-            .py((density.row_height - px(8.)) / 2.)
+            .py((density.row_height - dp(8.)) / 2.)
             .child(
                 div()
                     .flex_1()
@@ -122,7 +121,7 @@ impl RenderOnce for SettingRow {
 
 #[cfg(feature = "mocks")]
 pub(crate) fn mocks() -> Vec<mock::Mock> {
-    use gpui::size;
+    use gpui::{px, size};
 
     use crate::{Card, SegmentedControl, Select, Toggle};
 
@@ -130,7 +129,7 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
         mock::Mock::component("setting_row", "gallery", || {
             div()
                 .p_6()
-                .w(px(640.))
+                .w(dp(640.))
                 .child(
                     Card::new("rows").rows([
                         SettingRow::new(

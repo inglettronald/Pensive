@@ -1,8 +1,8 @@
 //! The headings on the settings page: a category's icon tile, name and description, the same
 //! smaller for a search result, and a page's title under a rule.
 
-use gpui::{App, IntoElement, ParentElement, RenderOnce, SharedString, Styled, Window, div, px};
-use theme::{ActiveTheme, Typeset};
+use gpui::{App, IntoElement, ParentElement, RenderOnce, SharedString, Styled, Window, div};
+use theme::{ActiveTheme, Typeset, dp};
 
 use crate::{Icon, IconName};
 
@@ -50,10 +50,10 @@ impl RenderOnce for CategoryHeading {
                 .px(density.row_padding)
                 .typeset(density.small)
                 .text_color(colors.text_faint)
-                .child(Icon::new(self.icon).size(px(14.)).color(colors.text_faint))
+                .child(Icon::new(self.icon).size(dp(14.)).color(colors.text_faint))
                 .child(self.name);
         }
-        let tile = density.row_height + px(4.);
+        let tile = density.row_height + dp(4.);
         div()
             .flex()
             .items_start()
@@ -136,13 +136,13 @@ impl RenderOnce for PageHeading {
 
 #[cfg(feature = "mocks")]
 pub(crate) fn mocks() -> Vec<mock::Mock> {
-    use gpui::{IntoElement, size};
+    use gpui::{IntoElement, px, size};
 
     vec![
         mock::Mock::component("settings_heading", "gallery", || {
             div()
                 .px_6()
-                .w(px(640.))
+                .w(dp(640.))
                 .child(CategoryHeading::new(
                     IconName::Palette,
                     "Appearance",

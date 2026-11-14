@@ -2,12 +2,12 @@
 //! drains until it folds away.
 
 use gpui::{App, BoxShadow, ElementId, SharedString, Window, div, hsla, prelude::*, px, relative};
-use theme::{ActiveTheme, Typeset};
+use theme::{ActiveTheme, Dp, Typeset, dp};
 
 use crate::{Callback, IconButton, IconName, Tag, Tone, callback};
 
 /// Wide enough for a path in its detail before it wraps.
-const WIDTH: f32 = 340.;
+const WIDTH: Dp = dp(340.);
 
 #[derive(IntoElement)]
 pub struct Toast {
@@ -85,7 +85,7 @@ impl RenderOnce for Toast {
             .relative()
             .flex()
             .gap_2p5()
-            .w(px(WIDTH))
+            .w(WIDTH)
             .py_2p5()
             .pl_3()
             .pr_2p5()
@@ -129,7 +129,7 @@ impl RenderOnce for Toast {
             )
             .child(
                 IconButton::new("close", IconName::X)
-                    .size(px(20.))
+                    .size(dp(20.))
                     .color(|colors| colors.text_faint)
                     .when_some(self.on_close, |button, handler| {
                         button.on_click(move |window, cx| handler((), window, cx))

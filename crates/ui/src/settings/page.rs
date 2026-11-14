@@ -6,7 +6,7 @@ use components::{
 };
 use gpui::{AnyElement, App, Context, SharedString, div, prelude::*, px};
 use settings::AnySetting;
-use theme::{ActiveTheme, Typeset};
+use theme::{ActiveTheme, Typeset, dp};
 
 use super::{
     Anchor, SettingsView, Spot,
@@ -38,10 +38,10 @@ impl SettingsView {
                 .gap_2()
                 .pt_2p5()
                 .pb_1()
-                .px(px(18.))
+                .px(dp(18.))
                 .typeset(density.label)
                 .text_color(colors.text_faint)
-                .children(icon.map(|icon| Icon::new(icon).size(px(14.)).color(colors.text_faint)))
+                .children(icon.map(|icon| Icon::new(icon).size(dp(14.)).color(colors.text_faint)))
                 .child(text.to_uppercase())
         };
         let home = &outline[self.home()];

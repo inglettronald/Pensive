@@ -1,9 +1,9 @@
 //! The rows of a list of changed files, as a list, a tree or by symbol.
 
 use components::{DiffStat, Icon, IconName, ListRow, RingFill, StatusRing, Tone, Tooltip};
-use gpui::{AnyElement, App, Context, ElementId, Hsla, Window, div, prelude::*, px};
+use gpui::{AnyElement, App, Context, ElementId, Hsla, Window, div, prelude::*};
 use model::{FileChange, FileStatus, Staging, SymbolKind};
-use theme::{ActiveTheme, ThemeColors};
+use theme::{ActiveTheme, ThemeColors, dp};
 
 use crate::{view_callback, view_callback_with};
 
@@ -146,7 +146,7 @@ impl ProjectView {
         .when(symbol.kind != SymbolKind::Heading, ListRow::code)
         .leading(
             Icon::new(icon)
-                .size(px(12.))
+                .size(dp(12.))
                 .color(cx.theme().colors.text_faint),
         )
         .trailing(DiffStat::new(symbol.added, symbol.removed))

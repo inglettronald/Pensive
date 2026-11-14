@@ -58,6 +58,12 @@ The first build takes a few minutes while it downloads and compiles dependencies
 
 Pensive also runs in a browser tab, on the sample projects. Install [Trunk](https://trunkrs.dev) once with `cargo install trunk --locked`, then run `trunk serve --config crates/pensive/Trunk.toml` and open http://127.0.0.1:8765. Trunk rebuilds and reloads the page when you save. The browser needs WebGPU or WebGL 2.
 
+### The window icon on Linux
+
+On Wayland, a window gets its icon from the desktop entry named after its app id, so a plain `cargo run` shows a generic icon. Run `script/install-desktop-entry` once to install `pensive.desktop` and the icon into `~/.local/share`.
+
+The entry also adds Pensive to your app launcher. The launcher runs `pensive` from your `PATH`, so it only works after `cargo install --path crates/pensive`.
+
 ## Where everything comes from
 
 | Piece | What it is | Installed by |

@@ -1,8 +1,8 @@
 //! How a tooltip, toast or badge reports how something went: an icon, and an outline tinted with
 //! the tone's hue.
 
-use gpui::{Hsla, px};
-use theme::ThemeColors;
+use gpui::Hsla;
+use theme::{ThemeColors, dp};
 
 use crate::{Icon, IconName};
 
@@ -28,7 +28,7 @@ impl Tone {
 
     pub(crate) fn icon(self, size: f32, colors: &ThemeColors) -> Option<Icon> {
         self.mark(colors)
-            .map(|(name, hue)| Icon::new(name).size(px(size)).color(hue))
+            .map(|(name, hue)| Icon::new(name).size(dp(size)).color(hue))
     }
 
     /// The border, 45% of the way to the tone's hue.

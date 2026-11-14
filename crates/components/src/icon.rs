@@ -1,8 +1,8 @@
 //! A bundled icon, tinted like text.
 
-use gpui::{App, Hsla, IntoElement, Pixels, RenderOnce, SharedString, Styled, Window, px, svg};
+use gpui::{App, Hsla, IntoElement, RenderOnce, SharedString, Styled, Window, svg};
 use strum::{IntoStaticStr, VariantArray};
-use theme::ActiveTheme;
+use theme::{ActiveTheme, Dp, dp};
 
 /// A Lucide icon, named as Lucide names it, or a window control, which are drawn to match each
 /// other in size where Lucide's minus, square and x don't. Each one is a file in `assets/icons`.
@@ -63,7 +63,7 @@ impl IconName {
 #[derive(IntoElement)]
 pub struct Icon {
     name: IconName,
-    size: Pixels,
+    size: Dp,
     color: Option<Hsla>,
 }
 
@@ -72,12 +72,12 @@ impl Icon {
     pub fn new(name: IconName) -> Self {
         Self {
             name,
-            size: px(16.),
+            size: dp(16.),
             color: None,
         }
     }
 
-    pub fn size(mut self, size: Pixels) -> Self {
+    pub fn size(mut self, size: Dp) -> Self {
         self.size = size;
         self
     }
@@ -100,7 +100,7 @@ impl RenderOnce for Icon {
 
 #[cfg(feature = "mocks")]
 pub(crate) fn mocks() -> Vec<mock::Mock> {
-    use gpui::size;
+    use gpui::{px, size};
 
     vec![
         mock::Mock::component("icon", "gallery", || {
@@ -108,7 +108,7 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
                 IconName::VARIANTS.iter().map(move |&name| {
                     (
                         <&str>::from(name),
-                        Icon::new(name).size(px(size)).into_any_element(),
+                        Icon::new(name).size(dp(size)).into_any_element(),
                     )
                 })
             };

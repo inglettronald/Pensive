@@ -2,7 +2,7 @@
 
 use gpui::{App, ElementId, FontWeight, Hsla, SharedString, Window, div, prelude::*, px};
 use strum::{IntoStaticStr, VariantArray};
-use theme::{ActiveTheme, ThemeColors, Typeset};
+use theme::{ActiveTheme, ThemeColors, Typeset, dp};
 
 use crate::{Callback, Icon, IconName, OnClick as _, callback};
 
@@ -147,7 +147,7 @@ impl RenderOnce for Button {
             .flex_none()
             .items_center()
             .gap_2()
-            .h(if self.small { px(24.) } else { px(28.) })
+            .h(if self.small { dp(24.) } else { dp(28.) })
             .when_else(self.small, |button| button.px_2(), |button| button.px_3())
             .rounded(if self.small {
                 density.radius_sm
@@ -163,7 +163,7 @@ impl RenderOnce for Button {
             .whitespace_nowrap()
             .children(
                 self.icon
-                    .map(|icon| Icon::new(icon).size(px(12.)).color(label)),
+                    .map(|icon| Icon::new(icon).size(dp(12.)).color(label)),
             )
             .child(self.label)
             .when(!self.disabled, |button| {
@@ -171,7 +171,7 @@ impl RenderOnce for Button {
                     .hover(move |button| button.bg(tone.hover))
                     .when_some(self.shortcut, |button, keys| {
                         button
-                            .child(div().w(px(1.)).h(px(12.)).bg(tone.divider))
+                            .child(div().w(px(1.)).h(dp(12.)).bg(tone.divider))
                             .child(
                                 div()
                                     .font_weight(FontWeight::NORMAL)

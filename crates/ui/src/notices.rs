@@ -4,10 +4,10 @@
 use std::time::{Duration, SystemTime};
 
 use components::{NoticeList, NoticeRow, Tag, Toast, Tone, Tooltip};
-use gpui::{App, Context, Entity, Subscription, Task, Window, div, prelude::*, px};
+use gpui::{App, Context, Entity, Subscription, Task, Window, div, prelude::*};
 use model::{Notice, Notices, Origin, Severity};
 use settings::{AnySetting, Choice, Control, Page, Setting, Settings};
-use theme::ActiveTheme;
+use theme::{ActiveTheme, dp};
 
 use crate::{age::age, view_callback, view_callback_with};
 
@@ -257,7 +257,7 @@ impl NoticeOverlay {
 /// frame, so a mock that fixes that clock draws the same line every time.
 impl Render for NoticeOverlay {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let title_bar = cx.density().row_height + px(12.);
+        let title_bar = cx.density().row_height + dp(12.);
         let total = Duration::from_secs(TOAST_SECONDS.get(cx).into());
         let corner = div()
             .absolute()
@@ -267,7 +267,7 @@ impl Render for NoticeOverlay {
             .items_end()
             .gap_2();
         if self.list_open {
-            return corner.top(title_bar + px(4.)).child(self.list(cx));
+            return corner.top(title_bar + dp(4.)).child(self.list(cx));
         }
         let draining = |shown: &Shown| shown.shows_timer() && shown.draining.is_some();
         if self.toasts.iter().any(draining) {
@@ -279,7 +279,7 @@ impl Render for NoticeOverlay {
             .iter()
             .map(|shown| self.toast(shown, total, now, cx))
             .collect();
-        corner.top(title_bar + px(12.)).children(toasts)
+        corner.top(title_bar + dp(12.)).children(toasts)
     }
 }
 
