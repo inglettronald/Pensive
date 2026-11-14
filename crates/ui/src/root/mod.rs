@@ -392,8 +392,16 @@ impl Pensive {
 /// The share of a display's usable area that a windowed window takes.
 const WINDOWED_SHARE: f32 = 0.75;
 /// The windowed size when GPUI reports no display.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "window sizes are in window pixels"
+)]
 const FALLBACK_SIZE: Size<Pixels> = size(px(1280.), px(800.));
 /// The smallest a window can be resized to.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "window sizes are in window pixels"
+)]
 const MIN_SIZE: Size<Pixels> = size(px(720.), px(480.));
 
 /// Opens the app's first window on the landing screen.
@@ -562,6 +570,10 @@ impl Render for Pensive {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "tests click and scroll at window pixels"
+)]
 mod tests {
     use gpui::{TestAppContext, VisualTestContext, point};
     use model::fixtures::HARBOR;

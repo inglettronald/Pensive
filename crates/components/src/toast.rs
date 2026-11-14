@@ -4,10 +4,9 @@
 use std::time::Duration;
 
 use gpui::{
-    Animation, AnimationExt, App, BoxShadow, ElementId, SharedString, Window, div, hsla,
-    prelude::*, px, relative,
+    Animation, AnimationExt, App, ElementId, SharedString, Window, div, prelude::*, relative,
 };
-use theme::{ActiveTheme, Dp, Typeset, dp};
+use theme::{ActiveTheme, Dp, HAIRLINE, Shadow, Typeset, dp};
 
 use crate::{Callback, IconButton, IconName, Tag, Tone, callback};
 
@@ -84,7 +83,7 @@ impl RenderOnce for Toast {
                 .bottom_0()
                 .left(density.radius_lg)
                 .right(density.radius_lg)
-                .h(px(1.))
+                .h(HAIRLINE)
                 .child(match draining {
                     Some(duration) => line
                         .with_animation(
@@ -110,9 +109,7 @@ impl RenderOnce for Toast {
             .border_1()
             .border_color(self.tone.outline(colors))
             .bg(colors.surface_raised)
-            .shadow(vec![
-                BoxShadow::new(px(0.), px(8.), hsla(0., 0., 0., 0.55)).blur_radius(px(24.)),
-            ])
+            .shadow(Shadow::Medium.layers())
             .children(
                 self.tone
                     .icon(16., colors)
@@ -160,8 +157,6 @@ impl RenderOnce for Toast {
 
 #[cfg(feature = "mocks")]
 pub(crate) fn mocks() -> Vec<mock::Mock> {
-    use gpui::size;
-
     vec![
         mock::Mock::component("toast", "gallery", || {
             crate::Gallery::new("Toast")
@@ -189,6 +184,6 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
                 )
                 .into_any_element()
         })
-        .size(size(px(960.), px(320.))),
+        .size(960., 320.),
     ]
 }

@@ -121,8 +121,6 @@ impl RenderOnce for SettingRow {
 
 #[cfg(feature = "mocks")]
 pub(crate) fn mocks() -> Vec<mock::Mock> {
-    use gpui::{px, size};
-
     use crate::{Card, SegmentedControl, Select, Toggle};
 
     vec![
@@ -160,6 +158,6 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
                 )
                 .into_any_element()
         })
-        .size(size(px(640.), px(240.))),
+        .size(640., 240.),
     ]
 }

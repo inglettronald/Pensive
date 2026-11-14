@@ -1,8 +1,8 @@
 //! A labeled button in one of four emphases, with an optional icon and shortcut.
 
-use gpui::{App, ElementId, FontWeight, Hsla, SharedString, Window, div, prelude::*, px};
+use gpui::{App, ElementId, FontWeight, Hsla, SharedString, Window, div, prelude::*};
 use strum::{IntoStaticStr, VariantArray};
-use theme::{ActiveTheme, ThemeColors, Typeset, dp};
+use theme::{ActiveTheme, HAIRLINE, ThemeColors, Typeset, dp};
 
 use crate::{Callback, Icon, IconName, OnClick as _, callback};
 
@@ -171,7 +171,7 @@ impl RenderOnce for Button {
                     .hover(move |button| button.bg(tone.hover))
                     .when_some(self.shortcut, |button, keys| {
                         button
-                            .child(div().w(px(1.)).h(dp(12.)).bg(tone.divider))
+                            .child(div().w(HAIRLINE).h(dp(12.)).bg(tone.divider))
                             .child(
                                 div()
                                     .font_weight(FontWeight::NORMAL)
@@ -186,8 +186,6 @@ impl RenderOnce for Button {
 
 #[cfg(feature = "mocks")]
 pub(crate) fn mocks() -> Vec<mock::Mock> {
-    use gpui::size;
-
     #[derive(Clone, Copy, VariantArray, IntoStaticStr)]
     enum Shape {
         Plain,
@@ -225,6 +223,6 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
                 )
                 .into_any_element()
         })
-        .size(size(px(1280.), px(320.))),
+        .size(1280., 320.),
     ]
 }

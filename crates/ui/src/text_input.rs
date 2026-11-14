@@ -9,9 +9,9 @@ use gpui::{
     EntityInputHandler, EventEmitter, FocusHandle, Focusable, GlobalElementId, LayoutId,
     MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, PaintQuad, Pixels, Point,
     ShapedLine, SharedString, Style, TextRun, UTF16Selection, UnderlineStyle, Window, actions, div,
-    fill, point, prelude::*, px, relative, size,
+    fill, point, prelude::*, relative, size,
 };
-use theme::ActiveTheme;
+use theme::{ActiveTheme, CARET, HAIRLINE};
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::key_binding;
@@ -585,7 +585,7 @@ impl Element for TextElement {
                     len: marked_range.end - marked_range.start,
                     underline: Some(UnderlineStyle {
                         color: Some(run.color),
-                        thickness: px(1.0),
+                        thickness: HAIRLINE,
                         wavy: false,
                     }),
                     ..run.clone()
@@ -611,7 +611,7 @@ impl Element for TextElement {
             let cursor = fill(
                 Bounds::new(
                     point(bounds.left() + x, bounds.top()),
-                    size(px(1.5), bounds.bottom() - bounds.top()),
+                    size(CARET, bounds.bottom() - bounds.top()),
                 ),
                 colors.text_strong,
             );

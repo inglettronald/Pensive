@@ -147,7 +147,7 @@ impl SettingsView {
                 (false, None) => {
                     let offset = view.scroll.handle().offset();
                     view.search_from = Some((view.current.category, offset));
-                    view.scroll.jump_to(px(0.));
+                    view.scroll.jump_to(Pixels::ZERO);
                 }
                 (true, Some((_, offset))) => {
                     view.search_from = None;
@@ -236,7 +236,9 @@ impl SettingsView {
             }
         }
         let bottom = scroll.max_offset().y;
-        if bottom > px(0.) && scrolled >= bottom - px(1.) {
+        #[expect(clippy::disallowed_methods, reason = "a pixel of slack for rounding")]
+        let at_bottom = bottom > Pixels::ZERO && scrolled >= bottom - px(1.);
+        if at_bottom {
             current = last;
         }
         if let Some(spot) = current {
@@ -435,6 +437,10 @@ impl Render for SettingsView {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "tests click and scroll at window pixels"
+)]
 mod tests {
     use gpui::{Modifiers, ScrollDelta, TestAppContext, VisualTestContext, point};
 

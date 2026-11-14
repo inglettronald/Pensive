@@ -49,6 +49,7 @@ impl Mock {
         Self::with_content(subject, name, Content::Element(render))
     }
 
+    #[expect(clippy::disallowed_methods, reason = "a mock's window is a fixed size")]
     fn with_content(subject: &'static str, name: &'static str, content: Content) -> Self {
         Self {
             subject,
@@ -58,8 +59,13 @@ impl Mock {
         }
     }
 
-    pub fn size(self, size: Size<Pixels>) -> Self {
-        Self { size, ..self }
+    /// The window the mock renders in, in pixels.
+    #[expect(clippy::disallowed_methods, reason = "a mock's window is a fixed size")]
+    pub fn size(self, width: f32, height: f32) -> Self {
+        Self {
+            size: size(px(width), px(height)),
+            ..self
+        }
     }
 
     /// `<subject>/<name>`, which is also its PNG's path under `target/mocks`.

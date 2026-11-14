@@ -3,8 +3,8 @@
 
 use std::rc::Rc;
 
-use gpui::{AnyElement, App, ElementId, SharedString, Window, deferred, div, prelude::*, px};
-use theme::{ActiveTheme, Dp, Typeset, dp};
+use gpui::{AnyElement, App, ElementId, SharedString, Window, deferred, div, prelude::*};
+use theme::{ActiveTheme, Dp, HAIRLINE, Typeset, dp};
 
 use crate::{Callback, Icon, IconName, OnClick as _, callback};
 
@@ -196,7 +196,7 @@ impl RenderOnce for ListRow {
                             .top_0()
                             .bottom_0()
                             .left(GUIDE_OFFSET)
-                            .w(px(1.))
+                            .w(HAIRLINE)
                             .bg(colors.border_subtle),
                     )
             }))
@@ -264,8 +264,6 @@ impl RenderOnce for ListRow {
 
 #[cfg(feature = "mocks")]
 pub(crate) fn mocks() -> Vec<mock::Mock> {
-    use gpui::size;
-
     use crate::{DiffStat, RingFill, StatusRing, Tooltip, gallery::Panel};
 
     vec![
@@ -341,6 +339,6 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
                 )
                 .into_any_element()
         })
-        .size(size(px(960.), px(640.))),
+        .size(960., 640.),
     ]
 }

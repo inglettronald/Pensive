@@ -271,8 +271,6 @@ impl RenderOnce for Rail {
 
 #[cfg(feature = "mocks")]
 pub(crate) fn mocks() -> Vec<mock::Mock> {
-    use gpui::{px, size};
-
     fn items(dimmed: &[usize]) -> Vec<RailItem> {
         [
             (IconName::Palette, "Appearance"),
@@ -310,6 +308,6 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
                 )
                 .into_any_element()
         })
-        .size(size(px(520.), px(360.))),
+        .size(520., 360.),
     ]
 }

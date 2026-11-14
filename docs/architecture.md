@@ -28,7 +28,7 @@ Every crate except `git` and `config` also depends on `gpui`.
 - A model holds its backend inside a `model::Backend`. Its `call` runs on GPUI's background executor, since backend calls block, and reports a failure to the notices, so no caller can drop the error. The failure is still returned, for a view that also shows it on the control that started the call.
 - A new component ships with its gallery. A new view ships with mocks for the states that change the screen, usually empty, loading, error and a typical case.
 - Every visual state of a component can be set through its props, so a mock can show it without input.
-- Sizes are written with `theme::dp`, a pixel at 100% zoom that renders as rems, so the whole interface scales with the window's rem size. GPUI's spacing methods (`gap_1`, `p_3`, ...) are rems already. `px` is for 1 px lines, shadows, window sizes and measurements taken while painting.
+- Sizes are written with `theme::dp`, a pixel at 100% zoom that renders as rems, so the whole interface scales with the window's rem size. GPUI's spacing methods (`gap_1`, `p_3`, ...) are rems already. Clippy disallows `gpui::px` outside `pensive`. The few fixed sizes are `theme::HAIRLINE`, `theme::CARET` and `theme::Shadow`, and window sizes and pixel tests carry an `#[expect]` that says why.
 
 ## Mocks
 

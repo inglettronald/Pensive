@@ -1,5 +1,5 @@
-//! `Dp`, a length in pixels at 100% zoom. It styles elements as rems, so everything sized in it
-//! grows and shrinks with the window's rem size.
+//! The interface's lengths: `Dp`, a pixel at 100% zoom that styles elements as rems so it grows
+//! and shrinks with the window's rem size, and the few lines that stay fixed at any zoom.
 
 use std::{
     fmt,
@@ -11,6 +11,20 @@ use gpui::{AbsoluteLength, DefiniteLength, Length, Pixels, Rems, px, rems};
 /// GPUI's rem size at 100% zoom.
 const REM: f32 = 16.;
 
+/// Dividers and underlines.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "lines stay one pixel at any zoom"
+)]
+pub const HAIRLINE: Pixels = px(1.);
+
+/// The text cursor's width.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "the cursor stays thin at any zoom"
+)]
+pub const CARET: Pixels = px(1.5);
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, PartialOrd)]
 pub struct Dp(pub f32);
 
@@ -21,7 +35,7 @@ pub const fn dp(pixels: f32) -> Dp {
 impl Dp {
     /// The length on screen, for painting and layout math.
     pub fn to_pixels(self, rem_size: Pixels) -> Pixels {
-        px(self.0 / REM * rem_size.as_f32())
+        rem_size * (self.0 / REM)
     }
 
     pub fn max(self, other: Self) -> Self {
@@ -100,6 +114,10 @@ impl From<Dp> for Length {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "compares against pixels on screen"
+)]
 mod tests {
     use super::*;
 

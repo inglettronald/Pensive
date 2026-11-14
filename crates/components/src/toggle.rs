@@ -66,8 +66,6 @@ impl RenderOnce for Toggle {
 
 #[cfg(feature = "mocks")]
 pub(crate) fn mocks() -> Vec<mock::Mock> {
-    use gpui::{px, size};
-
     vec![
         mock::Mock::component("toggle", "gallery", || {
             crate::Gallery::new("Toggle")
@@ -78,11 +76,15 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
                 )
                 .into_any_element()
         })
-        .size(size(px(480.), px(200.))),
+        .size(480., 200.),
     ]
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "tests click and scroll at window pixels"
+)]
 mod tests {
     use std::{cell::Cell, rc::Rc};
 

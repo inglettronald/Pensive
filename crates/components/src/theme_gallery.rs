@@ -1,8 +1,7 @@
 //! The theme's gallery: every color role, both fonts, and the type scale in each density.
 
 use gpui::{
-    AnyElement, App, Hsla, IntoElement, ParentElement, RenderOnce, Rgba, Styled, Window, div, px,
-    size,
+    AnyElement, App, Hsla, IntoElement, ParentElement, RenderOnce, Rgba, Styled, Window, div,
 };
 use mock::Mock;
 use theme::{ActiveTheme, DensityPreset, TextRole, ThemeOverride, Typeset, VariantArray, dp, gray};
@@ -22,17 +21,18 @@ code = "Geist Mono"
 "##;
 
 pub(crate) fn mocks() -> Vec<Mock> {
-    let size = size(px(1280.), px(1240.));
+    let size = |mock: Mock| mock.size(1280., 1240.);
     vec![
-        Mock::component("theme", "gallery", || ThemeGallery.into_any_element()).size(size),
-        Mock::new("theme", "override", |_, cx| {
+        size(Mock::component("theme", "gallery", || {
+            ThemeGallery.into_any_element()
+        })),
+        size(Mock::new("theme", "override", |_, cx| {
             let (theme_override, _) =
                 ThemeOverride::from_toml(SAMPLE_OVERRIDE).expect("the sample override is valid");
             let theme = cx.theme().with_override(&theme_override);
             cx.set_global(theme);
             mock::element_view(cx, || ThemeGallery.into_any_element())
-        })
-        .size(size),
+        })),
     ]
 }
 

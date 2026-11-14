@@ -100,8 +100,6 @@ impl RenderOnce for Icon {
 
 #[cfg(feature = "mocks")]
 pub(crate) fn mocks() -> Vec<mock::Mock> {
-    use gpui::{px, size};
-
     vec![
         mock::Mock::component("icon", "gallery", || {
             let named = |size: f32| {
@@ -117,7 +115,7 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
                 .section("20 px", named(20.))
                 .into_any_element()
         })
-        .size(size(px(960.), px(520.))),
+        .size(960., 520.),
     ]
 }
 

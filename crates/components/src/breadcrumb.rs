@@ -2,7 +2,7 @@
 
 use std::{cell::Cell, rc::Rc};
 
-use gpui::{AnyElement, App, Hsla, Window, canvas, div, prelude::*, px};
+use gpui::{AnyElement, App, Hsla, Pixels, Window, canvas, div, prelude::*};
 use theme::{ActiveTheme, Dp, ThemeColors, dp};
 
 use crate::{
@@ -69,7 +69,7 @@ impl RenderOnce for Breadcrumb {
             return row.children(crumbs);
         };
         let background = background(&cx.theme().colors);
-        let width = Rc::new(Cell::new(px(0.)));
+        let width = Rc::new(Cell::new(Pixels::ZERO));
         let measured = width.clone();
         // Laid out in reverse, so crumbs that don't fit run off the start rather than the end,
         // and the spacer keeps crumbs that fit at the start.
@@ -111,8 +111,6 @@ impl RenderOnce for Breadcrumb {
 
 #[cfg(feature = "mocks")]
 pub(crate) fn mocks() -> Vec<mock::Mock> {
-    use gpui::size;
-
     vec![
         mock::Mock::component("breadcrumb", "gallery", || {
             crate::Gallery::new("Breadcrumb")
@@ -154,6 +152,6 @@ pub(crate) fn mocks() -> Vec<mock::Mock> {
                 )
                 .into_any_element()
         })
-        .size(size(px(640.), px(300.))),
+        .size(640., 300.),
     ]
 }

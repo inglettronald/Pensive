@@ -30,6 +30,13 @@ pub(crate) use saving::{SAVE, SaveMode, declare_settings};
 /// What Tab inserts, unless the line is indented with tabs.
 const INDENT: &str = "    ";
 
+/// How far past the viewport the list lays out rows, so scrolling doesn't show gaps.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "measured against the viewport in pixels"
+)]
+const OVERDRAW: Pixels = px(200.);
+
 pub struct Editor {
     document: Option<Entity<Document>>,
     mode: Mode,
@@ -69,13 +76,13 @@ impl Editor {
             mode: Mode::default(),
             revealed: Vec::new(),
             rows: Vec::new(),
-            list: ListState::new(0, ListAlignment::Top, px(200.)),
+            list: ListState::new(0, ListAlignment::Top, OVERDRAW),
             selection: 0..0,
             reversed: false,
             marked: None,
             goal_column: None,
             selecting: false,
-            scroll_x: px(0.),
+            scroll_x: Pixels::ZERO,
             autoscroll: false,
             layouts: Layouts::default(),
             focus_handle,
@@ -117,7 +124,7 @@ impl Editor {
         self.marked = None;
         self.goal_column = None;
         self.revealed.clear();
-        self.scroll_x = px(0.);
+        self.scroll_x = Pixels::ZERO;
         self.rows.clear();
         self.list.reset(0);
         self.reveal_cursor(cx);
@@ -660,13 +667,13 @@ impl Editor {
     fn on_scroll(&mut self, event: &ScrollEvent, window: &mut Window, cx: &mut Context<Self>) {
         let line_height = cx.density().code.line_height.to_pixels(window.rem_size());
         let delta = event.delta.pixel_delta(line_height);
-        let sideways = if event.modifiers.shift && delta.x == px(0.) {
+        let sideways = if event.modifiers.shift && delta.x == Pixels::ZERO {
             delta.y
         } else {
             delta.x
         };
-        if sideways != px(0.) {
-            self.set_scroll_x((self.scroll_x - sideways).max(px(0.)), cx);
+        if sideways != Pixels::ZERO {
+            self.set_scroll_x((self.scroll_x - sideways).max(Pixels::ZERO), cx);
         }
     }
 }
