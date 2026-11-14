@@ -34,6 +34,7 @@ demo = ["ui/mocks", "model/fixtures", "dep:image", "dep:mock"]
 
 [dev-dependencies]
 anyhow.workspace = true
+image.workspace = true
 mock.workspace = true
 ui = { workspace = true, features = ["mocks"] }
 
