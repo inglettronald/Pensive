@@ -25,7 +25,7 @@ pub fn startup() -> Startup {
     // Until Pensive remembers projects, they come from the command line.
     let paths = std::env::args_os().skip(1).map(PathBuf::from).collect();
     Startup {
-        projects: Projects::new(Arc::new(git::GitCli)),
+        projects: Projects::new(Arc::new(git::GitCli::from_env())),
         paths,
         config: config.map(|folder| Arc::new(folder) as Arc<dyn ConfigBackend>),
     }

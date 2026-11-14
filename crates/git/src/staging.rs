@@ -4,13 +4,18 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 
-use crate::command::git_with_input;
+use crate::GitCli;
 
 /// Stages all of each file at `paths`, relative to the worktree's root, or unstages it. A path can
 /// be a file that was deleted, or, when unstaging, the old path of a rename. The paths go to Git
 /// on its standard input, so any number fits, and literally, so a name such as `*.rs` matches only
 /// itself.
-pub(crate) fn set_staged(worktree: &Path, paths: &[PathBuf], staged: bool) -> Result<()> {
+pub(crate) fn set_staged(
+    cli: &GitCli,
+    worktree: &Path,
+    paths: &[PathBuf],
+    staged: bool,
+) -> Result<()> {
     if paths.is_empty() {
         return Ok(());
     }
@@ -26,7 +31,7 @@ pub(crate) fn set_staged(worktree: &Path, paths: &[PathBuf], staged: bool) -> Re
         &["reset", "-q"]
     };
     let args = [&["--literal-pathspecs"], command, PATHS_FROM_STDIN].concat();
-    git_with_input(worktree, &args, Some(&input)).map(drop)
+    cli.git_with_input(worktree, &args, Some(&input)).map(drop)
 }
 
 const PATHS_FROM_STDIN: &[&str] = &["--pathspec-from-file=-", "--pathspec-file-nul"];

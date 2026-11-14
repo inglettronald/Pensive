@@ -13,7 +13,7 @@ use model::{
     Base, Changes, Commit, FileChange, FileKey, FileStatus, FileVersions, Source, Upstream, Version,
 };
 
-use crate::{command::git, parse};
+use crate::{GitCli, parse};
 
 /// Commits listed past the base, or on the base branch itself, so a long-lived branch still
 /// reads quickly.
@@ -21,10 +21,16 @@ const MAX_COMMITS: usize = 100;
 /// An untracked file larger than this counts no lines, rather than being read to count them.
 const MAX_COUNTED_BYTES: u64 = 4 * 1024 * 1024;
 
-pub(crate) fn changes(worktree: &Path) -> Result<Changes> {
-    let head = text(git(worktree, &["rev-parse", "-q", "--verify", "HEAD"]).ok());
-    let branch = text(git(worktree, &["symbolic-ref", "-q", "--short", "HEAD"]).ok());
-    let uncommitted = uncommitted(worktree, head.is_some())?;
+pub(crate) fn changes(cli: &GitCli, worktree: &Path) -> Result<Changes> {
+    let head = text(
+        cli.git(worktree, &["rev-parse", "-q", "--verify", "HEAD"])
+            .ok(),
+    );
+    let branch = text(
+        cli.git(worktree, &["symbolic-ref", "-q", "--short", "HEAD"])
+            .ok(),
+    );
+    let uncommitted = uncommitted(cli, worktree, head.is_some())?;
     let Some(head) = head else {
         // Before the first commit there's nothing to compare with.
         return Ok(Changes {
@@ -33,14 +39,14 @@ pub(crate) fn changes(worktree: &Path) -> Result<Changes> {
         });
     };
     let tracking = match &branch {
-        Some(branch) => tracking(worktree, branch)?,
+        Some(branch) => tracking(cli, worktree, branch)?,
         None => None,
     };
-    let base = base(worktree, branch.as_deref(), tracking.as_ref())?;
+    let base = base(cli, worktree, branch.as_deref(), tracking.as_ref())?;
     let unpushed: Option<HashSet<String>> = match &tracking {
         Some(tracking) => {
             let exclude = format!("^{}", tracking.reference);
-            let listed = git(worktree, &["rev-list", &head, &exclude, "--"])?;
+            let listed = cli.git(worktree, &["rev-list", &head, &exclude, "--"])?;
             Some(lines(&listed).collect())
         }
         None => None,
@@ -56,7 +62,7 @@ pub(crate) fn changes(worktree: &Path) -> Result<Changes> {
         &range.iter().map(String::as_str).collect::<Vec<_>>(),
     ]
     .concat();
-    let commits = parse::log(&git(worktree, &args)?)
+    let commits = parse::log(&cli.git(worktree, &args)?)
         .into_iter()
         .map(|logged| Commit {
             pushed: unpushed
@@ -82,14 +88,12 @@ pub(crate) fn changes(worktree: &Path) -> Result<Changes> {
 }
 
 /// Each changed file with its line counts against HEAD, staged and unstaged together.
-fn uncommitted(worktree: &Path, has_head: bool) -> Result<Vec<FileChange>> {
-    let mut files = parse::uncommitted(&git(worktree, parse::UNCOMMITTED)?);
+fn uncommitted(cli: &GitCli, worktree: &Path, has_head: bool) -> Result<Vec<FileChange>> {
+    let mut files = parse::uncommitted(&cli.git(worktree, parse::UNCOMMITTED)?);
     // Before the first commit only staged files can be compared, with nothing.
     let against = if has_head { "HEAD" } else { "--cached" };
-    let counts = parse::line_counts(&git(
-        worktree,
-        &[parse::LINE_COUNTS, &[against, "--"]].concat(),
-    )?);
+    let counts =
+        parse::line_counts(&cli.git(worktree, &[parse::LINE_COUNTS, &[against, "--"]].concat())?);
     for file in &mut files {
         (file.added, file.removed) = match counts.get(&file.path) {
             Some(&count)
@@ -124,9 +128,9 @@ struct Tracking {
     behind: usize,
 }
 
-fn tracking(worktree: &Path, branch: &str) -> Result<Option<Tracking>> {
+fn tracking(cli: &GitCli, worktree: &Path, branch: &str) -> Result<Option<Tracking>> {
     let local = format!("refs/heads/{branch}");
-    let listed = git(
+    let listed = cli.git(
         worktree,
         &[
             "for-each-ref",
@@ -145,13 +149,15 @@ fn tracking(worktree: &Path, branch: &str) -> Result<Option<Tracking>> {
         return Ok(None);
     };
     // The upstream is configured but hasn't been fetched yet.
-    let Some(reference) = resolve(worktree, &reference) else {
+    let Some(reference) = resolve(cli, worktree, &reference) else {
         return Ok(None);
     };
     let range = format!("HEAD..{reference}");
-    let behind = text(Some(git(worktree, &["rev-list", "--count", &range, "--"])?))
-        .and_then(|count| count.parse().ok())
-        .unwrap_or(0);
+    let behind = text(Some(
+        cli.git(worktree, &["rev-list", "--count", &range, "--"])?,
+    ))
+    .and_then(|count| count.parse().ok())
+    .unwrap_or(0);
     Ok(Some(Tracking {
         remote,
         reference,
@@ -163,25 +169,29 @@ fn tracking(worktree: &Path, branch: &str) -> Result<Option<Tracking>> {
 /// or `None` on that branch itself. It's the remote's default branch, or failing that `main` or
 /// `master`. Both its local and remote refs count, since either may be behind the other.
 fn base(
+    cli: &GitCli,
     worktree: &Path,
     branch: Option<&str>,
     tracking: Option<&Tracking>,
 ) -> Result<Option<(String, Vec<String>)>> {
     let remote = tracking.map_or("origin", |tracking| tracking.remote.as_str());
     let remote_head = format!("refs/remotes/{remote}/HEAD");
-    let default = text(git(worktree, &["symbolic-ref", "-q", &remote_head]).ok())
-        .and_then(|target| {
-            let name = target
-                .strip_prefix(&format!("refs/remotes/{remote}/"))?
-                .to_owned();
-            Some((name, target))
+    let default = text(
+        cli.git(worktree, &["symbolic-ref", "-q", &remote_head])
+            .ok(),
+    )
+    .and_then(|target| {
+        let name = target
+            .strip_prefix(&format!("refs/remotes/{remote}/"))?
+            .to_owned();
+        Some((name, target))
+    })
+    .or_else(|| {
+        ["main", "master"].into_iter().find_map(|name| {
+            let local = resolve(cli, worktree, &format!("refs/heads/{name}"))?;
+            Some((name.to_owned(), local))
         })
-        .or_else(|| {
-            ["main", "master"].into_iter().find_map(|name| {
-                let local = resolve(worktree, &format!("refs/heads/{name}"))?;
-                Some((name.to_owned(), local))
-            })
-        });
+    });
     let Some((name, remote_ref)) = default else {
         return Ok(None);
     };
@@ -189,19 +199,20 @@ fn base(
         return Ok(None);
     }
     let mut references = vec![remote_ref];
-    references.extend(resolve(worktree, &format!("refs/heads/{name}")));
+    references.extend(resolve(cli, worktree, &format!("refs/heads/{name}")));
     references.dedup();
     Ok(Some((name, references)))
 }
 
 /// `reference` if it exists.
-fn resolve(worktree: &Path, reference: &str) -> Option<String> {
-    git(worktree, &["rev-parse", "-q", "--verify", reference])
+fn resolve(cli: &GitCli, worktree: &Path, reference: &str) -> Option<String> {
+    cli.git(worktree, &["rev-parse", "-q", "--verify", reference])
         .is_ok()
         .then(|| reference.to_owned())
 }
 
 pub(crate) fn versions(
+    cli: &GitCli,
     worktree: &Path,
     key: &FileKey,
     renamed_from: Option<&Path>,
@@ -209,12 +220,12 @@ pub(crate) fn versions(
     let old_path = renamed_from.unwrap_or(&key.path);
     Ok(match &key.source {
         Source::Uncommitted => FileVersions {
-            old: blob(worktree, "HEAD", old_path)?,
+            old: blob(cli, worktree, "HEAD", old_path)?,
             new: read_file(worktree, &key.path)?,
         },
         Source::Commit(sha) => FileVersions {
-            old: blob(worktree, &format!("{sha}^"), old_path)?,
-            new: blob(worktree, sha, &key.path)?,
+            old: blob(cli, worktree, &format!("{sha}^"), old_path)?,
+            new: blob(cli, worktree, sha, &key.path)?,
         },
     })
 }
@@ -260,8 +271,8 @@ pub(crate) fn write_file(worktree: &Path, path: &Path, text: &str) -> Result<()>
 /// match the worktree's. A submodule there is a commit, not a file, so it's missing, and so is
 /// every file in a revision that doesn't exist, such as HEAD before the first commit or the parent
 /// of a root commit.
-fn blob(worktree: &Path, revision: &str, path: &Path) -> Result<Version> {
-    let listed = match git(
+fn blob(cli: &GitCli, worktree: &Path, revision: &str, path: &Path) -> Result<Version> {
+    let listed = match cli.git(
         worktree,
         &[
             OsString::from("ls-tree"),
@@ -274,7 +285,7 @@ fn blob(worktree: &Path, revision: &str, path: &Path) -> Result<Version> {
         ],
     ) {
         Ok(listed) => listed,
-        Err(_) if resolve(worktree, revision).is_none() => return Ok(Version::Missing),
+        Err(_) if resolve(cli, worktree, revision).is_none() => return Ok(Version::Missing),
         Err(error) => return Err(error),
     };
     // Nothing listed means the revision has no file at `path`.
@@ -285,7 +296,7 @@ fn blob(worktree: &Path, revision: &str, path: &Path) -> Result<Version> {
     let id = OsString::from(String::from_utf8_lossy(id).into_owned());
     let mut path_arg = OsString::from("--path=");
     path_arg.push(path);
-    let content = git(
+    let content = cli.git(
         worktree,
         &[OsString::from("cat-file"), "--filters".into(), path_arg, id],
     )?;
