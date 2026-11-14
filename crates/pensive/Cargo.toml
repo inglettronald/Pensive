@@ -24,8 +24,11 @@ image = { workspace = true, optional = true }
 mock = { workspace = true, optional = true }
 
 [target.'cfg(target_family = "wasm")'.dependencies]
+anyhow.workspace = true
 log.workspace = true
 model = { workspace = true, features = ["fixtures"] }
+# Settings live in the tab's session storage.
+web-sys = { version = "0.3", features = ["Storage", "Window"] }
 
 [features]
 # The sample projects in place of real ones, and the mock browser on Ctrl Shift M with thumbnails

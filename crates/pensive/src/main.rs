@@ -4,6 +4,8 @@ mod config_sync;
 mod demo;
 #[cfg(feature = "demo")]
 mod mock_thumbnails;
+#[cfg(target_family = "wasm")]
+mod session_storage;
 
 use gpui::{App, AppContext};
 

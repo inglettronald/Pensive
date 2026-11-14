@@ -44,4 +44,16 @@ crates.io stops at gpui 0.2.2, which can't render headless. We pin `gpui` and `g
 
 ## The browser build
 
-`pensive` also builds for `wasm32-unknown-unknown`, where `gpui_web` draws the window to a canvas. A browser has no `git` command or config folder, so `git` and `config` are desktop-only dependencies. In their place the app opens the sample projects and keeps settings in memory. It runs single-threaded, because threads in wasm need a nightly toolchain, so `gpui_platform`'s default features are off.
+`pensive` also builds for `wasm32-unknown-unknown`, where `gpui_web` draws the window to a canvas. A browser has no `git` command or config folder, so `git` and `config` are desktop-only dependencies. It runs single-threaded, because threads in wasm need a nightly toolchain, so `gpui_platform`'s default features are off.
+
+## Backends in each build
+
+`crates/pensive/src/backends.rs` picks each model's backend when the app starts.
+
+| Backend | Desktop | `cargo demo` | Browser |
+|---|---|---|---|
+| Git | The `git` command, on the repositories named on the command line | The sample projects from `model::fixtures` | The sample projects |
+| Config | The config folder, watched for edits | Memory, so each run starts from the defaults and the config folder is never read | The tab's session storage, so a reload keeps the settings and a new tab starts from the defaults. Memory if the browser denies storage. There are no user themes |
+| Clock | The system clock | The system clock | The browser's clock, through `web-time` |
+
+The sample projects measure how long ago each one was opened from a fixed time, so they read the same in every run.

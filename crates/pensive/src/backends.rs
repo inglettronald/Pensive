@@ -1,5 +1,5 @@
 //! The Git and config backends Pensive starts with: the real ones on the desktop, and the sample
-//! ones in the browser and in a demo build.
+//! projects in the browser and in a demo build. docs/architecture.md lists what each one does.
 
 use std::{path::PathBuf, sync::Arc};
 
@@ -31,14 +31,32 @@ pub fn startup() -> Startup {
     }
 }
 
-/// The sample projects, with settings kept in memory until the app closes. A browser tab has no
-/// `git` command or config folder, and a demo shouldn't read or change the real config, which
-/// mocks would otherwise save their settings into.
+/// The sample projects. A browser tab has no `git` command or config folder, and a demo shouldn't
+/// read or change the real config, which mocks would otherwise save their settings into.
 #[cfg(any(target_family = "wasm", feature = "demo"))]
 pub fn startup() -> Startup {
     Startup {
         projects: model::fixtures::projects(),
         paths: Vec::new(),
-        config: Some(Arc::new(model::fixtures::FakeConfig::default())),
+        config: Some(sample_config()),
     }
+}
+
+/// Settings in the tab's session storage, so a reload keeps them and a new tab starts from the
+/// defaults.
+#[cfg(target_family = "wasm")]
+fn sample_config() -> Arc<dyn ConfigBackend> {
+    match crate::session_storage::SessionStorageConfig::open() {
+        Some(storage) => Arc::new(storage),
+        None => {
+            log::warn!("The browser denied session storage, so settings last until a reload");
+            Arc::new(model::fixtures::FakeConfig::default())
+        }
+    }
+}
+
+/// Settings in memory, so every `cargo demo` starts from the defaults.
+#[cfg(all(feature = "demo", not(target_family = "wasm")))]
+fn sample_config() -> Arc<dyn ConfigBackend> {
+    Arc::new(model::fixtures::FakeConfig::default())
 }

@@ -56,7 +56,7 @@ The first build takes a few minutes while it downloads and compiles dependencies
 
 ### Running in a browser
 
-Pensive also runs in a browser tab, on the sample projects. Install [Trunk](https://trunkrs.dev) once with `cargo install trunk --locked`, then run `trunk serve --config crates/pensive/Trunk.toml` and open http://127.0.0.1:8765. Trunk rebuilds and reloads the page when you save. The browser needs WebGPU or WebGL 2.
+Pensive also runs in a browser tab, on the sample projects. Settings last until the tab closes: a reload keeps them, and a new tab starts from the defaults. Install [Trunk](https://trunkrs.dev) once with `cargo install trunk --locked`, then run `trunk serve --config crates/pensive/Trunk.toml` and open http://127.0.0.1:8765. Trunk rebuilds and reloads the page when you save. The browser needs WebGPU or WebGL 2.
 
 ### The window icon on Linux
 
