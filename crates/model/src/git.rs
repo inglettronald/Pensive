@@ -18,8 +18,8 @@ pub trait GitBackend: Send + Sync + Debug {
     /// each file's line counts but not its lines.
     fn changes(&self, worktree: &Path) -> Result<Changes>;
 
-    /// Reads both versions of the file `key` names. A renamed file's old version is at
-    /// `renamed_from`.
+    /// Reads both versions of the file `key` names. The old version is read at `renamed_from`
+    /// when that's given, and at `key.path` otherwise, where a renamed file has none.
     fn versions(
         &self,
         worktree: &Path,

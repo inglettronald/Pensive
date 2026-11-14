@@ -282,6 +282,17 @@ fn add_projects() -> Vec<Sample> {
             ('+', "    pub branches: Vec<Branch>,"),
             (' ', "}"),
         ]),
+        file(
+            "crates/model/src/recent.rs",
+            FileStatus::Deleted,
+            (0, 3),
+            Staging::Staged,
+        )
+        .removed(&[
+            "//! The folders opened most recently.",
+            "",
+            "pub struct Recent(Vec<PathBuf>);",
+        ]),
     ]
 }
 

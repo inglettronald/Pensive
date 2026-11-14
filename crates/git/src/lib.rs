@@ -631,14 +631,20 @@ mod tests {
         let repo = Repo::new();
         repo.write("modified.rs", "a\nb\n");
         repo.write("deleted.rs", "gone\n");
-        repo.write("before.rs", "one\ntwo\nthree\n");
+        repo.write("renamed_in_commit.rs", "one\ntwo\nthree\n");
+        repo.write("deleted_in_commit.rs", "gone\n");
+        repo.write("renamed.rs", "four\nfive\nsix\n");
         repo.commit_all("first");
-        repo.run(&["mv", "before.rs", "after.rs"]);
+        repo.run(&["mv", "renamed_in_commit.rs", "moved_in_commit.rs"]);
         repo.commit_all("rename");
+        repo.run(&["rm", "-q", "deleted_in_commit.rs"]);
+        repo.commit_all("delete");
         repo.run(&["worktree", "add", "-q", "-b", "feat", "../linked"]);
         repo.write("modified.rs", "a\nB\n");
         fs::remove_file(repo.path().join("deleted.rs")).unwrap();
         repo.write("new.rs", "new\n");
+        repo.run(&["mv", "renamed.rs", "moved.rs"]);
+        repo.write("moved.rs", "four\nfive\nsix\nseven\n");
         model::fixtures::contract::git(&GitCli, &repo.path());
     }
 

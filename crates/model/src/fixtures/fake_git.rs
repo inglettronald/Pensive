@@ -78,6 +78,8 @@ impl GitBackend for FakeGit {
             return Ok(Changes::default());
         }
         let mut changes = super::changes();
+        // Git lists an unstaged rename as its old path deleted and its new path untracked. This
+        // keeps it one renamed file, but no sample has an uncommitted rename to unstage.
         for (path, staged) in self.staged.lock().expect("not poisoned").iter() {
             changes.set_staged(path, *staged);
         }
