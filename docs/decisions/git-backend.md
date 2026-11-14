@@ -16,7 +16,7 @@ The CLI's costs:
 
 - Each call spawns a process, which costs milliseconds, more on Windows. Once Pensive reads many objects at a time, for diffs and blame, one long-running `git cat-file --batch` will stream them all.
 - Output is parsed, so every call asks for a stable format: `--porcelain`, `-z` or `--format`.
-- The user must have Git installed. PEN-29 covers a missing or outdated Git, and whether to bundle one as a fallback.
+- The user must have Git installed. [find-git.md](find-git.md) covers a missing or outdated Git, and why Pensive doesn't bundle one.
 
 A hybrid, with gix for hot reads, means two code paths, and gix would still need the CLI for reftable repositories. Look at it again only when a profile shows the CLI is the bottleneck, and only once gix opens reftable repositories.
 
@@ -40,7 +40,7 @@ The cost of our own diff: hunks can differ slightly from what `git diff` prints,
 
 ## Minimum Git version
 
-The oldest version that has every command Pensive runs, raised when a feature needs more. Today that's 2.36, for `git worktree list -z`. Merge preview will raise it to 2.38, for `git merge-tree --write-tree`, which computes a merge without touching the worktree.
+The oldest version that has every command Pensive runs, raised when a feature needs more. Today that's 2.36, for `git worktree list -z` and `git ls-tree --format`. [find-git.md](find-git.md) lists each command with the release that added it. Merge preview will raise it to 2.38, for `git merge-tree --write-tree`, which computes a merge without touching the worktree.
 
 ## Hosting services
 
