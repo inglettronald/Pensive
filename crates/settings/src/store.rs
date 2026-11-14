@@ -185,9 +185,11 @@ fn set_item(table: &mut dyn TableLike, key: &str, value: Option<toml::Value>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Choice, Control, Setting};
+    use crate::{Category, Choice, Control, Setting};
 
-    const PALETTE: Page = Page::new("Command palette", "Tabs");
+    static PALETTE_CATEGORY: Category = Category::new("Command palette", "Tabs and Active");
+    static APPEARANCE: Category = Category::new("Appearance", "Size");
+    const PALETTE: Page = Page::new(&PALETTE_CATEGORY, "Tabs");
 
     static SHOW_TABS: Setting<bool> = Setting {
         key: "palette.show_tabs",
@@ -218,7 +220,7 @@ mod tests {
             declared: vec![
                 (PALETTE, &SHOW_TABS),
                 (PALETTE, &DAYS),
-                (Page::new("Appearance", "Size"), &DENSITY),
+                (Page::new(&APPEARANCE, "Size"), &DENSITY),
             ],
             ..Default::default()
         };

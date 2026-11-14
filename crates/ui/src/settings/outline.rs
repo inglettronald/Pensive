@@ -5,17 +5,15 @@ use components::IconName;
 use gpui::App;
 use settings::{AnySetting, Settings};
 
-/// The categories Pensive knows, in the rail's order. A setting can name a category that isn't
-/// here, and it's listed last with the gear for its icon.
-const KNOWN: [(&str, IconName, &str); 4] = [
-    ("Appearance", IconName::Palette, "Theme, size and fonts"),
-    (
-        "Command palette",
-        IconName::Command,
-        "Tabs, Active and the backdrop",
-    ),
-    ("Editor", IconName::FileText, "Saving"),
-    ("Notices", IconName::Bell, "Toasts and the badge"),
+use crate::{editor, notices, palette};
+
+/// The categories Pensive knows, in the rail's order, with their icons. A setting can name a
+/// category that isn't here, and it's listed last with the gear for its icon.
+static KNOWN: [(&settings::Category, IconName); 4] = [
+    (&theme::APPEARANCE, IconName::Palette),
+    (&palette::CATEGORY, IconName::Command),
+    (&editor::CATEGORY, IconName::FileText),
+    (&notices::CATEGORY, IconName::Bell),
 ];
 
 pub(crate) struct Category {
@@ -35,22 +33,21 @@ pub(crate) fn outline(cx: &App) -> Vec<Category> {
     let mut categories: Vec<Category> = Vec::new();
     let declared = cx.try_global::<Settings>().into_iter();
     for (page, setting) in declared.flat_map(Settings::declared) {
+        let declared = page.category;
         let category = match categories
             .iter()
-            .position(|category| category.name == page.category)
+            .position(|category| category.name == declared.name())
         {
             Some(index) => &mut categories[index],
             None => {
-                let (icon, description) = KNOWN
+                let icon = KNOWN
                     .iter()
-                    .find(|(name, ..)| *name == page.category)
-                    .map_or((IconName::Settings, ""), |(_, icon, description)| {
-                        (*icon, *description)
-                    });
+                    .find(|(known, _)| *known == declared)
+                    .map_or(IconName::Settings, |(_, icon)| *icon);
                 categories.push(Category {
-                    name: page.category,
+                    name: declared.name(),
                     icon,
-                    description,
+                    description: declared.description(),
                     pages: Vec::new(),
                 });
                 categories.last_mut().expect("just pushed")
@@ -71,7 +68,7 @@ pub(crate) fn outline(cx: &App) -> Vec<Category> {
     categories.sort_by_key(|category| {
         KNOWN
             .iter()
-            .position(|(name, ..)| *name == category.name)
+            .position(|(known, _)| known.name() == category.name)
             .unwrap_or(KNOWN.len())
     });
     categories

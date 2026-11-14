@@ -25,7 +25,7 @@ use line::Layouts;
 pub use rows::Mode;
 use rows::{Row, rows};
 use saving::AUTO_SAVE_DELAY;
-pub(crate) use saving::{SAVE, SaveMode, declare_settings};
+pub(crate) use saving::{CATEGORY, SAVE, SaveMode, declare_settings};
 
 /// What Tab inserts, unless the line is indented with tabs.
 const INDENT: &str = "    ";

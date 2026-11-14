@@ -6,15 +6,45 @@ use serde::{Serialize, de::DeserializeOwned};
 
 use crate::Settings;
 
+/// A group of pages, such as Appearance, declared as a `static` in the crate that owns it.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Category {
+    name: &'static str,
+    description: &'static str,
+}
+
+impl Category {
+    /// Every category shows a description under its name, so an empty one fails to compile.
+    ///
+    /// ```compile_fail
+    /// static PLUGINS: settings::Category = settings::Category::new("Plugins", "");
+    /// ```
+    pub const fn new(name: &'static str, description: &'static str) -> Self {
+        assert!(
+            !description.is_empty(),
+            "a settings category needs a description"
+        );
+        Self { name, description }
+    }
+
+    pub const fn name(&self) -> &'static str {
+        self.name
+    }
+
+    pub const fn description(&self) -> &'static str {
+        self.description
+    }
+}
+
 /// Where a setting is listed: a category, such as Appearance, and a page within it, such as Fonts.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Page {
-    pub category: &'static str,
+    pub category: &'static Category,
     pub name: &'static str,
 }
 
 impl Page {
-    pub const fn new(category: &'static str, name: &'static str) -> Self {
+    pub const fn new(category: &'static Category, name: &'static str) -> Self {
         Self { category, name }
     }
 }

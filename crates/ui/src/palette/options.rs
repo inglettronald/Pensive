@@ -1,9 +1,12 @@
 //! The palette's own settings.
 
 use gpui::{App, Hsla, hsla};
-use settings::{AnySetting, Choice, Control, Page, Setting, Settings};
+use settings::{AnySetting, Category, Choice, Control, Page, Setting, Settings};
 
 use super::Tab;
+
+pub(crate) static CATEGORY: Category =
+    Category::new("Command palette", "Tabs, Active and the backdrop");
 
 pub(crate) static SHOW_TABS: Setting<bool> = Setting {
     key: "palette.show_tabs",
@@ -73,7 +76,7 @@ pub(crate) fn days_label(days: u32) -> String {
 }
 
 pub(crate) fn declare(cx: &mut App) {
-    let page = |name| Page::new("Command palette", name);
+    let page = |name| Page::new(&CATEGORY, name);
     let tabs: [&'static dyn AnySetting; 2] = [&SHOW_TABS, &OPEN_ON];
     Settings::declare(page("Tabs"), tabs, cx);
     Settings::declare(page("Active"), [&ACTIVE_DAYS as &dyn AnySetting], cx);
