@@ -12,8 +12,8 @@ use gpui::{AppContext as _, Context, Entity, SharedString, Subscription, Task};
 
 use crate::{
     Backend, Changes, Document, DocumentEvent, FileKey, FileVersions, GitBackend, Notice, Notices,
-    Origin, PROJECT_FILE, Repository, RunConfig, Source, Version, clock, document::Contents,
-    queue::Queue, run_configs,
+    Origin, PROJECT_FILE, Repository, RunConfig, Source, Version, WorktreeFiles, clock,
+    document::Contents, queue::Queue, run_configs,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -96,6 +96,8 @@ pub struct Projects {
     staging: Queue,
     /// How many reads of each worktree's changes have started.
     reads: HashMap<PathBuf, u64>,
+    /// Each worktree's files, by its path, once read.
+    files: HashMap<PathBuf, WorktreeFiles>,
     /// Each project's run configurations, once read.
     run_configs: HashMap<ProjectId, Vec<RunConfig>>,
     _saves: Vec<Subscription>,
@@ -114,6 +116,7 @@ impl Projects {
             git: Backend::new(git, Origin::Git),
             staging: Queue::default(),
             reads: HashMap::new(),
+            files: HashMap::new(),
             run_configs: HashMap::new(),
             _saves: Vec::new(),
         }
@@ -165,6 +168,30 @@ impl Projects {
             repository,
         });
         id
+    }
+
+    /// The files in the worktree at `worktree`, once read.
+    pub fn files(&self, worktree: &Path) -> Option<&WorktreeFiles> {
+        self.files.get(worktree)
+    }
+
+    /// Lists the files in the worktree at `worktree` off the UI thread, replacing what's cached.
+    pub fn read_files(&mut self, worktree: PathBuf, cx: &mut Context<Self>) -> Task<Result<()>> {
+        let path = worktree.clone();
+        let read = self
+            .git
+            .call("Couldn't list files", move |git| git.files(&path), cx);
+        cx.spawn(async move |this, cx| {
+            let files = read.await?;
+            this.update(cx, |this, cx| {
+                this.insert_files(worktree, files);
+                cx.notify();
+            })
+        })
+    }
+
+    pub(crate) fn insert_files(&mut self, worktree: PathBuf, files: WorktreeFiles) {
+        self.files.insert(worktree, files);
     }
 
     /// The run configurations `project` saves, once read. None until then.

@@ -8,6 +8,7 @@ mod command_palette;
 mod diff;
 mod diff_stat;
 mod fade_text;
+mod file_tree_row;
 #[cfg(feature = "mocks")]
 mod gallery;
 mod icon;
@@ -53,6 +54,7 @@ pub use command_palette::{
 pub use diff::{DiffRow, LineKind};
 pub use diff_stat::DiffStat;
 pub use fade_text::FadeText;
+pub use file_tree_row::{FileTreeRow, TreeStatus};
 #[cfg(feature = "mocks")]
 pub use gallery::Gallery;
 pub use icon::{Icon, IconName};
@@ -136,6 +138,7 @@ pub fn mocks() -> Vec<mock::Mock> {
         status_ring::mocks(),
         diff_stat::mocks(),
         list_row::mocks(),
+        file_tree_row::mocks(),
         tooltip::mocks(),
         timeline_row::mocks(),
         title_bar::mocks(),

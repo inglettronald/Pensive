@@ -10,11 +10,12 @@ pub use fake_config::FakeConfig;
 pub use fake_git::FakeGit;
 
 use std::{
+    path::PathBuf,
     sync::Arc,
     time::{Duration, SystemTime},
 };
 
-use crate::{Branch, ProjectId, Projects, Repository, Worktree};
+use crate::{Branch, ProjectId, Projects, Repository, Worktree, WorktreeFiles};
 
 const MINUTE: u64 = 60;
 const HOUR: u64 = 60 * MINUTE;
@@ -35,9 +36,45 @@ pub const ZED: ProjectId = ProjectId(5);
 pub fn projects() -> Projects {
     let mut projects = projects_on(FakeGit::default());
     projects.insert_changes(PENSIVE_ROOT.into(), changes());
+    projects.insert_files(PENSIVE_ROOT.into(), worktree_files());
     let configs = crate::run_configs(fake_git::SAMPLE_PROJECT_FILE).expect("the sample parses");
     projects.insert_run_configs(PENSIVE, configs);
     projects
+}
+
+/// The pensive sample's files: its changed files that are on disk, and enough around them for a
+/// tree.
+pub fn worktree_files() -> WorktreeFiles {
+    let paths = |paths: &[&str]| paths.iter().map(PathBuf::from).collect();
+    WorktreeFiles {
+        files: paths(&[
+            ".gitignore",
+            "AGENTS.md",
+            "Cargo.lock",
+            "Cargo.toml",
+            "README.md",
+            "assets/icons/check.svg",
+            "assets/icons/search.svg",
+            "crates/components/Cargo.toml",
+            "crates/components/src/icon.rs",
+            "crates/components/src/lib.rs",
+            "crates/components/src/palette.rs",
+            "crates/components/src/palette/row.rs",
+            "crates/components/src/palette/scope.rs",
+            "crates/model/src/lib.rs",
+            "crates/model/src/projects.rs",
+            "crates/theme/src/colors.rs",
+            "crates/theme/src/lib.rs",
+            "crates/ui/src/lib.rs",
+            "crates/ui/src/palette/mod.rs",
+            "crates/ui/src/root.rs",
+            "docs/architecture.md",
+            "docs/design.md",
+            "script/check",
+        ]),
+        ignored_files: Vec::new(),
+        ignored_folders: paths(&["target"]),
+    }
 }
 
 /// The same projects with nothing changed in any worktree.

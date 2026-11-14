@@ -5,14 +5,15 @@ use components::IconName;
 use gpui::App;
 use settings::{AnySetting, Settings};
 
-use crate::{editor, notices, palette};
+use crate::{editor, notices, palette, project};
 
 /// The categories Pensive knows, in the rail's order, with their icons. A setting can name a
 /// category that isn't here, and it's listed last with the gear for its icon.
-static KNOWN: [(&settings::Category, IconName); 4] = [
+static KNOWN: [(&settings::Category, IconName); 5] = [
     (&theme::APPEARANCE, IconName::Palette),
     (&palette::CATEGORY, IconName::Command),
     (&editor::CATEGORY, IconName::FileText),
+    (&project::files_options::CATEGORY, IconName::Files),
     (&notices::CATEGORY, IconName::Bell),
 ];
 

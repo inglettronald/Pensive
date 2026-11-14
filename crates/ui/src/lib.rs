@@ -61,6 +61,7 @@ fn declare_settings(cx: &mut App) {
     palette::declare_settings(cx);
     notices::declare_settings(cx);
     editor::declare_settings(cx);
+    project::files_options::declare_settings(cx);
 }
 
 /// Binds `keys` to `action` in `context`. Unlike `KeyBinding::new`, it reads `secondary-` as Cmd
