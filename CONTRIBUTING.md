@@ -94,3 +94,13 @@ CI rejects formatting differences, any compiler or clippy warning, and failing t
 ```sh
 script/check
 ```
+
+`script/check` only covers the platform you run it on. CI builds every pull request on Linux, and all three platforms after each merge to master. To build another platform before merging, add its label to the pull request:
+
+| Label | Add it when the pull request changes |
+|---|---|
+| `ci:macos` | Keyboard shortcuts, or code behind `cfg(target_os = "macos")` |
+| `ci:windows` | File paths and file names, how Pensive runs `git`, the config folder, or code behind `cfg(windows)` |
+| `ci:all` | The window frame or title bar, code behind `cfg(unix)` or `cfg(target_os = "linux")`, dependencies in `Cargo.lock`, the CI workflow, or anything you're unsure about |
+
+Adding or removing a label reruns CI with the new set of platforms. Windows skips the mock render test, since its CI runner can't render mocks yet (PEN-24).
