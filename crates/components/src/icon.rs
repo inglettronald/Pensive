@@ -20,6 +20,7 @@ pub enum IconName {
     Check,
     ChevronDown,
     ChevronRight,
+    ChevronUp,
     ChevronsUpDown,
     CircleX,
     Cloud,

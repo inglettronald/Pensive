@@ -50,6 +50,8 @@ pub struct ThemeColors {
     pub button_primary: Hsla,
     /// Every other button's fill. Its label uses `text`.
     pub button_secondary: Hsla,
+    /// The outline a switch keeps on and off, between `border` and `text_disabled`.
+    pub control_outline: Hsla,
 
     /// Added lines and words, file status A, success.
     pub diff_added: Hsla,
@@ -95,6 +97,7 @@ impl ThemeColors {
             diff_line_number: gray(8),
             button_primary: gray(12),
             button_secondary: gray(3),
+            control_outline: gray(7),
             diff_added: rgb(0x4cc38a).into(),
             diff_removed: rgb(0xef6461).into(),
             diff_modified: rgb(0xe5b45a).into(),
@@ -125,6 +128,7 @@ impl ThemeColors {
             role("Text", "diff_line_number", self.diff_line_number),
             role("Controls", "button_primary", self.button_primary),
             role("Controls", "button_secondary", self.button_secondary),
+            role("Controls", "control_outline", self.control_outline),
             role("Diff", "diff_added", self.diff_added),
             role("Diff", "diff_removed", self.diff_removed),
             role("Diff", "diff_modified", self.diff_modified),

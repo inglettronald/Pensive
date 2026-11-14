@@ -35,7 +35,7 @@ pub(crate) static ACTIVE_DAYS: Setting<u32> = Setting {
     name: "Active looks back",
     description: "How old work can be and still show in Active",
     default: 7,
-    control: Control::Select(|_| {
+    control: Control::Stepper(|_| {
         [1, 3, 7, 14, 30]
             .map(|days| Choice::new(days, days_label(days)))
             .into()
@@ -47,7 +47,7 @@ pub(crate) static OPACITY: Setting<u32> = Setting {
     name: "Opacity",
     description: "How solid the palette's background is over a window",
     default: 100,
-    control: Control::Select(|_| percents([70, 80, 90, 100])),
+    control: Control::Stepper(|_| percents([70, 80, 90, 100])),
 };
 
 pub(crate) static SCRIM: Setting<u32> = Setting {

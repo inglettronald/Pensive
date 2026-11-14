@@ -45,7 +45,7 @@ Calm and Dense both ship, as a setting, with Calm as the default. Density change
 
 Zoom scales everything in every window, from 80 to 200%. Ctrl = and Ctrl - step it, and Ctrl 0 resets it. Code size is its own setting, in pixels at 100% zoom, so zoom still scales it. It follows Density until it's set.
 
-Ordered settings such as zoom use a stepper. The wheel steps it only once the pointer has rested on it for a second without scrolling, so scrolling a page past one never changes it.
+Zoom and code size use a stepper, which the Controls section covers along with how the wheel changes it.
 
 ## Diffs
 
@@ -141,6 +141,16 @@ Rows stop at a reading width, so a control stays near its name in a wide window.
 Search matches names, pages and descriptions. Matches in the category being read come first, then every other category's together. The rail dims categories with no match, and clicking a result shows it on its category's page.
 
 A setting with a preview will get an eye button that opens a drawer under its row, one at a time, drawn with the real components.
+
+## Controls
+
+Settings controls are a row tall, so they follow the density.
+
+- A dropdown has a minimum width, so the dropdowns in a card line up on their right edge. Its menu has a check on the current value.
+- A segmented control gives every segment the widest label's width. The selection stretches to its new segment: the leading edge leaves first, then the trailing edge follows. Hovering another segment fills it lightly, and hovering the selection brightens it one step. Icon switchers in headers and the palette's tabs are a compact version of the same control.
+- A stepper holds a number between minus and plus, and dims the end it can't go past.
+- A switch keeps one outline on and off. Only the knob changes, from gray to white.
+- Resting on a control with ordered values hands it the mouse wheel after a moment. A line fills under it while it waits, so scrolling past a card never changes a value. Down moves to the next value, and the ends don't wrap.
 
 ## Project icons
 

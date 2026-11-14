@@ -17,6 +17,7 @@ mod nav_list;
 mod next_card;
 mod notice_list;
 mod rail;
+mod scroll_to_change;
 mod segmented_control;
 mod select;
 mod setting_row;
@@ -33,10 +34,11 @@ mod toast;
 mod toggle;
 mod tone;
 mod tooltip;
+mod transition;
 
-use std::rc::Rc;
+use std::{rc::Rc, sync::Arc};
 
-use gpui::{App, StatefulInteractiveElement, Window};
+use gpui::{App, ElementId, SharedString, StatefulInteractiveElement, Window};
 
 pub use breadcrumb::Breadcrumb;
 pub use button::{Button, ButtonStyle};
@@ -57,6 +59,7 @@ pub use nav_list::{NavItem, NavList};
 pub use next_card::NextCard;
 pub use notice_list::{NoticeList, NoticeRow};
 pub use rail::{Rail, RailButton, RailItem};
+pub use scroll_to_change::ScrollToChange;
 pub use segmented_control::SegmentedControl;
 pub use select::Select;
 pub use setting_row::SettingRow;
@@ -79,6 +82,11 @@ pub type Callback<T> = Rc<dyn Fn(T, &mut Window, &mut App)>;
 /// A [`Callback`] for an event that carries no value, such as a click.
 pub fn callback(handler: impl Fn(&mut Window, &mut App) + 'static) -> Callback<()> {
     Rc::new(move |(), window, cx| handler(window, cx))
+}
+
+/// An id for a part of the element with `id`, such as its kept state or one of its animations.
+pub(crate) fn child_id(id: &ElementId, part: impl Into<SharedString>) -> ElementId {
+    ElementId::NamedChild(Arc::new(id.clone()), part.into())
 }
 
 /// Clicks on a component that takes an `on_click` callback.
@@ -113,6 +121,7 @@ pub fn mocks() -> Vec<mock::Mock> {
         select::mocks(),
         segmented_control::mocks(),
         stepper::mocks(),
+        scroll_to_change::mocks(),
         tab_strip::mocks(),
         button::mocks(),
         icon_button::mocks(),
@@ -200,9 +209,10 @@ mod tests {
                     .on_click(count(clicks))
                     .into_any_element()
             }),
-            ("Select", |clicks| {
-                Select::new("control", "7 days")
-                    .on_click(count(clicks))
+            ("Stepper", |clicks| {
+                let count = count(clicks);
+                Stepper::new("control", "7 days")
+                    .on_step(move |_, window, cx| count(window, cx))
                     .into_any_element()
             }),
             ("ListRow", |clicks| {

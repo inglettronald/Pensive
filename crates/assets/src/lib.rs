@@ -25,6 +25,7 @@ const FILES: &[(&str, &[u8])] = bundled![
     "icons/check.svg",
     "icons/chevron-down.svg",
     "icons/chevron-right.svg",
+    "icons/chevron-up.svg",
     "icons/chevrons-up-down.svg",
     "icons/circle-x.svg",
     "icons/cloud.svg",
