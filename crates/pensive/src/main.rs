@@ -54,7 +54,7 @@ fn main() {
             ui::open_demo_window(projects, demo.mock.as_deref(), demo.size, cx)
                 .expect("the demo's options name a mock that exists");
             #[cfg(not(feature = "demo"))]
-            ui::open_window(projects, None, cx);
+            ui::open_window(projects, cx);
             cx.activate(true);
         });
 }
