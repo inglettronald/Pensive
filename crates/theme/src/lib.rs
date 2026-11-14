@@ -11,7 +11,7 @@ mod theme;
 
 use gpui::App;
 
-pub use appearance::apply;
+pub use appearance::{APPEARANCE, apply};
 pub use colors::{Role, ThemeColors, ThemeColorsRefinement, gray};
 pub use density::{Density, DensityPreset, TextRole, TextSize, Typeset};
 pub use dp::{CARET, Dp, HAIRLINE, dp};

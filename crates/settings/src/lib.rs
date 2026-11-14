@@ -7,5 +7,5 @@
 mod setting;
 mod store;
 
-pub use setting::{AnySetting, Choice, Control, ControlState, Page, Setting};
+pub use setting::{AnySetting, Category, Choice, Control, ControlState, Page, Setting};
 pub use store::Settings;

@@ -6,7 +6,7 @@ use std::time::{Duration, SystemTime};
 use components::{NoticeList, NoticeRow, Tag, Toast, Tone, Tooltip};
 use gpui::{App, Context, Entity, Subscription, Task, Window, div, prelude::*};
 use model::{Notice, Notices, Origin, Severity};
-use settings::{AnySetting, Choice, Control, Page, Setting, Settings};
+use settings::{AnySetting, Category, Choice, Control, Page, Setting, Settings};
 use theme::{ActiveTheme, dp};
 
 use crate::{age::age, view_callback, view_callback_with};
@@ -39,6 +39,8 @@ pub(crate) fn tooltip(notice: &Notice) -> Tooltip {
     }
 }
 
+pub(crate) static CATEGORY: Category = Category::new("Notices", "Toasts and the badge");
+
 /// How long a toast shows before it folds into the badge.
 pub(crate) static TOAST_SECONDS: Setting<u32> = Setting {
     key: "notices.toast_seconds",
@@ -54,7 +56,7 @@ pub(crate) static TOAST_SECONDS: Setting<u32> = Setting {
 
 pub(crate) fn declare_settings(cx: &mut App) {
     let settings: [&'static dyn AnySetting; 1] = [&TOAST_SECONDS];
-    Settings::declare(Page::new("Notices", "Toasts"), settings, cx);
+    Settings::declare(Page::new(&CATEGORY, "Toasts"), settings, cx);
 }
 
 /// A toast on screen, and how much of its time is left.

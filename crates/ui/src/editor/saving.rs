@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use gpui::{App, Context, Window};
 use serde::{Deserialize, Serialize};
-use settings::{AnySetting, Choice, Control, Page, Setting, Settings};
+use settings::{AnySetting, Category, Choice, Control, Page, Setting, Settings};
 
 use super::{Editor, keys::Save};
 
@@ -19,6 +19,8 @@ pub enum SaveMode {
     /// Only on Ctrl S.
     Manual,
 }
+
+pub(crate) static CATEGORY: Category = Category::new("Editor", "Saving");
 
 pub(crate) static SAVE: Setting<SaveMode> = Setting {
     key: "editor.save",
@@ -36,7 +38,7 @@ pub(crate) static SAVE: Setting<SaveMode> = Setting {
 
 pub(crate) fn declare_settings(cx: &mut App) {
     let settings: [&'static dyn AnySetting; 1] = [&SAVE];
-    Settings::declare(Page::new("Editor", "Saving"), settings, cx);
+    Settings::declare(Page::new(&CATEGORY, "Saving"), settings, cx);
 }
 
 impl Editor {

@@ -1,10 +1,12 @@
 //! The appearance settings, and installing the theme and density they choose.
 
 use gpui::{App, SharedString};
-use settings::{AnySetting, Choice, Control, Page, Setting, Settings};
+use settings::{AnySetting, Category, Choice, Control, Page, Setting, Settings};
 use strum::VariantArray;
 
 use crate::{BASE_THEME, BASE_THEME_NAME, DensityPreset, Theme, UserThemes};
+
+pub static APPEARANCE: Category = Category::new("Appearance", "Theme, size and fonts");
 
 pub(crate) static THEME: Setting<SharedString> = Setting {
     key: "theme",
@@ -61,7 +63,7 @@ fn fonts(bundled: [&'static str; 2]) -> Vec<Choice<Option<SharedString>>> {
 }
 
 pub(crate) fn declare(cx: &mut App) {
-    let page = |name| Page::new("Appearance", name);
+    let page = |name| Page::new(&APPEARANCE, name);
     Settings::declare(page("Theme"), [&THEME as &dyn AnySetting], cx);
     Settings::declare(page("Size"), [&DENSITY as &dyn AnySetting], cx);
     let fonts: [&'static dyn AnySetting; 2] = [&UI_FONT, &CODE_FONT];

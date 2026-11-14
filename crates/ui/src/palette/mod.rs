@@ -19,7 +19,7 @@ use crate::{
     text_input::{Changed, TextInput},
     view_callback_with,
 };
-pub(crate) use options::{OPEN_ON, declare as declare_settings, scrim};
+pub(crate) use options::{CATEGORY, OPEN_ON, declare as declare_settings, scrim};
 use results::{Query, Results, SettingRow, results};
 
 actions!(
@@ -246,7 +246,7 @@ impl PaletteView {
             .into_iter()
             .flat_map(Settings::declared)
             .map(|(page, setting)| SettingRow {
-                section: page.category,
+                section: page.category.name(),
                 setting,
                 state: setting.state(cx),
             })
