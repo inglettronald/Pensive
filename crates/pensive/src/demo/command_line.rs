@@ -5,6 +5,7 @@ use gpui::{Pixels, Size, px, size};
 use super::Options;
 
 const USAGE: &str = "usage: cargo demo -- [--mock <subject>/<mock>] [--size <width>x<height>]";
+pub const LISTING_MOCKS: &str = "Ctrl Shift M in the demo lists them.";
 
 pub fn given() -> Result<Options, String> {
     parse(std::env::args().skip(1))

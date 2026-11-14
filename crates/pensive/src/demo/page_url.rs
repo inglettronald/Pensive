@@ -4,7 +4,10 @@ use web_sys::UrlSearchParams;
 
 use super::Options;
 
-/// The `mock` parameter. Other parameters are ignored, as pages usually do.
+pub const LISTING_MOCKS: &str =
+    "Open the page without `?mock=` and press Ctrl Shift M to list them.";
+
+/// The `mock` parameter, unless it's empty. Other parameters are ignored, as pages usually do.
 pub fn given() -> Result<Options, String> {
     let search = web_sys::window()
         .and_then(|window| window.location().search().ok())
@@ -12,7 +15,7 @@ pub fn given() -> Result<Options, String> {
     let params = UrlSearchParams::new_with_str(&search)
         .map_err(|_| format!("couldn't read the parameters in `{search}`"))?;
     Ok(Options {
-        mock: params.get("mock"),
+        mock: params.get("mock").filter(|id| !id.is_empty()),
         size: None,
     })
 }

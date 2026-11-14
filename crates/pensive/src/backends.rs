@@ -16,7 +16,7 @@ pub struct Startup {
 
 /// The repositories named on the command line, read with the `git` command, and the config
 /// folder in the home folder.
-#[cfg(not(any(target_family = "wasm", feature = "demo")))]
+#[cfg(not(feature = "demo"))]
 pub fn startup() -> Startup {
     let config = config::ConfigFolder::find();
     if config.is_none() {
@@ -34,7 +34,7 @@ pub fn startup() -> Startup {
 /// The sample projects, with settings kept in memory until the app closes. A browser tab has no
 /// `git` command or config folder, and a demo shouldn't read or change the real config, which
 /// mocks would otherwise save their settings into.
-#[cfg(any(target_family = "wasm", feature = "demo"))]
+#[cfg(feature = "demo")]
 pub fn startup() -> Startup {
     Startup {
         projects: model::fixtures::projects(),

@@ -29,7 +29,8 @@ impl Options {
             && !ui::every_mock().iter().any(|mock| mock.id() == *id)
         {
             return Err(format!(
-                "no mock is called `{id}`. Ctrl Shift M in the demo lists them."
+                "no mock is called `{id}`. {}",
+                source::LISTING_MOCKS
             ));
         }
         Ok(options)

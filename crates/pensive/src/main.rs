@@ -7,6 +7,9 @@ mod mock_thumbnails;
 
 use gpui::{App, AppContext};
 
+#[cfg(all(target_family = "wasm", not(feature = "demo")))]
+compile_error!("the browser build is a demo build: build it with `--features demo`");
+
 fn main() {
     #[cfg(target_family = "wasm")]
     {
