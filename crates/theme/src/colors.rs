@@ -70,6 +70,21 @@ pub struct ThemeColors {
     pub accent_solid_hover: Hsla,
     /// Links and the info icon.
     pub accent_fg: Hsla,
+
+    pub syntax_keyword: Hsla,
+    /// Names that start with a capital.
+    pub syntax_type: Hsla,
+    /// Names called as functions, and macros.
+    pub syntax_function: Hsla,
+    pub syntax_string: Hsla,
+    pub syntax_number: Hsla,
+    /// `true`, `None` and the like, and names in capitals.
+    pub syntax_constant: Hsla,
+    pub syntax_comment: Hsla,
+    /// Attributes, decorators and preprocessor directives.
+    pub syntax_attribute: Hsla,
+    pub syntax_operator: Hsla,
+    pub syntax_punctuation: Hsla,
 }
 
 /// A role's name and color, for showing every role at once.
@@ -106,6 +121,16 @@ impl ThemeColors {
             accent_solid: rgb(0x2f6fe0).into(),
             accent_solid_hover: rgb(0x285fc8).into(),
             accent_fg: rgb(0x6cb0f5).into(),
+            syntax_keyword: rgb(0xc678dd).into(),
+            syntax_type: rgb(0xe5c07b).into(),
+            syntax_function: rgb(0x61afef).into(),
+            syntax_string: rgb(0x98c379).into(),
+            syntax_number: rgb(0xd19a66).into(),
+            syntax_constant: rgb(0xd19a66).into(),
+            syntax_comment: rgb(0x7f848e).into(),
+            syntax_attribute: rgb(0xe5c07b).into(),
+            syntax_operator: rgb(0x56b6c2).into(),
+            syntax_punctuation: rgb(0xabb2bf).into(),
         }
     }
 
@@ -137,6 +162,16 @@ impl ThemeColors {
             role("Accent", "accent_solid", self.accent_solid),
             role("Accent", "accent_solid_hover", self.accent_solid_hover),
             role("Accent", "accent_fg", self.accent_fg),
+            role("Syntax", "syntax_keyword", self.syntax_keyword),
+            role("Syntax", "syntax_type", self.syntax_type),
+            role("Syntax", "syntax_function", self.syntax_function),
+            role("Syntax", "syntax_string", self.syntax_string),
+            role("Syntax", "syntax_number", self.syntax_number),
+            role("Syntax", "syntax_constant", self.syntax_constant),
+            role("Syntax", "syntax_comment", self.syntax_comment),
+            role("Syntax", "syntax_attribute", self.syntax_attribute),
+            role("Syntax", "syntax_operator", self.syntax_operator),
+            role("Syntax", "syntax_punctuation", self.syntax_punctuation),
         ]
     }
 }

@@ -15,6 +15,7 @@ mod notices;
 mod projects;
 mod queue;
 mod run;
+mod syntax;
 mod worktree_files;
 
 pub use backend::Backend;
@@ -32,4 +33,5 @@ pub use notices::{Held, Notices};
 pub use projects::{Branch, Project, ProjectId, Projects, Work, WorkKind, Worktree};
 pub use ropey::Rope;
 pub use run::{PROJECT_FILE, RunConfig, run_configs};
+pub use syntax::Token;
 pub use worktree_files::WorktreeFiles;

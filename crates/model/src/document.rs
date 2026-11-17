@@ -13,7 +13,7 @@ use ropey::Rope;
 
 use crate::{
     Backend, FileKey, FileVersions, GitBackend, LineDiff, Notice, Notices, Origin, Severity,
-    Source, Version, diff::line_ranges, queue::Queue,
+    Source, Token, Version, diff::line_ranges, queue::Queue, syntax::LineStates,
 };
 
 pub enum DocumentEvent {
@@ -28,7 +28,9 @@ pub struct Document {
     base: Arc<str>,
     /// Where each line of `base` sits, for showing removed lines.
     base_lines: Vec<Range<usize>>,
+    base_syntax: LineStates,
     text: Rope,
+    syntax: LineStates,
     /// The file as last read or written, so a save can tell whether something else changed it.
     on_disk: Version,
     /// Counts edits, so a save knows which text it was for.
@@ -70,7 +72,9 @@ impl EventEmitter<DocumentEvent> for Document {}
 pub(crate) struct Contents {
     base: String,
     base_lines: Vec<Range<usize>>,
+    base_syntax: LineStates,
     text: Rope,
+    syntax: LineStates,
     on_disk: Version,
     diff: LineDiff,
 }
@@ -89,10 +93,14 @@ impl Contents {
             Version::Missing => (String::new(), true),
             Version::Binary => return None,
         };
+        let base_lines = line_ranges(&base);
+        let text_rope = Rope::from_str(&text);
         Some(Self {
-            base_lines: line_ranges(&base),
+            base_syntax: base_syntax(&base, &base_lines),
+            base_lines,
             diff: LineDiff::new(&base, &text),
-            text: Rope::from_str(&text),
+            syntax: LineStates::of_rope(&text_rope),
+            text: text_rope,
             on_disk: if deleted {
                 Version::Missing
             } else {
@@ -115,8 +123,10 @@ impl Document {
             key,
             base: contents.base.into(),
             base_lines: contents.base_lines,
+            base_syntax: contents.base_syntax,
             on_disk: contents.on_disk,
             text: contents.text,
+            syntax: contents.syntax,
             revision: 0,
             saved_revision: 0,
             disk_generation: 0,
@@ -156,6 +166,16 @@ impl Document {
         self.base_lines
             .get(index)
             .map_or("", |range| &self.base[range.clone()])
+    }
+
+    /// The tokens of line `index`, whose text is `line`.
+    pub fn tokens(&self, index: usize, line: &str) -> Vec<(Range<usize>, Token)> {
+        self.syntax.tokens(index, line)
+    }
+
+    /// The tokens of the committed text's line `index`.
+    pub fn base_tokens(&self, index: usize) -> Vec<(Range<usize>, Token)> {
+        self.base_syntax.tokens(index, self.base_line(index))
     }
 
     /// Whether it has edits that aren't on disk yet.
@@ -238,11 +258,15 @@ impl Document {
             on_boundary(range.start) && on_boundary(range.end),
             "edits start and end between characters"
         );
+        let first = self.text.byte_to_line(range.start);
+        let removed = self.text.byte_to_line(range.end) - first;
         let start = self.text.byte_to_char(range.start);
         let end = self.text.byte_to_char(range.end);
         let old = self.text.slice(start..end).to_string();
         self.text.remove(start..end);
         self.text.insert(start, text);
+        let added = self.text.byte_to_line(range.start + text.len()) - first;
+        self.syntax.edited(&self.text, first, removed, added);
         Edit {
             start: range.start,
             old,
@@ -401,6 +425,7 @@ impl Document {
         let on_disk = versions.new;
         if *self.base != *base {
             self.base_lines = line_ranges(&base);
+            self.base_syntax = base_syntax(&base, &self.base_lines);
             self.base = base.into();
             self.rediff(cx);
         }
@@ -429,6 +454,10 @@ impl Document {
         self.saved_revision = self.revision;
         cx.notify();
     }
+}
+
+fn base_syntax(base: &str, lines: &[Range<usize>]) -> LineStates {
+    LineStates::new(lines.iter().map(|range| &base[range.clone()]))
 }
 
 /// Whether `next` continues typing or deleting where `last` left off.

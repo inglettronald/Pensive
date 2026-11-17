@@ -4,9 +4,9 @@
 use std::{cell::RefCell, ops::Range, rc::Rc};
 
 use gpui::{
-    App, Bounds, ElementId, GlobalElementId, Hsla, LayoutId, Pixels, ShapedLine, SharedString,
-    Style, TextAlign, TextRun, UnderlineStyle, WeakEntity, Window, fill, point, prelude::*,
-    relative, size,
+    App, Bounds, ElementId, GlobalElementId, HighlightStyle, LayoutId, Pixels, ShapedLine,
+    SharedString, Style, TextAlign, TextRun, TextStyle, UnderlineStyle, WeakEntity, Window,
+    combine_highlights, fill, point, prelude::*, relative, size,
 };
 use theme::{ActiveTheme, CARET, Dp, HAIRLINE, dp};
 
@@ -53,8 +53,9 @@ pub(super) struct LineElement {
     pub selection: Option<(Range<usize>, bool)>,
     /// Where the cursor is on this line, while the editor has focus.
     pub cursor: Option<usize>,
-    /// Bytes with a background, such as words that changed.
-    pub highlights: Vec<(Range<usize>, Hsla)>,
+    /// How bytes differ from the text style, such as a token's color or a changed word's
+    /// background.
+    pub highlights: Vec<(Range<usize>, HighlightStyle)>,
     /// Text the input method is composing, underlined.
     pub marked: Option<Range<usize>>,
     pub scroll_x: Pixels,
@@ -109,7 +110,7 @@ impl Element for LineElement {
         let font_size = style.font_size.to_pixels(window.rem_size());
         let runs = runs(
             self.text.len(),
-            style.to_run(self.text.len()),
+            &style,
             &self.highlights,
             self.marked.as_ref(),
         );
@@ -204,70 +205,67 @@ impl LineElement {
     }
 }
 
-/// Runs of `base` over a line of `len` bytes, with backgrounds from `highlights`, which mustn't
-/// overlap, and `marked` underlined.
+/// Runs of `style` over a line of `len` bytes, changed by `highlights`, with `marked` underlined.
 fn runs(
     len: usize,
-    base: TextRun,
-    highlights: &[(Range<usize>, Hsla)],
+    style: &TextStyle,
+    highlights: &[(Range<usize>, HighlightStyle)],
     marked: Option<&Range<usize>>,
 ) -> Vec<TextRun> {
-    let mut edges = vec![0, len];
-    for (range, _) in highlights {
-        edges.extend([range.start, range.end]);
+    let underline = marked.map(|marked| {
+        let underline = UnderlineStyle {
+            color: None,
+            thickness: HAIRLINE,
+            wavy: false,
+        };
+        (
+            marked.clone(),
+            HighlightStyle {
+                underline: Some(underline),
+                ..Default::default()
+            },
+        )
+    });
+    let mut runs = Vec::new();
+    let mut at = 0;
+    for (range, highlight) in combine_highlights(highlights.iter().cloned(), underline) {
+        let range = range.start.min(len)..range.end.min(len);
+        if range.start > at {
+            runs.push(style.to_run(range.start - at));
+        }
+        if !range.is_empty() {
+            runs.push(style.clone().highlight(highlight).to_run(range.len()));
+        }
+        at = at.max(range.end);
     }
-    if let Some(marked) = marked {
-        edges.extend([marked.start, marked.end]);
+    if at < len {
+        runs.push(style.to_run(len - at));
     }
-    edges.retain(|&edge| edge <= len);
-    edges.sort_unstable();
-    edges.dedup();
-    edges
-        .windows(2)
-        .map(|pair| {
-            let span = pair[0]..pair[1];
-            let background = highlights
-                .iter()
-                .find(|(range, _)| range.start <= span.start && span.end <= range.end)
-                .map(|(_, color)| *color);
-            let underline = marked
-                .filter(|marked| marked.start <= span.start && span.end <= marked.end)
-                .map(|_| UnderlineStyle {
-                    color: Some(base.color),
-                    thickness: HAIRLINE,
-                    wavy: false,
-                });
-            TextRun {
-                len: span.len(),
-                background_color: background,
-                underline,
-                ..base.clone()
-            }
-        })
-        .collect()
+    runs
 }
 
 #[cfg(test)]
 mod tests {
-    use gpui::{Hsla, font};
+    use gpui::Hsla;
 
     use super::*;
 
-    fn base() -> TextRun {
-        TextRun {
-            len: 0,
-            font: font("Mono"),
-            color: Hsla::default(),
-            background_color: None,
-            underline: None,
-            strikethrough: None,
+    fn background(color: Hsla) -> HighlightStyle {
+        HighlightStyle {
+            background_color: Some(color),
+            ..Default::default()
         }
     }
 
     #[test]
     fn highlights_split_the_line_into_runs() {
         let red = Hsla::red();
-        let runs = runs(10, base(), &[(2..5, red)], Some(&(4..6)));
+        let runs = runs(
+            10,
+            &TextStyle::default(),
+            &[(2..5, background(red))],
+            Some(&(4..6)),
+        );
         let lens: Vec<_> = runs.iter().map(|run| run.len).collect();
         assert_eq!(lens, [2, 2, 1, 1, 4]);
         assert_eq!(runs[1].background_color, Some(red));
@@ -276,7 +274,17 @@ mod tests {
     }
 
     #[test]
+    fn a_color_and_a_background_on_the_same_bytes_both_apply() {
+        let (red, blue) = (Hsla::red(), Hsla::blue());
+        let highlights = [(0..4, HighlightStyle::color(blue)), (2..6, background(red))];
+        let runs = runs(6, &TextStyle::default(), &highlights, None);
+        let lens: Vec<_> = runs.iter().map(|run| run.len).collect();
+        assert_eq!(lens, [2, 2, 2]);
+        assert_eq!((runs[1].color, runs[1].background_color), (blue, Some(red)));
+    }
+
+    #[test]
     fn an_empty_line_has_no_runs() {
-        assert!(runs(0, base(), &[], None).is_empty());
+        assert!(runs(0, &TextStyle::default(), &[], None).is_empty());
     }
 }

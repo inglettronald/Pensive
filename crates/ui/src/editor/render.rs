@@ -4,14 +4,15 @@ use std::ops::Range;
 
 use components::{Button, DiffRow, IconName, LineKind};
 use gpui::{
-    AnyElement, App, Context, CursorStyle, ElementId, ElementInputHandler, HighlightStyle,
-    MouseButton, StyledText, WeakEntity, Window, canvas, div, list, prelude::*,
+    AnyElement, App, Context, CursorStyle, ElementId, ElementInputHandler, MouseButton, StyledText,
+    WeakEntity, Window, canvas, div, list, prelude::*,
 };
 use model::changed_words;
 use theme::{ActiveTheme, Typeset, dp};
 
 use super::{
     Editor,
+    highlights::line_styles,
     keys::CONTEXT,
     line::LineElement,
     rows::{Mode, Row, STEP},
@@ -42,16 +43,12 @@ impl Editor {
                 };
                 let (start, text) = movement::line(document.text(), line);
                 let end = start + text.len();
-                let highlights = match (pair, word(kind)) {
-                    (Some(pair), Some(color)) if marks => {
-                        changed_words(document.base_line(pair), &text)
-                            .1
-                            .into_iter()
-                            .map(|range| (range, color))
-                            .collect()
-                    }
-                    _ => Vec::new(),
-                };
+                let words = pair
+                    .filter(|_| kind == LineKind::Added)
+                    .map(|pair| changed_words(document.base_line(pair), &text).1)
+                    .unwrap_or_default();
+                let highlights =
+                    line_styles(document.tokens(line, &text), words, word(kind), colors);
                 let selected = &self.selection.range;
                 let selection = (selected.start <= end
                     && selected.end >= start
@@ -84,17 +81,18 @@ impl Editor {
                 DiffRow::new(kind, Some(line + 1), element).into_any_element()
             }
             Row::Removed { line, pair } => {
-                let text = document.base_line(line).to_string();
+                let text = document.base_line(line);
                 let words = pair
                     .filter(|_| marks)
-                    .map(|pair| changed_words(&text, &movement::line(document.text(), pair).1).0)
+                    .map(|pair| changed_words(text, &movement::line(document.text(), pair).1).0)
                     .unwrap_or_default();
-                let style = HighlightStyle {
-                    background_color: word(LineKind::Removed),
-                    ..Default::default()
-                };
-                let text = StyledText::new(text)
-                    .with_highlights(words.into_iter().map(|range| (range, style)));
+                let highlights = line_styles(
+                    document.base_tokens(line),
+                    words,
+                    word(LineKind::Removed),
+                    colors,
+                );
+                let text = StyledText::new(text.to_string()).with_highlights(highlights);
                 DiffRow::new(
                     LineKind::Removed,
                     None,

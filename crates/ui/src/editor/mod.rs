@@ -1,6 +1,7 @@
 //! A code editor over a document: it shows the document's diff in one of three modes, edits it
 //! from the keyboard, mouse and input method, and saves as the save setting says.
 
+mod highlights;
 mod input;
 mod keys;
 mod line;
