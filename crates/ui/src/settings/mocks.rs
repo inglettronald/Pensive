@@ -141,12 +141,12 @@ pub(crate) fn mocks() -> Vec<Mock> {
         mock_window::mock("settings", "no_results", |w, cx| {
             window(|view, cx| view.search_in(PALETTE, "qwerty", cx), w, cx)
         }),
-        mock_window::mock("settings", "size_changed", |w, cx| {
+        mock_window::fixed("settings", "size_changed", |w, cx| {
             let view = window(|view, cx| view.jump_to(SIZE, None, cx), w, cx);
             Settings::load("zoom = 110\ncode_size = 15\n", cx);
             view
         }),
-        mock_window::mock("settings", "dense", |w, cx| {
+        mock_window::fixed("settings", "dense", |w, cx| {
             cx.set_global(DensityPreset::Dense.density());
             window(untouched, w, cx)
         }),

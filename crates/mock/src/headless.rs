@@ -1,21 +1,43 @@
 //! Draws a view on the headless renderer and captures it, without opening a window.
 
-use std::{cell::Cell, sync::Arc};
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+    sync::Arc,
+};
 
 use gpui::{
-    AnyView, App, Context, Entity, HeadlessAppContext, IntoElement, Pixels,
-    PlatformHeadlessRenderer, PlatformTextSystem, Render, Result, Size, Window,
+    AnyView, App, Context, DevicePixels, Entity, HeadlessAppContext, IntoElement, Pixels,
+    PlatformAtlas, PlatformHeadlessRenderer, PlatformTextSystem, Render, Result, Scene, Size,
+    Window,
 };
 use image::RgbaImage;
 
+use crate::painted::Painted;
+
+/// GPUI's headless windows draw at two pixels per point.
+pub(crate) const SCALE: f32 = 2.;
+
+/// A window's image, with what was painted to make it.
+pub struct Capture {
+    pub image: RgbaImage,
+    pub painted: Painted,
+}
+
 /// Opens a window of `size` on the headless renderer and captures it at twice its size.
-pub(crate) fn render_headless<V: Render>(
+pub(crate) fn capture<V: Render>(
     size: Size<Pixels>,
     build_root: impl FnOnce(&mut Window, &mut App) -> Entity<V>,
-) -> Result<Option<RgbaImage>> {
+) -> Result<Option<Capture>> {
     let Some(renderer) = headless_renderer()? else {
         return Ok(None);
     };
+    let painted = Rc::new(RefCell::new(Painted::default()));
+    let renderer: Box<dyn PlatformHeadlessRenderer> = Box::new(Recording {
+        renderer,
+        painted: painted.clone(),
+        size,
+    });
     let renderer = Cell::new(Some(renderer));
     let mut cx =
         HeadlessAppContext::with_platform(text_system(), Arc::new(assets::Assets), move || {
@@ -28,7 +50,40 @@ pub(crate) fn render_headless<V: Render>(
     // first layout is measured, such as scrolling to a heading. The mock draws that frame too.
     cx.update_window(window.into(), |_, window, cx| window.draw(cx).clear(cx))?;
     cx.run_until_parked();
-    cx.capture_screenshot(window.into()).map(Some)
+    let image = cx.capture_screenshot(window.into())?;
+    let painted = painted.take();
+    Ok(Some(Capture { image, painted }))
+}
+
+/// Notes what each captured frame paints, then has `renderer` draw it.
+struct Recording {
+    renderer: Box<dyn PlatformHeadlessRenderer>,
+    painted: Rc<RefCell<Painted>>,
+    size: Size<Pixels>,
+}
+
+impl PlatformHeadlessRenderer for Recording {
+    fn render_scene_to_image(
+        &mut self,
+        scene: &Scene,
+        size: Size<DevicePixels>,
+    ) -> Result<RgbaImage> {
+        *self.painted.borrow_mut() = Painted::from_scene(
+            scene,
+            self.size.width.as_f32(),
+            self.size.height.as_f32(),
+            SCALE,
+        );
+        self.renderer.render_scene_to_image(scene, size)
+    }
+
+    fn render_scene(&mut self, scene: &Scene, size: Size<DevicePixels>) -> Result<()> {
+        self.renderer.render_scene(scene, size)
+    }
+
+    fn sprite_atlas(&self) -> Arc<dyn PlatformAtlas> {
+        self.renderer.sprite_atlas()
+    }
 }
 
 /// Holds a mock's view so the window has a concrete root type.

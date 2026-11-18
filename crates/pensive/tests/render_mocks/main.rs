@@ -14,6 +14,11 @@
 //! exists, every later render is compared with its copy there: each one that changed is listed,
 //! with a picture of what changed in `target/mocks-diff`. A change is reported, never a failure,
 //! since changing how a view looks is the point of most UI work.
+//!
+//! `--matrix` renders the window mocks across window sizes instead. See [`matrix`].
+
+mod matrix;
+mod report;
 
 use std::{
     any::Any,
@@ -40,33 +45,39 @@ const VALUE_OPTIONS: &[&str] = &[
 ];
 
 struct Args {
-    filter: String,
+    /// The words on the command line that aren't options. Only the first filters a normal run.
+    filters: Vec<String>,
     /// Whether matching nothing is a failure, as it is for `cargo mocks`.
     strict: bool,
     save_baseline: bool,
+    matrix: bool,
 }
 
 impl Args {
     fn parse(mut args: impl Iterator<Item = String>) -> Self {
         let mut parsed = Self {
-            filter: String::new(),
+            filters: Vec::new(),
             strict: false,
             save_baseline: false,
+            matrix: false,
         };
-        let mut filter = None;
         while let Some(arg) = args.next() {
             match arg.as_str() {
                 "--only" => parsed.strict = true,
                 "--save-baseline" => parsed.save_baseline = true,
+                "--matrix" => parsed.matrix = true,
                 option if VALUE_OPTIONS.contains(&option) => {
                     args.next();
                 }
-                _ if !arg.starts_with('-') && filter.is_none() => filter = Some(arg),
+                _ if !arg.starts_with('-') => parsed.filters.push(arg),
                 _ => {}
             }
         }
-        parsed.filter = filter.unwrap_or_default();
         parsed
+    }
+
+    fn filter(&self) -> &str {
+        self.filters.first().map_or("", String::as_str)
     }
 }
 
@@ -75,6 +86,7 @@ struct Folders {
     mocks: PathBuf,
     baseline: PathBuf,
     diff: PathBuf,
+    matrix: PathBuf,
 }
 
 impl Folders {
@@ -86,6 +98,7 @@ impl Folders {
             mocks: target.join("mocks"),
             baseline: target.join("mocks-baseline"),
             diff: target.join("mocks-diff"),
+            matrix: target.join("mocks-matrix"),
         }
     }
 }
@@ -100,6 +113,9 @@ enum Comparison {
 fn main() -> gpui::Result<ExitCode> {
     let args = Args::parse(std::env::args().skip(1));
     let folders = Folders::new();
+    if args.matrix {
+        return matrix::run(&args, &folders.matrix);
+    }
     let comparing = !args.save_baseline && folders.baseline.is_dir();
 
     let mocks = ui::every_mock();
@@ -109,7 +125,7 @@ fn main() -> gpui::Result<ExitCode> {
     for subject_mocks in mocks.chunk_by(|a, b| a.subject == b.subject) {
         let matching: Vec<&Mock> = subject_mocks
             .iter()
-            .filter(|mock| mock.id().contains(&args.filter))
+            .filter(|mock| mock.id().contains(args.filter()))
             .collect();
         let Some(first) = matching.first() else {
             continue;
@@ -157,20 +173,13 @@ fn main() -> gpui::Result<ExitCode> {
             }
         }
 
-        let pages = match atlas {
-            Some(atlas) => atlas.render()?.expect("the mocks above rendered headless"),
-            None => Vec::new(),
-        };
-        for (index, page) in pages.iter().enumerate() {
-            let path = atlas_page(&folders, subject, index);
-            save(page, &path)?;
+        for path in write_atlas(atlas, &folders.mocks, subject)? {
             println!("{}", path.display());
         }
-        remove_atlas_pages(&folders, subject, pages.len())?;
     }
 
     if rendered == 0 && failed.is_empty() {
-        eprintln!("no mock matches `{}`", args.filter);
+        eprintln!("no mock matches `{}`", args.filter());
         return Ok(if args.strict {
             ExitCode::FAILURE
         } else {
@@ -216,19 +225,36 @@ fn compare(image: &RgbaImage, file: &str, folders: &Folders) -> gpui::Result<Com
     )))
 }
 
+/// Saves `atlas`'s pages in `folder` and returns their paths. Without an atlas, it only removes
+/// the pages an earlier render left there.
+fn write_atlas(atlas: Option<Atlas>, folder: &Path, subject: &str) -> gpui::Result<Vec<PathBuf>> {
+    let pages = match atlas {
+        Some(atlas) => atlas.render()?.expect("its mocks rendered headless"),
+        None => Vec::new(),
+    };
+    let mut paths = Vec::new();
+    for (index, page) in pages.iter().enumerate() {
+        let path = atlas_page(folder, subject, index);
+        save(page, &path)?;
+        paths.push(path);
+    }
+    remove_atlas_pages(folder, subject, pages.len())?;
+    Ok(paths)
+}
+
 /// `<subject>.png` for the first page of an atlas, then `<subject>-2.png` and on.
-fn atlas_page(folders: &Folders, subject: &str, index: usize) -> PathBuf {
+fn atlas_page(folder: &Path, subject: &str, index: usize) -> PathBuf {
     let file = match index {
         0 => format!("{subject}.png"),
         index => format!("{subject}-{}.png", index + 1),
     };
-    folders.mocks.join(file)
+    folder.join(file)
 }
 
 /// Removes the pages from `from` on, left by an earlier render with more of them.
-fn remove_atlas_pages(folders: &Folders, subject: &str, from: usize) -> gpui::Result<()> {
+fn remove_atlas_pages(folder: &Path, subject: &str, from: usize) -> gpui::Result<()> {
     for index in from.. {
-        let path = atlas_page(folders, subject, index);
+        let path = atlas_page(folder, subject, index);
         if !path.exists() {
             return Ok(());
         }
