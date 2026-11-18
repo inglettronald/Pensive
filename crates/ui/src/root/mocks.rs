@@ -35,17 +35,20 @@ fn window(
 
 fn untouched(_: &mut PaletteView, _: &mut Context<PaletteView>) {}
 
+/// A mock of the landing screen or the palette, which stay in the middle of the window.
+fn centered(name: &'static str, build: fn(&mut Window, &mut App) -> AnyView) -> Mock {
+    mock_window::mock("root", name, build).centered()
+}
+
 pub(crate) fn mocks() -> Vec<Mock> {
     vec![
-        mock_window::mock("root", "empty", |window, cx| {
+        centered("empty", |window, cx| {
             crate::declare_settings(cx);
             let projects = cx.new(|_| Projects::new(Arc::new(FakeGit::default())));
             cx.new(|cx| Pensive::new(projects, None, window, cx)).into()
         }),
-        mock_window::mock("root", "landing", |w, cx| {
-            window(None, None, untouched, w, cx)
-        }),
-        mock_window::mock("root", "landing_typing", |w, cx| {
+        centered("landing", |w, cx| window(None, None, untouched, w, cx)),
+        centered("landing_typing", |w, cx| {
             window(
                 None,
                 None,
@@ -65,16 +68,16 @@ pub(crate) fn mocks() -> Vec<Mock> {
             });
             view.into()
         }),
-        mock_window::mock("root", "palette", |w, cx| {
+        centered("palette", |w, cx| {
             window(Some(PENSIVE), Some(Tab::All), untouched, w, cx)
         }),
-        mock_window::mock("root", "active", |w, cx| {
+        centered("active", |w, cx| {
             window(Some(PENSIVE), Some(Tab::Active), untouched, w, cx)
         }),
-        mock_window::mock("root", "commands", |w, cx| {
+        centered("commands", |w, cx| {
             window(Some(PENSIVE), Some(Tab::Commands), untouched, w, cx)
         }),
-        mock_window::mock("root", "scoped", |w, cx| {
+        centered("scoped", |w, cx| {
             window(
                 Some(PENSIVE),
                 Some(Tab::All),
@@ -86,7 +89,7 @@ pub(crate) fn mocks() -> Vec<Mock> {
                 cx,
             )
         }),
-        mock_window::mock("root", "no_results", |w, cx| {
+        centered("no_results", |w, cx| {
             window(
                 Some(PENSIVE),
                 Some(Tab::All),
@@ -98,7 +101,7 @@ pub(crate) fn mocks() -> Vec<Mock> {
                 cx,
             )
         }),
-        mock_window::mock("root", "clone", |w, cx| {
+        centered("clone", |w, cx| {
             window(
                 Some(PENSIVE),
                 Some(Tab::All),
@@ -107,7 +110,7 @@ pub(crate) fn mocks() -> Vec<Mock> {
                 cx,
             )
         }),
-        mock_window::mock("root", "settings", |w, cx| {
+        centered("settings", |w, cx| {
             window(
                 Some(PENSIVE),
                 Some(Tab::All),
@@ -116,7 +119,7 @@ pub(crate) fn mocks() -> Vec<Mock> {
                 cx,
             )
         }),
-        mock_window::mock("root", "find_settings", |w, cx| {
+        centered("find_settings", |w, cx| {
             window(
                 Some(PENSIVE),
                 Some(Tab::All),

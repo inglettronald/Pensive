@@ -629,7 +629,7 @@ pub(crate) fn mocks() -> Vec<Mock> {
     }
 
     vec![
-        mock_window::mock("mock_browser", "browsing", |window, cx| {
+        mock_window::fixed("mock_browser", "browsing", |window, cx| {
             browsing(
                 |pensive, _, cx| {
                     browser(pensive, cx, |browser, cx| {
@@ -640,7 +640,7 @@ pub(crate) fn mocks() -> Vec<Mock> {
                 cx,
             )
         }),
-        mock_window::mock("mock_browser", "filtered", |window, cx| {
+        mock_window::fixed("mock_browser", "filtered", |window, cx| {
             browsing(
                 |pensive, _, cx| {
                     browser(pensive, cx, |browser, cx| browser.set_filter("staged", cx))
@@ -649,7 +649,7 @@ pub(crate) fn mocks() -> Vec<Mock> {
                 cx,
             )
         }),
-        mock_window::mock("mock_browser", "component_open", |window, cx| {
+        mock_window::fixed("mock_browser", "component_open", |window, cx| {
             browsing(
                 |pensive, window, cx| {
                     let tooltip = components::mocks()

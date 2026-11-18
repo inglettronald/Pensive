@@ -11,7 +11,7 @@ mod theme;
 
 use gpui::App;
 
-pub use appearance::{APPEARANCE, apply, rem_size, reset_zoom, step_zoom};
+pub use appearance::{APPEARANCE, apply, rem_size, reset_zoom, set_size, step_zoom};
 pub use colors::{ColorRole, Role, ThemeColors, ThemeColorsRefinement, gray};
 pub use density::{Density, DensityPreset, IconSize, TextRole, TextSize, Typeset};
 pub use dp::{CARET, Dp, HAIRLINE, dp};

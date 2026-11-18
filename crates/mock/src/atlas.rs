@@ -17,6 +17,7 @@ use theme::{ActiveTheme, Dp, Typeset};
 use crate::{
     Mock,
     grid::{columns, largest, summary},
+    headless::{Output, SCALE},
 };
 
 const PADDING: Pixels = px(32.);
@@ -28,8 +29,6 @@ const BORDER: Pixels = px(1.);
 
 /// The most a headless render can read back from the GPU: wgpu's default buffer limit.
 const MAX_IMAGE_BYTES: u64 = 256 << 20;
-/// GPUI's headless windows draw at two pixels per point.
-const SCALE: f32 = 2.;
 
 /// Fills rows left to right in the order mocks are added, with about as many columns as rows.
 /// A subject too large for one image splits into pages.
@@ -83,7 +82,9 @@ impl Atlas {
             .into_iter()
             .map(|page| {
                 let window_size = grid_size(page.cards.len(), page.largest);
-                crate::headless::render_headless(window_size, |_, cx| cx.new(|_| page))
+                let capture =
+                    crate::headless::capture(window_size, Output::Image, |_, cx| cx.new(|_| page))?;
+                Ok(capture.map(|capture| capture.image))
             })
             .collect::<Result<Option<Vec<_>>>>()
     }

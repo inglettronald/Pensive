@@ -136,6 +136,13 @@ pub fn rem_size(cx: &App) -> Pixels {
     crate::dp::zoomed_rem(ZOOM.get(cx) as f32 / 100.)
 }
 
+/// Sets the density and zoom, as Settings would.
+pub fn set_size(density: DensityPreset, zoom: u32, cx: &mut App) {
+    DENSITY.set(density, cx);
+    ZOOM.set(zoom, cx);
+    apply(cx);
+}
+
 /// Moves the zoom `step` levels, stopping at the smallest and largest.
 pub fn step_zoom(step: isize, cx: &mut App) {
     ZOOM.step(step, cx);

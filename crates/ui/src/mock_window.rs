@@ -19,8 +19,18 @@ pub(crate) fn pensive(
     cx.new(|cx| Pensive::new(projects, project, window, cx))
 }
 
-/// A mock of a whole window, at 1920 × 1080.
+/// A mock of a whole window, at 1920 × 1080, that the matrix also renders at other sizes.
 pub(crate) fn mock(
+    subject: &'static str,
+    name: &'static str,
+    build: fn(&mut Window, &mut App) -> AnyView,
+) -> Mock {
+    fixed(subject, name, build).in_matrix()
+}
+
+/// A mock of a whole window that the matrix leaves out, because it sets its own density or zoom
+/// or isn't a screen people use.
+pub(crate) fn fixed(
     subject: &'static str,
     name: &'static str,
     build: fn(&mut Window, &mut App) -> AnyView,
