@@ -80,12 +80,72 @@ impl Kind {
     }
 }
 
+/// What a flag found, worst first: from text nobody can read to text that fades needlessly.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Problem {
+    LettersStacked,
+    MainSqueezed,
+    PastWindow,
+    Overlap,
+    OffCenter,
+    CutOff,
+    MostlyFade,
+    NeedlessFade,
+}
+
+impl Problem {
+    pub const ALL: [Self; 8] = [
+        Self::LettersStacked,
+        Self::MainSqueezed,
+        Self::PastWindow,
+        Self::Overlap,
+        Self::OffCenter,
+        Self::CutOff,
+        Self::MostlyFade,
+        Self::NeedlessFade,
+    ];
+
+    pub fn kind(self) -> Kind {
+        match self {
+            Self::LettersStacked | Self::MainSqueezed => Kind::Squeezed,
+            Self::PastWindow | Self::CutOff => Kind::Clipped,
+            Self::Overlap => Kind::Overlap,
+            Self::OffCenter => Kind::OffCenter,
+            Self::MostlyFade | Self::NeedlessFade => Kind::Fading,
+        }
+    }
+
+    /// Its name in the list of accepted flags.
+    pub fn id(self) -> &'static str {
+        match self {
+            Self::LettersStacked => "letters-stacked",
+            Self::MainSqueezed => "main-squeezed",
+            Self::PastWindow => "past-window",
+            Self::Overlap => "overlap",
+            Self::OffCenter => "off-center",
+            Self::CutOff => "cut-off",
+            Self::MostlyFade => "mostly-fade",
+            Self::NeedlessFade => "needless-fade",
+        }
+    }
+
+    pub fn from_id(id: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|problem| problem.id() == id)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Flag {
-    pub kind: Kind,
+    pub problem: Problem,
     /// Where, in window pixels.
     pub at: Rect,
     pub detail: String,
+}
+
+impl Flag {
+    pub fn kind(&self) -> Kind {
+        self.problem.kind()
+    }
 }
 
 /// What a check needs to know beyond the frame itself.
@@ -186,18 +246,22 @@ fn clipped(painted: &Painted, fades: &[PaintedBox]) -> Vec<Flag> {
     let past_window = merged(past_window);
     cut_off.retain(|cut: &Rect| !past_window.iter().any(|rect| rect.contains(cut)));
 
-    let flags = |rects, kind, detail: &str| -> Vec<Flag> {
+    let flags = |rects, problem, detail: &str| -> Vec<Flag> {
         merged(rects)
             .into_iter()
             .map(|at| Flag {
-                kind,
+                problem,
                 at,
                 detail: detail.to_string(),
             })
             .collect()
     };
-    let mut found = flags(past_window, Kind::Clipped, "runs past the window's edge");
-    found.extend(flags(cut_off, Kind::Clipped, "cut off with no fade"));
+    let mut found = flags(
+        past_window,
+        Problem::PastWindow,
+        "runs past the window's edge",
+    );
+    found.extend(flags(cut_off, Problem::CutOff, "cut off with no fade"));
     found
 }
 
@@ -312,7 +376,7 @@ fn overlapping(painted: &Painted) -> Vec<Flag> {
     merged(overlaps)
         .into_iter()
         .map(|at| Flag {
-            kind: Kind::Overlap,
+            problem: Problem::Overlap,
             at,
             detail: "content drawn over other content".to_string(),
         })
@@ -351,7 +415,7 @@ fn off_center(painted: &Painted) -> Option<Flag> {
     let across = (group.left + group.right - area.left - area.right) / 2.;
     let down = (group.top + group.bottom - area.top - area.bottom) / 2.;
     (across.abs() > CENTER_TOLERANCE || down.abs() > CENTER_TOLERANCE).then(|| Flag {
-        kind: Kind::OffCenter,
+        problem: Problem::OffCenter,
         at: group.intersect(&window),
         detail: format!("{across:+.0} px across and {down:+.0} px down from the center"),
     })
@@ -425,7 +489,7 @@ fn squeezed(painted: &Painted, zoom: f32) -> Option<Flag> {
     }
     let width = ((painted.width - edge) / zoom).max(0.);
     (width < MIN_MAIN_WIDTH).then(|| Flag {
-        kind: Kind::Squeezed,
+        problem: Problem::MainSqueezed,
         at: Rect::new(edge.min(painted.width), 0., painted.width, painted.height),
         detail: format!("main area is {width:.0} px wide at 100% zoom, under {MIN_MAIN_WIDTH:.0}"),
     })
@@ -472,7 +536,7 @@ fn letter_stacks(painted: &Painted, zoom: f32) -> Vec<Flag> {
         .into_iter()
         .filter(|(_, _, count)| *count >= MIN_LETTER_STACK)
         .map(|(at, _, _)| Flag {
-            kind: Kind::Squeezed,
+            problem: Problem::LettersStacked,
             at,
             detail: "text wraps after every letter".to_string(),
         })
@@ -508,15 +572,21 @@ fn fading(fades: &[PaintedBox], reference: &[f32]) -> Vec<Flag> {
         .iter()
         .filter_map(|fade| {
             let width = fade.clip.width();
-            let detail = if fade.bounds.width() > width * MAX_FADE_SHARE {
-                "fades over more than half of its text's box"
+            let (problem, detail) = if fade.bounds.width() > width * MAX_FADE_SHARE {
+                (
+                    Problem::MostlyFade,
+                    "fades over more than half of its text's box",
+                )
             } else if has_room_elsewhere(width) {
-                "fades here but not at the reference size"
+                (
+                    Problem::NeedlessFade,
+                    "fades here but not at the reference size",
+                )
             } else {
                 return None;
             };
             Some(Flag {
-                kind: Kind::Fading,
+                problem,
                 at: fade.clip,
                 detail: detail.to_string(),
             })
@@ -581,7 +651,7 @@ mod tests {
     fn kinds(painted: &Painted, expected: Expected<'_>) -> Vec<Kind> {
         check(painted, expected)
             .into_iter()
-            .map(|flag| flag.kind)
+            .map(|flag| flag.kind())
             .collect()
     }
 
@@ -596,7 +666,7 @@ mod tests {
     fn ink_past_the_window_is_clipped() {
         let icon = glyph(Rect::new(10., 590., 30., 610.), WINDOW, 1);
         let flags = check(&frame(vec![icon], vec![]), expected());
-        assert_eq!(flags[0].kind, Kind::Clipped);
+        assert_eq!(flags[0].problem, Problem::PastWindow);
         assert_eq!(flags[0].at, Rect::new(10., 590., 30., 600.));
     }
 
@@ -706,7 +776,7 @@ mod tests {
             ..expected()
         };
         let flags = check(&frame(vec![hint], vec![bar, palette]), centered_expectation);
-        assert!(!flags.iter().any(|flag| flag.kind == Kind::OffCenter));
+        assert!(!flags.iter().any(|flag| flag.problem == Problem::OffCenter));
     }
 
     #[test]
@@ -715,7 +785,7 @@ mod tests {
         let panel = solid(Rect::new(50., 40., 600., 600.), 2, 1.);
         let main = solid(Rect::new(600., 40., 800., 600.), 3, 1.);
         let flags = check(&frame(vec![], vec![rail, panel, main]), expected());
-        assert_eq!(flags[0].kind, Kind::Squeezed);
+        assert_eq!(flags[0].problem, Problem::MainSqueezed);
         assert_eq!(flags[0].at, Rect::new(600., 0., 800., 600.));
 
         // The same 200 pixels are half as wide at 200% zoom.
@@ -733,7 +803,9 @@ mod tests {
     fn columns_wider_than_the_window_leave_no_main_area() {
         let columns = solid(Rect::new(0., 40., 900., 600.), 1, 1.);
         let flags = check(&frame(vec![], vec![columns]), expected());
-        let squeezed = flags.iter().find(|flag| flag.kind == Kind::Squeezed);
+        let squeezed = flags
+            .iter()
+            .find(|flag| flag.problem == Problem::MainSqueezed);
         assert!(squeezed.unwrap().detail.starts_with("main area is 0 px"));
     }
 
@@ -753,7 +825,7 @@ mod tests {
             })
             .collect();
         let flags = check(&frame(letters.clone(), vec![]), expected());
-        assert_eq!(flags[0].kind, Kind::Squeezed);
+        assert_eq!(flags[0].problem, Problem::LettersStacked);
         assert_eq!(flags[0].at, Rect::new(300., 100., 308., 192.));
 
         // Line numbers have their code after them.
@@ -795,7 +867,7 @@ mod tests {
     fn marking_outlines_a_flag_in_image_pixels() {
         let image = RgbaImage::from_pixel(100, 100, Rgba([0, 0, 0, 255]));
         let flag = Flag {
-            kind: Kind::Clipped,
+            problem: Problem::PastWindow,
             at: Rect::new(10., 10., 30., 30.),
             detail: String::new(),
         };

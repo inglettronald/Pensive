@@ -4,6 +4,8 @@
 mod atlas;
 pub mod diff;
 #[cfg(not(target_family = "wasm"))]
+pub mod flag_counts;
+#[cfg(not(target_family = "wasm"))]
 pub mod flags;
 pub mod grid;
 #[cfg(not(target_family = "wasm"))]
@@ -19,7 +21,7 @@ use gpui::{
     Size, Styled, Window, div, px, size,
 };
 #[cfg(not(target_family = "wasm"))]
-pub use headless::Capture;
+pub use headless::{Capture, Output};
 use theme::ActiveTheme;
 
 /// One view or component in one state, built from fixed data.
@@ -117,15 +119,17 @@ impl Mock {
     /// Renders the mock at twice its size without opening a window, with the default theme and
     /// the bundled fonts and assets. Returns `None` on platforms with no headless renderer.
     pub fn render(&self) -> gpui::Result<Option<image::RgbaImage>> {
-        let capture = headless::capture(self.size, |window, cx| self.frame(window, cx))?;
+        let capture = headless::capture(self.size, Output::Image, |window, cx| {
+            self.frame(window, cx)
+        })?;
         Ok(capture.map(|capture| capture.image))
     }
 
     /// Renders the mock in a window of `cell`'s size, at its zoom and density.
     #[expect(clippy::disallowed_methods, reason = "a matrix cell is in pixels")]
-    pub fn capture_in(&self, cell: &matrix::Cell) -> gpui::Result<Option<Capture>> {
+    pub fn capture_in(&self, cell: &matrix::Cell, output: Output) -> gpui::Result<Option<Capture>> {
         let window_size = size(px(cell.size.width as f32), px(cell.size.height as f32));
-        headless::capture(window_size, |window, cx| {
+        headless::capture(window_size, output, |window, cx| {
             theme::set_size(cell.density, cell.zoom, cx);
             self.frame(window, cx)
         })

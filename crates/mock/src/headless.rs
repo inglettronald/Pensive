@@ -18,6 +18,14 @@ use crate::painted::Painted;
 /// GPUI's headless windows draw at two pixels per point.
 pub(crate) const SCALE: f32 = 2.;
 
+/// What a capture produces.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Output {
+    Image,
+    /// Only what was painted, which leaves the image empty and the GPU out of it.
+    PaintedOnly,
+}
+
 /// A window's image, with what was painted to make it.
 pub struct Capture {
     pub image: RgbaImage,
@@ -27,6 +35,7 @@ pub struct Capture {
 /// Opens a window of `size` on the headless renderer and captures it at twice its size.
 pub(crate) fn capture<V: Render>(
     size: Size<Pixels>,
+    output: Output,
     build_root: impl FnOnce(&mut Window, &mut App) -> Entity<V>,
 ) -> Result<Option<Capture>> {
     let Some(renderer) = headless_renderer()? else {
@@ -37,6 +46,7 @@ pub(crate) fn capture<V: Render>(
         renderer,
         painted: painted.clone(),
         size,
+        output,
     });
     let renderer = Cell::new(Some(renderer));
     let mut cx =
@@ -55,11 +65,12 @@ pub(crate) fn capture<V: Render>(
     Ok(Some(Capture { image, painted }))
 }
 
-/// Notes what each captured frame paints, then has `renderer` draw it.
+/// Notes what each captured frame paints, then has `renderer` draw it if `output` needs that.
 struct Recording {
     renderer: Box<dyn PlatformHeadlessRenderer>,
     painted: Rc<RefCell<Painted>>,
     size: Size<Pixels>,
+    output: Output,
 }
 
 impl PlatformHeadlessRenderer for Recording {
@@ -74,11 +85,17 @@ impl PlatformHeadlessRenderer for Recording {
             self.size.height.as_f32(),
             SCALE,
         );
-        self.renderer.render_scene_to_image(scene, size)
+        match self.output {
+            Output::Image => self.renderer.render_scene_to_image(scene, size),
+            Output::PaintedOnly => Ok(RgbaImage::new(0, 0)),
+        }
     }
 
     fn render_scene(&mut self, scene: &Scene, size: Size<DevicePixels>) -> Result<()> {
-        self.renderer.render_scene(scene, size)
+        match self.output {
+            Output::Image => self.renderer.render_scene(scene, size),
+            Output::PaintedOnly => Ok(()),
+        }
     }
 
     fn sprite_atlas(&self) -> Arc<dyn PlatformAtlas> {

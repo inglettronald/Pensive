@@ -17,7 +17,7 @@ use theme::{ActiveTheme, Dp, Typeset};
 use crate::{
     Mock,
     grid::{columns, largest, summary},
-    headless::SCALE,
+    headless::{Output, SCALE},
 };
 
 const PADDING: Pixels = px(32.);
@@ -82,7 +82,8 @@ impl Atlas {
             .into_iter()
             .map(|page| {
                 let window_size = grid_size(page.cards.len(), page.largest);
-                let capture = crate::headless::capture(window_size, |_, cx| cx.new(|_| page))?;
+                let capture =
+                    crate::headless::capture(window_size, Output::Image, |_, cx| cx.new(|_| page))?;
                 Ok(capture.map(|capture| capture.image))
             })
             .collect::<Result<Option<Vec<_>>>>()

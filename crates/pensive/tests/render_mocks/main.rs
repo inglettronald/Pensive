@@ -15,8 +15,10 @@
 //! with a picture of what changed in `target/mocks-diff`. A change is reported, never a failure,
 //! since changing how a view looks is the point of most UI work.
 //!
-//! `--matrix` renders the window mocks across window sizes instead. See [`matrix`].
+//! `--matrix` renders the window mocks across window sizes instead. See [`matrix`]. With `--check`
+//! it only compares their layout flags with the accepted list, and `--accept` updates that list.
 
+mod check;
 mod matrix;
 mod report;
 
@@ -51,6 +53,10 @@ struct Args {
     strict: bool,
     save_baseline: bool,
     matrix: bool,
+    /// Whether the matrix only compares its flags with the accepted list.
+    check: bool,
+    /// Whether that list takes the flags found instead of being compared with them.
+    accept: bool,
 }
 
 impl Args {
@@ -60,12 +66,19 @@ impl Args {
             strict: false,
             save_baseline: false,
             matrix: false,
+            check: false,
+            accept: false,
         };
         while let Some(arg) = args.next() {
             match arg.as_str() {
                 "--only" => parsed.strict = true,
                 "--save-baseline" => parsed.save_baseline = true,
                 "--matrix" => parsed.matrix = true,
+                "--check" => parsed.check = true,
+                "--accept" => {
+                    parsed.check = true;
+                    parsed.accept = true;
+                }
                 option if VALUE_OPTIONS.contains(&option) => {
                     args.next();
                 }
@@ -78,6 +91,11 @@ impl Args {
 
     fn filter(&self) -> &str {
         self.filters.first().map_or("", String::as_str)
+    }
+
+    /// Whether a matrix `id` contains every filter.
+    fn matches_filters(&self, id: &str) -> bool {
+        self.filters.iter().all(|filter| id.contains(filter))
     }
 }
 
@@ -115,6 +133,10 @@ fn main() -> gpui::Result<ExitCode> {
     let folders = Folders::new();
     if args.matrix {
         return matrix::run(&args, &folders.matrix);
+    }
+    if args.check {
+        eprintln!("`--check` and `--accept` only work with `--matrix`");
+        return Ok(ExitCode::FAILURE);
     }
     let comparing = !args.save_baseline && folders.baseline.is_dir();
 

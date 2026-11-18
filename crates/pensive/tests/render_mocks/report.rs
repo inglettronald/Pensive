@@ -3,6 +3,7 @@
 use std::{collections::BTreeMap, fmt::Write};
 
 use mock::{
+    flag_counts::{FlagCounts, FlagKey},
     flags::{Flag, Kind},
     matrix::{Cell, SIZES, WindowSize, cells_of},
     painted::Rect,
@@ -38,6 +39,29 @@ impl Report {
 
     pub(crate) fn rendered(&self) -> usize {
         self.rendered.len()
+    }
+
+    pub(crate) fn counts(&self) -> FlagCounts {
+        let mut counts = FlagCounts::default();
+        for item in &self.rendered {
+            for flag in &item.flags {
+                counts.add(FlagKey {
+                    problem: flag.problem,
+                    mock: item.mock.clone(),
+                    cell: item.cell.id(),
+                });
+            }
+        }
+        counts
+    }
+
+    /// The flags `key` counts.
+    pub(crate) fn flags_of<'a>(&'a self, key: &'a FlagKey) -> impl Iterator<Item = &'a Flag> {
+        self.rendered
+            .iter()
+            .filter(|item| item.mock == key.mock && item.cell.id() == key.cell)
+            .flat_map(|item| &item.flags)
+            .filter(|flag| flag.problem == key.problem)
     }
 
     fn in_cell(&self, cell: &Cell) -> impl Iterator<Item = &Rendered> {
@@ -123,7 +147,7 @@ impl Report {
             .filter_map(|kind| {
                 let count = items
                     .iter()
-                    .filter(|item| item.flags.iter().any(|flag| flag.kind == kind))
+                    .filter(|item| item.flags.iter().any(|flag| flag.kind() == kind))
                     .count();
                 (count > 0).then(|| format!("{count} {}", kind.name()))
             })
@@ -140,7 +164,7 @@ impl Report {
         for item in self.in_cell(cell) {
             for flag in &item.flags {
                 let place = format!("{} at {}", flag.detail, rect_name(&flag.at));
-                let mocks = mocks_by_flag.entry((flag.kind, place)).or_default();
+                let mocks = mocks_by_flag.entry((flag.kind(), place)).or_default();
                 if mocks.last() != Some(&item.mock.as_str()) {
                     mocks.push(&item.mock);
                 }
@@ -160,7 +184,7 @@ fn size_name(size: &WindowSize) -> String {
     format!("{}x{}", size.width, size.height)
 }
 
-fn rect_name(rect: &Rect) -> String {
+pub(crate) fn rect_name(rect: &Rect) -> String {
     format!(
         "({:.0}, {:.0}) {:.0}x{:.0}",
         rect.left,

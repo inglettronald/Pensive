@@ -1,6 +1,7 @@
 [alias]
 # `cargo mocks [FILTER]` renders mocks to target/mocks. `cargo mocks --matrix [FILTER...]` renders
-# the window mocks at many window sizes to target/mocks-matrix and flags what breaks.
+# the window mocks at many window sizes to target/mocks-matrix and flags what breaks. Adding
+# `--check` writes no images and fails on flags that aren't accepted yet, and `--accept` accepts them.
 mocks = "test -p pensive --test render_mocks -- --only"
 # `cargo demo` runs the app on the sample projects, with the mock browser on Ctrl Shift M.
 demo = "run -p pensive --features demo"
