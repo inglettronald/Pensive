@@ -41,6 +41,8 @@ pub struct Document {
     saved_revision: usize,
     /// Counts changes to `on_disk`, so a read of the disk that started before one is dropped.
     disk_generation: usize,
+    /// Counts reload requests so a newer request supersedes any still in flight.
+    reload_generation: usize,
     /// Set when the file changed on disk since it was read, which stops saving until the
     /// document is reloaded or the file is overwritten.
     conflict: Option<Version>,
@@ -76,6 +78,13 @@ struct DiffStamp {
     base: SourceStamp,
     text: SourceStamp,
     generation: usize,
+}
+
+#[derive(PartialEq, Eq)]
+struct ReloadStamp {
+    revision: usize,
+    disk_generation: usize,
+    reload_generation: usize,
 }
 
 impl EventEmitter<DocumentEvent> for Document {}
@@ -144,6 +153,7 @@ impl Document {
             revision: 0,
             saved_revision: 0,
             disk_generation: 0,
+            reload_generation: 0,
             conflict: None,
             diff: contents.diff,
             diffing: None,
@@ -445,10 +455,16 @@ impl Document {
         }
     }
 
-    /// Replaces the text with what's on disk, as one undo step, so the edits it drops can come
-    /// back. Clears a conflict.
+    /// Reloads an uncommitted file from disk as one undo step and clears its conflict.
     pub fn reload(&mut self, cx: &mut Context<Self>) {
-        let stamp = (self.text_stamp(), self.disk_stamp());
+        if self.key.source != Source::Uncommitted {
+            return;
+        }
+        self.reload_generation = self
+            .reload_generation
+            .checked_add(1)
+            .expect("reload generation exhausted");
+        let stamp = self.reload_stamp();
         let (worktree, path) = (self.worktree.clone(), self.key.path.clone());
         let title = format!("Couldn't read {}", self.key.path.display());
         let read = self
@@ -458,14 +474,24 @@ impl Document {
             let Ok(on_disk) = read.await else {
                 return;
             };
-            this.update(cx, |this, cx| {
-                if stamp == (this.text_stamp(), this.disk_stamp()) && !this.saves.is_busy() {
-                    this.take_disk_text(on_disk, cx);
-                }
-            })
-            .ok();
+            this.update(cx, |this, cx| this.finish_reload(stamp, on_disk, cx))
+                .ok();
         })
         .detach();
+    }
+
+    fn reload_stamp(&self) -> ReloadStamp {
+        ReloadStamp {
+            revision: self.revision,
+            disk_generation: self.disk_generation,
+            reload_generation: self.reload_generation,
+        }
+    }
+
+    fn finish_reload(&mut self, stamp: ReloadStamp, on_disk: Version, cx: &mut Context<Self>) {
+        if stamp == self.reload_stamp() && !self.saves.is_busy() {
+            self.take_disk_text(on_disk, cx);
+        }
     }
 
     /// Writes the text even though the file changed on disk.
@@ -610,6 +636,14 @@ mod tests {
     }
 
     fn sample(text: &str, cx: &mut TestAppContext) -> (Entity<Document>, Arc<FakeGit>) {
+        sample_with_source(text, Source::Uncommitted, cx)
+    }
+
+    fn sample_with_source(
+        text: &str,
+        source: Source,
+        cx: &mut TestAppContext,
+    ) -> (Entity<Document>, Arc<FakeGit>) {
         let git = Arc::new(FakeGit::default());
         git.write_file(Path::new(PENSIVE_ROOT), Path::new(PATH), text)
             .unwrap();
@@ -622,7 +656,7 @@ mod tests {
             Document::new(
                 PENSIVE_ROOT.into(),
                 FileKey {
-                    source: Source::Uncommitted,
+                    source,
                     path: PATH.into(),
                 },
                 contents,
@@ -866,6 +900,55 @@ mod tests {
         cx.run_until_parked();
         assert_eq!(text(&document, cx), "new edit\noriginal\n");
         assert!(document.read_with(cx, |document, _| document.is_dirty()));
+    }
+
+    #[gpui::test]
+    fn reloading_a_commit_keeps_its_snapshot_and_history(cx: &mut TestAppContext) {
+        let (document, git) = sample_with_source("committed\n", Source::Commit("abc".into()), cx);
+        let before = document.read_with(cx, |document, _| document.snapshot());
+        git.write_file(Path::new(PENSIVE_ROOT), Path::new(PATH), "worktree\n")
+            .unwrap();
+        document.update(cx, |document, cx| document.reload(cx));
+        cx.run_until_parked();
+
+        document.update(cx, |document, cx| {
+            assert_eq!(document.snapshot().stamp(), before.stamp());
+            assert_eq!(document.text().to_string(), "committed\n");
+            assert!(document.undo(cx).is_none());
+        });
+    }
+
+    #[gpui::test]
+    fn reloading_a_recreated_file_makes_it_editable(cx: &mut TestAppContext) {
+        let (document, git) = sample("", cx);
+        document.update(cx, |document, _| document.set_on_disk(Version::Missing));
+        assert!(!document.read_with(cx, |document, _| document.is_editable()));
+        git.write_file(Path::new(PENSIVE_ROOT), Path::new(PATH), "recreated\n")
+            .unwrap();
+        document.update(cx, |document, cx| document.reload(cx));
+        cx.run_until_parked();
+
+        assert_eq!(text(&document, cx), "recreated\n");
+        assert!(document.read_with(cx, |document, _| document.is_editable()));
+    }
+
+    #[gpui::test]
+    fn an_older_reload_cannot_publish_while_the_latest_is_pending(cx: &mut TestAppContext) {
+        let (document, git) = sample("original\n", cx);
+        git.write_file(Path::new(PENSIVE_ROOT), Path::new(PATH), "latest\n")
+            .unwrap();
+
+        document.update(cx, |document, cx| {
+            document.reload(cx);
+            let older = document.reload_stamp();
+            document.reload(cx);
+            // Deliver the older result first without depending on executor scheduling.
+            document.finish_reload(older, Version::Text("older\n".into()), cx);
+            assert_eq!(document.text().to_string(), "original\n");
+        });
+        cx.run_until_parked();
+
+        assert_eq!(text(&document, cx), "latest\n");
     }
 
     #[gpui::test]
