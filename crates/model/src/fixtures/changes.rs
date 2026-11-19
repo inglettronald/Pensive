@@ -15,8 +15,8 @@ use gpui::SharedString;
 
 use super::{DOTFILES, GLYPH_UI, HARBOR, LANTERN, PENSIVE, ZED};
 use crate::{
-    Base, Changes, Commit, FileChange, FileKey, FileStatus, FileVersions, ProjectId, Source,
-    Staging, Symbol, SymbolKind, Upstream, Version,
+    Base, Changes, Commit, FileChange, FileKey, FileOrigin, FileSource, FileStatus, FileVersions,
+    ProjectId, Source, Staging, Symbol, SymbolKind, Upstream, Version,
 };
 
 /// Pensive's: seven uncommitted files, two staged and one partly staged, then two unpushed commits
@@ -42,18 +42,38 @@ pub(crate) fn versions(
     key: &FileKey,
     renamed_from: Option<&Path>,
 ) -> Option<FileVersions> {
-    let samples = samples_in(worktree)?.files(&key.source);
+    let samples = samples_in(worktree)?;
+    let mut commits = samples.commits.into_iter();
+    let (files, new_origin) = match &key.source {
+        Source::Uncommitted => (samples.uncommitted, FileOrigin::Worktree),
+        Source::Commit(sha) => {
+            let commit = commits.find(|sample| sample.commit.sha == *sha)?;
+            (commit.files, FileOrigin::Commit(Some(sha.to_string())))
+        }
+    };
+    let old_revision = commits.next().map(|sample| sample.commit.sha.to_string());
     let old_path = renamed_from.unwrap_or(&key.path);
-    let old = samples
+    let old = files
         .iter()
         .find(|sample| sample.old_path() == old_path)
-        .map_or(Version::Missing, |sample| sample.versions.old.clone());
-    let new = samples
+        .map_or(Version::Missing, |sample| sample.versions.0.clone());
+    let new = files
         .into_iter()
         .find(|sample| sample.change.path == key.path)?
         .versions
-        .new;
-    Some(FileVersions { old, new })
+        .1;
+    Some(FileVersions {
+        old,
+        new,
+        old_source: FileSource {
+            path: old_path.to_path_buf(),
+            origin: FileOrigin::Commit(old_revision),
+        },
+        new_source: FileSource {
+            path: key.path.clone(),
+            origin: new_origin,
+        },
+    })
 }
 
 /// The files the samples leave in `worktree`: each commit applied from the oldest, then the
@@ -106,17 +126,6 @@ impl WorktreeSamples {
                 .collect(),
         }
     }
-
-    fn files(self, source: &Source) -> Vec<Sample> {
-        match source {
-            Source::Uncommitted => self.uncommitted,
-            Source::Commit(sha) => self
-                .commits
-                .into_iter()
-                .find(|sample| sample.commit.sha == *sha)
-                .map_or_else(Vec::new, |sample| sample.files),
-        }
-    }
 }
 
 /// A commit, with its files kept apart until they're turned into changes.
@@ -148,7 +157,7 @@ impl SampleCommit {
 /// A file as the sidebar lists it, and its two versions.
 struct Sample {
     change: FileChange,
-    versions: FileVersions,
+    versions: (Version, Version),
 }
 
 impl Sample {
@@ -555,10 +564,10 @@ impl Build for FileChange {
         };
         let status = self.status();
         let new_file = matches!(status, FileStatus::Added | FileStatus::Untracked);
-        let versions = FileVersions {
-            old: side('+', new_file),
-            new: side('-', status == FileStatus::Deleted),
-        };
+        let versions = (
+            side('+', new_file),
+            side('-', status == FileStatus::Deleted),
+        );
         Sample {
             change: self,
             versions,

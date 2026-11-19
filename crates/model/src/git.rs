@@ -20,6 +20,8 @@ pub trait GitBackend: Send + Sync + Debug {
 
     /// Reads both versions of the file `key` names. The old version is read at `renamed_from`
     /// when that's given, and at `key.path` otherwise, where a renamed file has none.
+    /// Retains each original path and resolves committed origins once, before reading
+    /// their bytes, so moving HEAD cannot relabel a snapshot from another revision.
     fn versions(
         &self,
         worktree: &Path,

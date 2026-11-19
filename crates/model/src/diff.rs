@@ -1,7 +1,7 @@
 //! A changed file's two versions, the lines that changed between them, and the words that
 //! changed on lines that pair up.
 
-use std::ops::Range;
+use std::{ops::Range, path::PathBuf};
 
 use imara_diff::{Algorithm, Diff, InternedInput, sources::lines};
 
@@ -33,6 +33,24 @@ impl Version {
 pub struct FileVersions {
     pub old: Version,
     pub new: Version,
+    pub old_source: FileSource,
+    pub new_source: FileSource,
+}
+
+/// The original location of one diff input, independent of its language and text stamp.
+/// A missing side still retains the path/revision that was requested.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FileSource {
+    pub path: PathBuf,
+    pub origin: FileOrigin,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum FileOrigin {
+    Worktree,
+    /// The resolved commit ID, or no commit for an unborn HEAD/root commit's parent.
+    /// Fixtures use their synthetic commit IDs. Never a moving `HEAD` expression.
+    Commit(Option<String>),
 }
 
 /// Which lines changed between two texts, as runs of old lines replaced by new ones, in order.

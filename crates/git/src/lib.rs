@@ -133,7 +133,7 @@ mod tests {
         time::{Duration, UNIX_EPOCH},
     };
 
-    use model::{FileStatus, Source, Staging, Version};
+    use model::{FileOrigin, FileStatus, Source, Staging, Version};
     use tempfile::TempDir;
 
     use super::*;
@@ -486,11 +486,69 @@ mod tests {
     }
 
     #[test]
+    fn cross_extension_rename_retains_original_paths_and_resolved_commit_origins() {
+        let repo = Repo::new();
+        repo.write("old.js", "const x = 1;\n");
+        repo.commit_all("initial");
+        let head = String::from_utf8(
+            GitCli::from_env()
+                .git(&repo.path(), &["rev-parse", "HEAD"])
+                .unwrap(),
+        )
+        .unwrap()
+        .trim()
+        .to_owned();
+        repo.run(&["mv", "old.js", "new.ts"]);
+        let versions = repo.versions(&uncommitted("new.ts"), Some(Path::new("old.js")));
+        assert_eq!(versions.old_source.path, Path::new("old.js"));
+        assert_eq!(versions.new_source.path, Path::new("new.ts"));
+        assert_eq!(
+            versions.old_source.origin,
+            FileOrigin::Commit(Some(head.clone()))
+        );
+        assert_eq!(versions.new_source.origin, FileOrigin::Worktree);
+        assert_eq!(versions.old, versions.new);
+        repo.commit_all("rename");
+        let sha = String::from_utf8(
+            GitCli::from_env()
+                .git(&repo.path(), &["rev-parse", "HEAD"])
+                .unwrap(),
+        )
+        .unwrap()
+        .trim()
+        .to_owned();
+        let committed = repo.versions(
+            &FileKey {
+                source: Source::Commit(sha.clone().into()),
+                path: "new.ts".into(),
+            },
+            Some(Path::new("old.js")),
+        );
+        assert_eq!(committed.old_source, versions.old_source);
+        assert_eq!(committed.new_source.path, Path::new("new.ts"));
+        assert_eq!(
+            committed.new_source.origin,
+            FileOrigin::Commit(Some(sha.clone()))
+        );
+        assert_eq!(committed.old, versions.old);
+        assert_eq!(committed.new, versions.new);
+        repo.commit_all_empty("advance HEAD without changing text");
+        let refreshed = repo.versions(&uncommitted("new.ts"), None);
+        assert_eq!(refreshed.old, committed.new);
+        assert_ne!(refreshed.old_source.origin, committed.new_source.origin);
+        // Previously returned versions never follow the moving HEAD.
+        assert_eq!(committed.new_source.origin, FileOrigin::Commit(Some(sha)));
+    }
+
+    #[test]
     fn a_file_has_no_old_version_before_the_first_commit_or_in_a_root_commit() {
         let repo = Repo::new();
         repo.write("a.rs", "a\n");
         let before = repo.versions(&uncommitted("a.rs"), None);
         assert!(matches!(before.old, Version::Missing));
+        assert_eq!(before.old_source.path, Path::new("a.rs"));
+        assert_eq!(before.old_source.origin, FileOrigin::Commit(None));
+        assert_eq!(before.new_source.origin, FileOrigin::Worktree);
         repo.commit_all("first");
         let sha = repo.changes().commits[0].sha.to_string();
         let key = FileKey {
@@ -500,6 +558,11 @@ mod tests {
         let root = repo.versions(&key, None);
         assert!(matches!(root.old, Version::Missing));
         assert!(matches!(root.new, Version::Text(_)));
+        assert_eq!(root.old_source.origin, FileOrigin::Commit(None));
+        assert!(matches!(
+            root.new_source.origin,
+            FileOrigin::Commit(Some(_))
+        ));
     }
 
     #[test]

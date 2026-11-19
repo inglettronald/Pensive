@@ -91,6 +91,7 @@ pub struct Projects {
     opening: HashSet<(PathBuf, FileKey)>,
     /// Files with a binary version, which have no lines to show.
     binary: HashSet<(PathBuf, FileKey)>,
+    languages: Arc<language::Registry>,
     git: Backend<dyn GitBackend>,
     /// Writes to Git's index, one at a time, since two at once would both need the index's lock.
     staging: Queue,
@@ -113,6 +114,7 @@ impl Projects {
             documents: HashMap::new(),
             opening: HashSet::new(),
             binary: HashSet::new(),
+            languages: Arc::new(language::Registry::default()),
             git: Backend::new(git, Origin::Git),
             staging: Queue::default(),
             reads: HashMap::new(),
@@ -325,7 +327,11 @@ impl Projects {
                     return Ok(());
                 };
                 let git = this.git.clone();
-                let document = cx.new(|_| Document::new(worktree.clone(), key, contents, git));
+                let document = cx.new(|cx| {
+                    let mut document = Document::new(worktree.clone(), key, contents, git);
+                    document.set_languages(this.languages.clone(), cx);
+                    document
+                });
                 let saved = cx.subscribe(&document, move |this, _, event, cx| match event {
                     DocumentEvent::Saved => this.read_changes(worktree.clone(), cx).detach(),
                     DocumentEvent::Changed(_) => {}
@@ -338,7 +344,19 @@ impl Projects {
         })
     }
 
-    /// Both versions of the file `key` names, following a rename the changes list.
+    /// Replaces the programmatic catalog for existing and future documents,
+    /// including commits. In-flight opens use the latest catalog when published.
+    pub fn set_languages(&mut self, languages: Arc<language::Registry>, cx: &mut Context<Self>) {
+        self.languages = languages;
+        for document in self.documents.values() {
+            document.update(cx, |document, cx| {
+                document.set_languages(self.languages.clone(), cx)
+            });
+        }
+        cx.notify();
+    }
+
+    /// Both versions of the file `key` names, following a rename in the changes list.
     fn read_versions(
         &self,
         worktree: &Path,
@@ -365,7 +383,7 @@ impl Projects {
             .iter()
             .filter(|((path, key), _)| path == worktree && key.source == Source::Uncommitted)
             .map(|((_, key), document)| {
-                let stamp = document.read(cx).disk_stamp();
+                let stamp = document.update(cx, |document, _| document.start_refresh());
                 (key.clone(), document.downgrade(), stamp)
             })
             .collect();
@@ -702,6 +720,107 @@ mod tests {
         assert!(!projects.finish_read(root, older, fixtures::changes()));
         let cached = projects.changes(root).unwrap();
         assert_eq!(cached.staging(), Staging::Staged);
+    }
+
+    #[gpui::test]
+    async fn opening_a_committed_rename_uses_the_changes_original_path(cx: &mut TestAppContext) {
+        let root = PathBuf::from(fixtures::PENSIVE_ROOT);
+        let projects = cx.new(|_| Projects::new(Arc::new(FakeGit::default())));
+        projects
+            .update(cx, |projects, cx| projects.read_changes(root.clone(), cx))
+            .await
+            .unwrap();
+        let key = FileKey {
+            source: Source::Commit("6284693".into()),
+            path: "crates/model/src/projects.rs".into(),
+        };
+        projects
+            .update(cx, |projects, cx| {
+                projects.open_document(root.clone(), key.clone(), cx)
+            })
+            .await
+            .unwrap();
+        let document = projects.read_with(cx, |projects, _| {
+            projects.document(&root, &key).unwrap().clone()
+        });
+        document.read_with(cx, |document, _| {
+            let old = document.source_snapshot(crate::DocumentSide::Base);
+            let new = document.source_snapshot(crate::DocumentSide::New);
+            assert_eq!(old.source.path, Path::new("crates/model/src/workspace.rs"));
+            assert_eq!(new.source.path, Path::new("crates/model/src/projects.rs"));
+            assert!(old.present && new.present);
+            assert!(!document.is_editable());
+            assert_eq!(
+                old.source.origin,
+                crate::FileOrigin::Commit(Some("ef032a6".into()))
+            );
+            assert_eq!(
+                new.source.origin,
+                crate::FileOrigin::Commit(Some("6284693".into()))
+            );
+        });
+    }
+
+    #[gpui::test]
+    async fn catalog_changes_reach_open_pending_and_future_documents(cx: &mut TestAppContext) {
+        use crate::DocumentSide;
+        let root = PathBuf::from(fixtures::PENSIVE_ROOT);
+        let projects = cx.new(|_| Projects::new(Arc::new(FakeGit::default())));
+        let key = FileKey {
+            source: Source::Uncommitted,
+            path: "crates/theme/src/colors.rs".into(),
+        };
+        let pending = projects.update(cx, |projects, cx| {
+            projects.open_document(root.clone(), key.clone(), cx)
+        });
+        let mut registry = language::Registry::default();
+        registry
+            .associate(language::Association::Extension("rs".into()), "text")
+            .unwrap();
+        projects.update(cx, |projects, cx| {
+            projects.set_languages(Arc::new(registry), cx)
+        });
+        pending.await.unwrap();
+        let document = projects.read_with(cx, |projects, _| {
+            projects.document(&root, &key).unwrap().clone()
+        });
+        let before = document.read_with(cx, |document, _| {
+            document.source_snapshot(DocumentSide::New)
+        });
+        assert_eq!(before.language.language.as_str(), "text");
+        projects.update(cx, |projects, cx| {
+            projects.set_languages(Arc::new(language::Registry::default()), cx)
+        });
+        let after = document.read_with(cx, |document, _| {
+            document.source_snapshot(DocumentSide::New)
+        });
+        assert_eq!(after.language.language.as_str(), "rust");
+        assert_eq!(after.text.stamp(), before.text.stamp());
+        assert!(!after.same_input(&before));
+        let committed = FileKey {
+            source: Source::Commit("5e35ea9".into()),
+            path: "crates/ui/src/root.rs".into(),
+        };
+        projects
+            .update(cx, |projects, cx| {
+                projects.open_document(root.clone(), committed.clone(), cx)
+            })
+            .await
+            .unwrap();
+        let committed = projects.read_with(cx, |projects, _| {
+            projects.document(&root, &committed).unwrap().clone()
+        });
+        committed.read_with(cx, |document, _| {
+            assert!(!document.is_editable());
+            assert_eq!(
+                document
+                    .source_snapshot(DocumentSide::New)
+                    .language
+                    .language
+                    .as_str(),
+                "rust"
+            );
+        });
     }
 
     #[gpui::test]

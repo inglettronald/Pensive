@@ -1,0 +1,10 @@
+[package]
+name = "language"
+version = "0.1.0"
+description = "Portable language registration, recognition and token roles."
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+text.workspace = true

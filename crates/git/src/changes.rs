@@ -10,7 +10,8 @@ use std::{
 
 use anyhow::{Context as _, Result};
 use model::{
-    Base, Changes, Commit, FileChange, FileKey, FileStatus, FileVersions, Source, Upstream, Version,
+    Base, Changes, Commit, FileChange, FileKey, FileOrigin, FileSource, FileStatus, FileVersions,
+    Source, Upstream, Version,
 };
 
 use crate::{GitCli, parse};
@@ -218,16 +219,47 @@ pub(crate) fn versions(
     renamed_from: Option<&Path>,
 ) -> Result<FileVersions> {
     let old_path = renamed_from.unwrap_or(&key.path);
-    Ok(match &key.source {
-        Source::Uncommitted => FileVersions {
-            old: blob(cli, worktree, "HEAD", old_path)?,
-            new: read_file(worktree, &key.path)?,
+    let (old_revision, new_revision) = match &key.source {
+        Source::Uncommitted => ("HEAD".to_owned(), None),
+        Source::Commit(sha) => (format!("{sha}^"), Some(sha.as_ref())),
+    };
+    let (old, old_origin) = committed_version(cli, worktree, &old_revision, old_path)?;
+    let (new, new_origin) = match new_revision {
+        Some(revision) => committed_version(cli, worktree, revision, &key.path)?,
+        None => (read_file(worktree, &key.path)?, FileOrigin::Worktree),
+    };
+    Ok(FileVersions {
+        old,
+        new,
+        old_source: FileSource {
+            path: old_path.to_path_buf(),
+            origin: old_origin,
         },
-        Source::Commit(sha) => FileVersions {
-            old: blob(cli, worktree, &format!("{sha}^"), old_path)?,
-            new: blob(cli, worktree, sha, &key.path)?,
+        new_source: FileSource {
+            path: key.path.clone(),
+            origin: new_origin,
         },
     })
+}
+
+fn committed_version(
+    cli: &GitCli,
+    worktree: &Path,
+    revision: &str,
+    path: &Path,
+) -> Result<(Version, FileOrigin)> {
+    let resolved = match cli.git(
+        worktree,
+        &["rev-parse", "--verify", &format!("{revision}^{{commit}}")],
+    ) {
+        Ok(output) => String::from_utf8(output)?.trim().to_owned(),
+        Err(_) if resolve(cli, worktree, revision).is_none() => {
+            return Ok((Version::Missing, FileOrigin::Commit(None)));
+        }
+        Err(error) => return Err(error),
+    };
+    let version = blob(cli, worktree, &resolved, path)?;
+    Ok((version, FileOrigin::Commit(Some(resolved))))
 }
 
 /// The file at `path` in the worktree. A submodule or nested repository is a folder, with no text

@@ -12,6 +12,7 @@ assets = { path = "crates/assets" }
 components = { path = "crates/components" }
 config = { path = "crates/config" }
 git = { path = "crates/git" }
+language = { path = "crates/language" }
 mock = { path = "crates/mock" }
 model = { path = "crates/model" }
 settings = { path = "crates/settings" }

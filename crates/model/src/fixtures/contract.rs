@@ -4,8 +4,8 @@
 use std::path::{Path, PathBuf};
 
 use crate::{
-    ConfigBackend, FileChange, FileKey, FileStatus, FileVersions, GitBackend, Source, Staging,
-    Version,
+    ConfigBackend, FileChange, FileKey, FileOrigin, FileStatus, FileVersions, GitBackend, Source,
+    Staging, Version,
 };
 
 /// Checks `backend` on the main worktree at `worktree`, whose repository must also have a linked
@@ -127,6 +127,19 @@ fn checked_versions(
         .versions(worktree, &key, file.renamed_from.as_deref())
         .unwrap();
     let path = file.path.display();
+    assert_eq!(
+        versions.old_source.path,
+        file.renamed_from.as_ref().unwrap_or(&file.path).clone()
+    );
+    assert_eq!(versions.new_source.path, file.path);
+    assert!(matches!(versions.old_source.origin, FileOrigin::Commit(_)));
+    match &key.source {
+        Source::Uncommitted => assert_eq!(versions.new_source.origin, FileOrigin::Worktree),
+        Source::Commit(sha) => assert_eq!(
+            versions.new_source.origin,
+            FileOrigin::Commit(Some(sha.to_string()))
+        ),
+    }
     match file.status() {
         FileStatus::Added | FileStatus::Untracked => {
             assert_eq!(versions.old, Version::Missing, "{path} is new");

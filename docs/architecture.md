@@ -9,8 +9,9 @@ Pensive is a Cargo workspace. A crate can only use the crates it lists as depend
 | `pensive` | The app. Opens the window and gives each model its backend, which differ between the desktop and the browser. | `ui`, `model`, `git` and `config` on the desktop, `settings`, `theme`, `assets` |
 | `ui` | Views: screens and panels that read models and own their view state. | `assets`, `components`, `model`, `settings`, `theme` |
 | `components` | Stateless building blocks that render from props and the theme. | `theme` |
-| `model` | Application state, and the traits that I/O backends implement. | `text` |
+| `model` | Application state, and the traits that I/O backends implement. | `text`, `language` |
 | `text` | Immutable Rope snapshots, source stamps, validated byte coordinates and ordered edit records. No I/O or mutable document owner. | |
+| `language` | Portable language catalog, association precedence, installed provider selection and byte-based token roles. No I/O or parser dependencies. | `text` |
 | `git` | The Git backend, which runs the `git` command line. | `model` |
 | `config` | The config folder backend, which reads, writes and watches the settings and theme files. | `model` |
 | `settings` | Declared settings, and the store that holds the settings file's text and the values in it. It does no I/O. | |
@@ -18,7 +19,7 @@ Pensive is a Cargo workspace. A crate can only use the crates it lists as depend
 | `mock` | Named mock states for views, rendered without a window. | `theme`, `assets` |
 | `assets` | Files bundled into the app, such as icons, served to GPUI by path. | |
 
-Every crate except `git`, `config` and `text` also depends on `gpui`.
+Every crate except `git`, `config`, `text` and `language` also depends on `gpui`.
 
 `model::Document` alone owns mutable file text, undo, saving/conflicts and diff scheduling.
 It publishes cheap `text::TextSnapshot` values from its existing Rope, with separate source
@@ -27,6 +28,14 @@ flat string for borrowed removed-line display; its immutable Rope is built when 
 arrive, never on a snapshot request. Background diff publication checks both source stamps
 and its request generation. Edits, grouped undo and redo, and disk reloads each publish
 one revision with ordered changes in UTF-8 byte coordinates.
+
+`GitBackend::versions` retains both original paths and resolved commit origins in
+`FileVersions`; its fake obeys the same contract. `Document::source_snapshot` pairs each
+side's existing text snapshot with that context and a selection from the shared language
+registry. `Projects::set_languages` updates existing and future documents without changing
+their text stamps. Explicit path, filename and extension associations take precedence
+over bundled recognition. Language results also depend on source context and registry
+configuration.
 
 ## Rules
 

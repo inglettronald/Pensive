@@ -9,11 +9,12 @@ use std::{
 };
 
 use gpui::{Context, EventEmitter, Task};
+use language::{Registry, Selection};
 use text::{Rope, SourceId, SourceStamp, TextChange, TextEdit, TextSnapshot};
 
 use crate::{
-    Backend, FileKey, FileVersions, GitBackend, LineDiff, Notice, Notices, Origin, Severity,
-    Source, Version, diff::line_ranges, queue::Queue,
+    Backend, FileKey, FileSource, FileVersions, GitBackend, LineDiff, Notice, Notices, Origin,
+    Severity, Source, Version, diff::line_ranges, queue::Queue,
 };
 
 pub enum DocumentEvent {
@@ -26,6 +27,11 @@ pub enum DocumentEvent {
 pub struct Document {
     worktree: PathBuf,
     key: FileKey,
+    base_source: FileSource,
+    new_source: FileSource,
+    base_present: bool,
+    new_present: bool,
+    languages: Arc<Registry>,
     /// The committed text the diff compares with.
     base: Arc<str>,
     /// Immutable old side, with an identity independent of the editable side.
@@ -39,8 +45,9 @@ pub struct Document {
     /// Counts edits, so a save knows which text it was for.
     revision: usize,
     saved_revision: usize,
-    /// Counts changes to `on_disk`, so a read of the disk that started before one is dropped.
+    /// Counts updates to `on_disk`, so reads started before one are dropped.
     disk_generation: usize,
+    refresh_generation: usize,
     /// Set when the file changed on disk since it was read, which stops saving until the
     /// document is reloaded or the file is overwritten.
     conflict: Option<Version>,
@@ -62,6 +69,31 @@ pub struct Document {
 /// was written.
 type Written = anyhow::Result<Result<String, Version>>;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DocumentSide {
+    Base,
+    New,
+}
+
+/// One immutable input for language work. Validate the text stamp, original source
+/// context, presence and whole selection before publishing a future result.
+#[derive(Clone, Debug)]
+pub struct DocumentSnapshot {
+    pub text: TextSnapshot,
+    pub source: FileSource,
+    pub present: bool,
+    pub language: Selection,
+}
+
+impl DocumentSnapshot {
+    pub fn same_input(&self, other: &Self) -> bool {
+        self.text.stamp() == other.text.stamp()
+            && self.source == other.source
+            && self.present == other.present
+            && self.language == other.language
+    }
+}
+
 /// One replacement, as applied: `old` at `start` became `new`.
 #[derive(Clone, Debug)]
 struct Edit {
@@ -78,10 +110,22 @@ struct DiffStamp {
     generation: usize,
 }
 
+/// A disk generation plus the latest requested versions read. Unlike text stamps,
+/// this also distinguishes overlapping reads of identical bytes and metadata.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct RefreshStamp {
+    disk: usize,
+    request: usize,
+}
+
 impl EventEmitter<DocumentEvent> for Document {}
 
 /// A file's text and diff, prepared off the UI thread for a [`Document`] to open with.
 pub(crate) struct Contents {
+    base_source: FileSource,
+    new_source: FileSource,
+    base_present: bool,
+    new_present: bool,
     base: String,
     base_rope: Rope,
     base_lines: Vec<Range<usize>>,
@@ -94,6 +138,8 @@ impl Contents {
     /// The file read as `versions`, or `None` when either version is binary, since there are no
     /// lines to show. A deleted file is empty. Diffs the whole file, so it's slow on a big one.
     pub(crate) fn new(versions: FileVersions) -> Option<Self> {
+        let base_present = versions.old != Version::Missing;
+        let new_present = versions.new != Version::Missing;
         let base = match versions.old {
             Version::Text(text) => text,
             Version::Missing => String::new(),
@@ -105,6 +151,10 @@ impl Contents {
             Version::Binary => return None,
         };
         Some(Self {
+            base_source: versions.old_source,
+            new_source: versions.new_source,
+            base_present,
+            new_present,
             base_rope: Rope::from_str(&base),
             base_lines: line_ranges(&base),
             diff: LineDiff::new(&base, &text),
@@ -129,6 +179,11 @@ impl Document {
         Self {
             worktree,
             key,
+            base_source: contents.base_source,
+            new_source: contents.new_source,
+            base_present: contents.base_present,
+            new_present: contents.new_present,
+            languages: Arc::new(Registry::default()),
             base: contents.base.into(),
             base_snapshot: TextSnapshot::new(
                 SourceStamp {
@@ -144,6 +199,7 @@ impl Document {
             revision: 0,
             saved_revision: 0,
             disk_generation: 0,
+            refresh_generation: 0,
             conflict: None,
             diff: contents.diff,
             diffing: None,
@@ -178,6 +234,26 @@ impl Document {
     /// The immutable committed/old side. Base refreshes advance only this source's revision.
     pub fn base_snapshot(&self) -> TextSnapshot {
         self.base_snapshot.clone()
+    }
+
+    /// Resolves each original path independently, including missing/empty sides.
+    /// No selection is reused solely because the text revision stayed unchanged.
+    pub fn source_snapshot(&self, side: DocumentSide) -> DocumentSnapshot {
+        let (text, source, present) = match side {
+            DocumentSide::Base => (self.base_snapshot(), &self.base_source, self.base_present),
+            DocumentSide::New => (self.snapshot(), &self.new_source, self.new_present),
+        };
+        DocumentSnapshot {
+            text,
+            language: self.languages.resolve(&source.path.to_string_lossy()),
+            source: source.clone(),
+            present,
+        }
+    }
+
+    pub(crate) fn set_languages(&mut self, languages: Arc<Registry>, cx: &mut Context<Self>) {
+        self.languages = languages;
+        cx.notify();
     }
 
     fn text_stamp(&self) -> SourceStamp {
@@ -476,15 +552,47 @@ impl Document {
         }
     }
 
-    /// Marks when the disk was last read or written, for [`Self::refresh`].
-    pub(crate) fn disk_stamp(&self) -> usize {
+    fn disk_stamp(&self) -> usize {
         self.disk_generation
     }
 
+    fn advance_refresh_generation(&mut self) {
+        self.refresh_generation = self
+            .refresh_generation
+            .checked_add(1)
+            .expect("refresh generation exhausted");
+    }
+
+    /// Marks the newest requested versions read. An older read must not restore
+    /// its paths/commit origins even when all text revisions remain equal.
+    pub(crate) fn start_refresh(&mut self) -> RefreshStamp {
+        self.advance_refresh_generation();
+        RefreshStamp {
+            disk: self.disk_generation,
+            request: self.refresh_generation,
+        }
+    }
+
     /// Follows a new committed text and the file on disk, as after the changes are read again.
-    /// Edits that aren't saved are kept. `stamp` is [`Self::disk_stamp`] from before the read, so
+    /// Edits that aren't saved are kept. `stamp` is [`Self::start_refresh`] from before the read, so
     /// a read that a save or another read overtook doesn't roll the text back.
-    pub(crate) fn refresh(&mut self, stamp: usize, versions: FileVersions, cx: &mut Context<Self>) {
+    pub(crate) fn refresh(
+        &mut self,
+        stamp: RefreshStamp,
+        versions: FileVersions,
+        cx: &mut Context<Self>,
+    ) {
+        // A superseded read cannot restore old source metadata or base contents.
+        if stamp.disk != self.disk_generation
+            || stamp.request != self.refresh_generation
+            || self.saves.is_busy()
+        {
+            return;
+        }
+        self.base_source = versions.old_source;
+        self.new_source = versions.new_source;
+        self.base_present = versions.old != Version::Missing;
+        self.new_present = versions.new != Version::Missing;
         let base = match versions.old {
             Version::Text(text) => text,
             _ => String::new(),
@@ -497,13 +605,16 @@ impl Document {
             self.base = base.into();
             self.rediff(cx);
         }
-        let current = stamp == self.disk_generation && !self.saves.is_busy();
-        if current && !self.is_dirty() && on_disk != self.on_disk {
+        if !self.is_dirty() && on_disk != self.on_disk {
             self.take_disk_text(on_disk, cx);
         }
+        // Retire the request even when it only updated base or source metadata.
+        self.advance_refresh_generation();
+        cx.notify();
     }
 
     fn set_on_disk(&mut self, on_disk: Version) {
+        self.new_present = on_disk != Version::Missing;
         self.on_disk = on_disk;
         self.disk_generation = self
             .disk_generation
@@ -512,11 +623,13 @@ impl Document {
     }
 
     fn take_disk_text(&mut self, on_disk: Version, cx: &mut Context<Self>) {
-        let Version::Text(text) = &on_disk else {
-            return;
+        let text = match &on_disk {
+            Version::Text(text) => text.as_str(),
+            Version::Missing => "",
+            Version::Binary => return,
         };
         self.conflict = None;
-        if self.text != text.as_str() {
+        if self.text != text {
             // One precise replacement, leaving shared prefix/suffix bytes untouched. Compare
             // scalars so a shared leading UTF-8 byte cannot split a multibyte character.
             let start: usize = self
@@ -574,6 +687,21 @@ mod tests {
 
     const PATH: &str = "crates/theme/src/colors.rs";
 
+    fn versions(old: Version, new: Version) -> FileVersions {
+        FileVersions {
+            old,
+            new,
+            old_source: FileSource {
+                path: PATH.into(),
+                origin: crate::FileOrigin::Commit(Some("fixture-head".into())),
+            },
+            new_source: FileSource {
+                path: PATH.into(),
+                origin: crate::FileOrigin::Worktree,
+            },
+        }
+    }
+
     /// The sample's colors file, open over a `FakeGit` the test can also read.
     async fn open(cx: &mut TestAppContext) -> (Entity<Document>, Arc<FakeGit>) {
         let git = Arc::new(FakeGit::default());
@@ -613,10 +741,10 @@ mod tests {
         let git = Arc::new(FakeGit::default());
         git.write_file(Path::new(PENSIVE_ROOT), Path::new(PATH), text)
             .unwrap();
-        let contents = Contents::new(FileVersions {
-            old: Version::Text(text.into()),
-            new: Version::Text(text.into()),
-        })
+        let contents = Contents::new(versions(
+            Version::Text(text.into()),
+            Version::Text(text.into()),
+        ))
         .unwrap();
         let document = cx.new(|_| {
             Document::new(
@@ -647,6 +775,219 @@ mod tests {
             .detach();
         });
         changes
+    }
+
+    #[gpui::test]
+    fn cross_extension_rename_keeps_each_side_context_and_identity(cx: &mut TestAppContext) {
+        let git = Arc::new(FakeGit::default());
+        let mut versions = versions(
+            Version::Text("const x = 1;\n".into()),
+            Version::Text("const x = 1;\n".into()),
+        );
+        versions.old_source.path = "src/old.js".into();
+        versions.new_source.path = "src/new.ts".into();
+        let contents = Contents::new(versions).unwrap();
+        let document = cx.new(|_| {
+            Document::new(
+                PENSIVE_ROOT.into(),
+                FileKey {
+                    source: Source::Uncommitted,
+                    path: "src/new.ts".into(),
+                },
+                contents,
+                Backend::new(git, Origin::Git),
+            )
+        });
+        document.read_with(cx, |document, _| {
+            let old = document.source_snapshot(DocumentSide::Base);
+            let new = document.source_snapshot(DocumentSide::New);
+            assert_eq!(old.source.path, Path::new("src/old.js"));
+            assert_eq!(new.source.path, Path::new("src/new.ts"));
+            assert_eq!(old.language.language.as_str(), "javascript");
+            assert_eq!(new.language.language.as_str(), "typescript");
+            assert_eq!(
+                old.source.origin,
+                crate::FileOrigin::Commit(Some("fixture-head".into()))
+            );
+            assert_eq!(new.source.origin, crate::FileOrigin::Worktree);
+            assert_ne!(old.text.stamp().source, new.text.stamp().source);
+            assert_eq!(old.text.stamp().revision, new.text.stamp().revision);
+            assert!(!old.same_input(&new));
+            assert!(new.same_input(&document.source_snapshot(DocumentSide::New)));
+        });
+    }
+
+    #[gpui::test]
+    fn missing_sides_retain_paths_and_committed_documents_stay_read_only(cx: &mut TestAppContext) {
+        for (old, new, old_present, new_present) in [
+            (Version::Missing, Version::Text(String::new()), false, true),
+            (Version::Text("old".into()), Version::Missing, true, false),
+        ] {
+            for committed in [false, true] {
+                let mut versions = versions(old.clone(), new.clone());
+                versions.old_source.path = "file.js".into();
+                versions.new_source.path = "file.ts".into();
+                if committed {
+                    versions.new_source.origin =
+                        crate::FileOrigin::Commit(Some("new-commit".into()));
+                }
+                let document = cx.new(|_| {
+                    Document::new(
+                        PENSIVE_ROOT.into(),
+                        FileKey {
+                            source: if committed {
+                                Source::Commit("new-commit".into())
+                            } else {
+                                Source::Uncommitted
+                            },
+                            path: "file.ts".into(),
+                        },
+                        Contents::new(versions).unwrap(),
+                        Backend::new(Arc::new(FakeGit::default()), Origin::Git),
+                    )
+                });
+                document.read_with(cx, |document, _| {
+                    let old = document.source_snapshot(DocumentSide::Base);
+                    let new = document.source_snapshot(DocumentSide::New);
+                    assert_eq!(old.present, old_present);
+                    assert_eq!(new.present, new_present);
+                    assert_eq!(old.language.language.as_str(), "javascript");
+                    assert_eq!(new.language.language.as_str(), "typescript");
+                    assert_eq!(document.is_editable(), !committed && new_present);
+                });
+            }
+        }
+    }
+
+    #[gpui::test]
+    fn metadata_and_registration_changes_invalidate_equal_revision_inputs(cx: &mut TestAppContext) {
+        let (document, _) = sample("unchanged", cx);
+        document.update(cx, |document, cx| {
+            let old = document.source_snapshot(DocumentSide::Base);
+            let new = document.source_snapshot(DocumentSide::New);
+            let stale_read = document.start_refresh();
+            let mut incoming = versions(
+                Version::Text("unchanged".into()),
+                Version::Text("unchanged".into()),
+            );
+            incoming.old_source.path = "original.js".into();
+            incoming.old_source.origin = crate::FileOrigin::Commit(Some("next-head".into()));
+            document.refresh(stale_read, incoming, cx);
+            let refreshed = document.source_snapshot(DocumentSide::Base);
+            assert_eq!(refreshed.text.stamp(), old.text.stamp());
+            assert_eq!(refreshed.language.language.as_str(), "javascript");
+            assert!(!old.same_input(&refreshed));
+            assert!(new.same_input(&document.source_snapshot(DocumentSide::New)));
+
+            document.refresh(
+                stale_read,
+                versions(Version::Text("stale".into()), Version::Text("stale".into())),
+                cx,
+            );
+            assert!(refreshed.same_input(&document.source_snapshot(DocumentSide::Base)));
+            let mut registry = Registry::default();
+            registry
+                .associate(language::Association::Extension("rs".into()), "text")
+                .unwrap();
+            document.set_languages(Arc::new(registry), cx);
+            let reassociated = document.source_snapshot(DocumentSide::New);
+            assert_eq!(reassociated.text.stamp(), new.text.stamp());
+            assert_eq!(reassociated.language.language.as_str(), "text");
+            assert!(!new.same_input(&reassociated));
+            let mut registry = Registry::default();
+            let mut registration = language::LanguageRegistration::new("rust");
+            registration.extensions = vec!["rs".into()];
+            registration.providers.push(language::ProviderRegistration {
+                id: "test-syntax".into(),
+                capabilities: vec![language::Capability::Syntax],
+                priority: 0,
+            });
+            registry.register(registration).unwrap();
+            document.set_languages(Arc::new(registry), cx);
+            let provider_changed = document.source_snapshot(DocumentSide::New);
+            assert_eq!(provider_changed.text.stamp(), new.text.stamp());
+            assert_eq!(
+                provider_changed.language.syntax.as_deref(),
+                Some("test-syntax")
+            );
+            assert!(!provider_changed.same_input(&new));
+        });
+    }
+
+    #[gpui::test]
+    fn newer_refresh_requests_win_and_presence_changes_keep_source_identity(
+        cx: &mut TestAppContext,
+    ) {
+        let (document, _) = sample("original", cx);
+        document.update(cx, |document, cx| {
+            let before = document.source_snapshot(DocumentSide::New);
+            let older = document.start_refresh();
+            let newer = document.start_refresh();
+            let mut stale = versions(Version::Text("stale".into()), Version::Text("stale".into()));
+            stale.old_source.path = "stale.js".into();
+            document.refresh(older, stale, cx);
+            assert!(
+                document
+                    .source_snapshot(DocumentSide::New)
+                    .same_input(&before)
+            );
+            document.refresh(
+                newer,
+                versions(Version::Text("original".into()), Version::Missing),
+                cx,
+            );
+            let deleted = document.source_snapshot(DocumentSide::New);
+            assert!(!deleted.present);
+            assert_eq!(deleted.text.rope().len_bytes(), 0);
+            assert_eq!(deleted.text.stamp().source, before.text.stamp().source);
+            assert_ne!(deleted.text.stamp(), before.text.stamp());
+            assert!(!document.is_editable());
+            assert!(!document.is_dirty());
+            assert_eq!(before.text.rope().to_string(), "original");
+            let stamp = document.start_refresh();
+            document.refresh(
+                stamp,
+                versions(
+                    Version::Text("original".into()),
+                    Version::Text(String::new()),
+                ),
+                cx,
+            );
+            let added = document.source_snapshot(DocumentSide::New);
+            assert!(added.present);
+            assert_eq!(added.text.stamp(), deleted.text.stamp());
+            assert!(!added.same_input(&deleted));
+            assert!(document.is_editable());
+            assert!(added.same_input(&document.source_snapshot(DocumentSide::New)));
+        });
+    }
+
+    #[gpui::test]
+    fn metadata_refresh_keeps_dirty_text_and_source_identity(cx: &mut TestAppContext) {
+        let (document, _) = sample("original", cx);
+        document.update(cx, |document, cx| {
+            document.edit(0..0, "edited ", cx);
+            let new = document.source_snapshot(DocumentSide::New);
+            let mut incoming = versions(
+                Version::Text("new base".into()),
+                Version::Text("disk changes".into()),
+            );
+            incoming.old_source.path = "original.js".into();
+            let stamp = document.start_refresh();
+            document.refresh(stamp, incoming, cx);
+            let after = document.source_snapshot(DocumentSide::New);
+            assert_eq!(after.text.rope().to_string(), "edited original");
+            assert!(after.same_input(&new));
+            assert!(document.is_dirty());
+            assert_eq!(
+                document
+                    .source_snapshot(DocumentSide::Base)
+                    .language
+                    .language
+                    .as_str(),
+                "javascript"
+            );
+        });
     }
 
     #[gpui::test]
@@ -795,11 +1136,12 @@ mod tests {
             let base = document.base_snapshot();
             let text = document.snapshot();
             let diff = document.diff_stamp();
-            let versions = FileVersions {
-                old: Version::Text("new base\r\n".into()),
-                new: document.on_disk.clone(),
-            };
-            document.refresh(document.disk_stamp(), versions.clone(), cx);
+            let versions = versions(
+                Version::Text("new base\r\n".into()),
+                document.on_disk.clone(),
+            );
+            let stamp = document.start_refresh();
+            document.refresh(stamp, versions.clone(), cx);
             assert_eq!(document.base_snapshot.stamp(), &base.stamp().next());
             assert_eq!(document.snapshot().stamp(), text.stamp());
             assert_eq!(base.rope().to_string(), "same\r\n");
@@ -807,7 +1149,8 @@ mod tests {
             assert!(!document.accept_diff(&diff, LineDiff::default()));
             assert!(!document.is_dirty());
             let refreshed = document.diff_stamp();
-            document.refresh(document.disk_stamp(), versions, cx);
+            let stamp = document.start_refresh();
+            document.refresh(stamp, versions, cx);
             assert_eq!(
                 document.diff_stamp(),
                 refreshed,
@@ -852,6 +1195,29 @@ mod tests {
                 "rejection preserves the published result"
             );
         });
+    }
+
+    #[gpui::test]
+    fn a_refresh_that_keeps_dirty_text_does_not_cancel_reload(cx: &mut TestAppContext) {
+        let (document, git) = sample("original", cx);
+        git.write_file(Path::new(PENSIVE_ROOT), Path::new(PATH), "changed on disk")
+            .unwrap();
+
+        document.update(cx, |document, cx| {
+            document.edit(0..0, "unsaved ", cx);
+            document.reload(cx);
+            let stamp = document.start_refresh();
+            let refreshed = versions(
+                Version::Text("original".into()),
+                Version::Text("changed on disk".into()),
+            );
+            document.refresh(stamp, refreshed, cx);
+            assert_eq!(document.text().to_string(), "unsaved original");
+        });
+
+        cx.run_until_parked();
+        assert_eq!(text(&document, cx), "changed on disk");
+        assert!(!document.read_with(cx, |document, _| document.is_dirty()));
     }
 
     #[gpui::test]
@@ -922,11 +1288,8 @@ mod tests {
         let (document, git) = open(cx).await;
         let disk = on_disk(&git);
         document.update(cx, |document, cx| {
-            let stamp = document.disk_stamp();
-            let versions = FileVersions {
-                old: Version::Missing,
-                new: Version::Text(disk),
-            };
+            let stamp = document.start_refresh();
+            let versions = versions(Version::Missing, Version::Text(disk));
             document.refresh(stamp, versions, cx)
         });
         cx.run_until_parked();
@@ -939,7 +1302,7 @@ mod tests {
     #[gpui::test]
     async fn a_read_from_before_a_save_doesnt_roll_the_text_back(cx: &mut TestAppContext) {
         let (document, _) = open(cx).await;
-        let stamp = document.read_with(cx, |document, _| document.disk_stamp());
+        let stamp = document.update(cx, |document, _| document.start_refresh());
         let before = text(&document, cx);
         document.update(cx, |document, cx| {
             document.edit(0..0, "saved\n", cx);
@@ -947,10 +1310,7 @@ mod tests {
         });
         cx.run_until_parked();
         document.update(cx, |document, cx| {
-            let versions = FileVersions {
-                old: Version::Missing,
-                new: Version::Text(before),
-            };
+            let versions = versions(Version::Missing, Version::Text(before));
             document.refresh(stamp, versions, cx)
         });
         assert!(text(&document, cx).starts_with("saved\n"));

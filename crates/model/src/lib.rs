@@ -23,8 +23,10 @@ pub use changes::{
     Upstream, short_sha,
 };
 pub use config::{ConfigBackend, ConfigEvent, ConfigFiles};
-pub use diff::{ChangedLines, FileVersions, LineDiff, Version, changed_words};
-pub use document::{Document, DocumentEvent};
+pub use diff::{
+    ChangedLines, FileOrigin, FileSource, FileVersions, LineDiff, Version, changed_words,
+};
+pub use document::{Document, DocumentEvent, DocumentSide, DocumentSnapshot};
 pub use git::{GitBackend, Repository};
 pub use git_problem::{GitProblem, GitVersion, Platform};
 pub use notice::{FixtureGap, Notice, Origin, Severity};
