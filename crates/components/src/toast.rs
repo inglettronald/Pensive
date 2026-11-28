@@ -94,7 +94,7 @@ impl RenderOnce for Toast {
             .border_1()
             .border_color(self.tone.outline(colors))
             .bg(colors.surface_raised)
-            .shadow(Shadow::Medium.layers())
+            .shadow(Shadow::Medium.layers(cx))
             .children(
                 self.tone
                     .icon(IconSize::Large, colors)

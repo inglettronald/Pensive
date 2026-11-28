@@ -1,4 +1,5 @@
-//! A named set of colors and fonts, and the user themes layered over it.
+//! A named set of colors and fonts, the themes Pensive ships, and the user themes layered over
+//! them.
 
 use std::collections::BTreeMap;
 
@@ -8,10 +9,48 @@ use serde::{Deserialize, de::DeserializeOwned};
 
 use crate::{ThemeColors, ThemeColorsRefinement, ThemeFonts, ThemeFontsRefinement};
 
-/// The built-in theme every user theme ends up extending, as `settings.toml` names it.
-pub(crate) const BASE_THEME: &str = "pensive-dark";
-/// The built-in theme's name as the app shows it.
-pub(crate) const BASE_THEME_NAME: &str = "Pensive Dark";
+/// A theme that ships with Pensive.
+pub(crate) struct BuiltIn {
+    /// The name `settings.toml` and `extends` use.
+    pub(crate) key: &'static str,
+    /// The name the app shows.
+    pub(crate) name: &'static str,
+    colors: fn() -> ThemeColors,
+}
+
+/// The themes that ship with Pensive. The first is the default, and the one a user theme extends
+/// when it names none.
+pub(crate) const BUILT_IN: [BuiltIn; 3] = [
+    BuiltIn {
+        key: "pensive-dark",
+        name: "Pensive Dark",
+        colors: ThemeColors::dark,
+    },
+    BuiltIn {
+        key: "pensive-light",
+        name: "Pensive Light",
+        colors: ThemeColors::light,
+    },
+    BuiltIn {
+        key: "pensive-paper",
+        name: "Pensive Paper",
+        colors: ThemeColors::paper,
+    },
+];
+
+impl BuiltIn {
+    fn find(key: &str) -> Option<&'static Self> {
+        BUILT_IN.iter().find(|built_in| built_in.key == key)
+    }
+
+    pub(crate) fn theme(&self) -> Theme {
+        Theme {
+            name: self.name.into(),
+            colors: (self.colors)(),
+            fonts: ThemeFonts::default_pair(),
+        }
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct Theme {
@@ -51,11 +90,15 @@ impl Global for UserThemes {}
 
 impl Theme {
     pub fn pensive_dark() -> Self {
-        Self {
-            name: BASE_THEME_NAME.into(),
-            colors: ThemeColors::dark(),
-            fonts: ThemeFonts::default_pair(),
-        }
+        BUILT_IN[0].theme()
+    }
+
+    pub fn pensive_light() -> Self {
+        BUILT_IN[1].theme()
+    }
+
+    pub fn pensive_paper() -> Self {
+        BUILT_IN[2].theme()
     }
 
     pub fn with_override(&self, theme_override: &ThemeOverride) -> Self {
@@ -65,31 +108,37 @@ impl Theme {
         theme
     }
 
-    /// The theme called `name`: the base, then each theme it extends, furthest first, then
-    /// itself. Returns what went wrong, such as a missing theme or a loop of themes extending
-    /// each other. The chain stops there, over the base.
+    /// The theme called `name`: the built-in theme at the end of its `extends` chain, then each
+    /// theme it extends, furthest first, then itself. Returns what went wrong, such as a missing
+    /// theme or a loop of themes extending each other. The chain stops there, over the default.
     pub fn named(name: &str, themes: &UserThemes) -> (Self, Vec<String>) {
         let mut chain = Vec::new();
         let mut problems = Vec::new();
         let mut next = Some(name);
-        while let Some(name) = next.filter(|name| *name != BASE_THEME) {
+        let base = loop {
+            let Some(name) = next else {
+                break &BUILT_IN[0];
+            };
+            if let Some(built_in) = BuiltIn::find(name) {
+                break built_in;
+            }
             if chain.iter().any(|(seen, _)| *seen == name) {
                 problems.push(format!(
                     "Theme `{name}` extends itself through other themes"
                 ));
-                break;
+                break &BUILT_IN[0];
             }
             let Some(theme) = themes.0.get(name) else {
                 problems.push(format!("There's no theme named `{name}`"));
-                break;
+                break &BUILT_IN[0];
             };
             chain.push((name, theme));
             next = theme.extends.as_deref();
-        }
+        };
         let mut theme = chain
             .iter()
             .rev()
-            .fold(Self::pensive_dark(), |theme, (_, theme_override)| {
+            .fold(base.theme(), |theme, (_, theme_override)| {
                 theme.with_override(theme_override)
             });
         if !chain.is_empty() {
@@ -149,9 +198,9 @@ impl UserThemes {
         let mut themes = BTreeMap::new();
         let mut problems = Vec::new();
         for (name, source) in files {
-            if name == BASE_THEME {
+            if BuiltIn::find(&name).is_some() {
                 problems.push(format!(
-                    "{name}.toml is skipped because `{BASE_THEME}` is the built-in theme's name"
+                    "{name}.toml is skipped because `{name}` is a built-in theme's name"
                 ));
                 continue;
             }
@@ -244,6 +293,27 @@ mod tests {
             theme.colors.surface_app,
             Theme::pensive_dark().colors.surface_app
         );
+    }
+
+    #[test]
+    fn a_theme_can_extend_any_built_in_theme() {
+        let (themes, problems) = themes(&[(
+            "dusk",
+            "extends = \"pensive-light\"\n[colors]\ntext = \"#111111\"",
+        )]);
+        assert!(problems.is_empty());
+        let (theme, problems) = Theme::named("dusk", &themes);
+        assert!(problems.is_empty());
+        assert_eq!(theme.colors.text, rgb(0x111111).into());
+        assert_eq!(theme.colors.surface_app, ThemeColors::light().surface_app);
+    }
+
+    #[test]
+    fn a_file_named_like_a_built_in_theme_is_skipped() {
+        let (themes, problems) = themes(&[("pensive-light", "[colors]\ntext = \"#111111\"")]);
+        assert_eq!(problems.len(), 1);
+        let (theme, _) = Theme::named("pensive-light", &themes);
+        assert_eq!(theme.colors.text, ThemeColors::light().text);
     }
 
     #[test]

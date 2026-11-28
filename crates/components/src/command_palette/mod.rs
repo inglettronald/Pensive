@@ -344,7 +344,7 @@ impl RenderOnce for CommandPalette {
             .border_color(colors.border)
             .bg(colors.surface_panel.opacity(self.opacity))
             .when(self.overlay, |palette| {
-                palette.shadow(Shadow::Large.layers())
+                palette.shadow(Shadow::Large.layers(cx))
             })
             .font_family(theme.fonts.ui.clone())
             .text_color(colors.text)

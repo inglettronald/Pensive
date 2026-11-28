@@ -35,7 +35,7 @@ pub(crate) fn menu(
                     .border_1()
                     .border_color(colors.border)
                     .bg(colors.surface_raised)
-                    .shadow(Shadow::Medium.layers())
+                    .shadow(Shadow::Medium.layers(cx))
                     .typeset(density.body)
                     .children(rows)
                     .on_mouse_down_out(move |_, _, cx| on_dismiss(cx)),
