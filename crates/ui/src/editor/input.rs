@@ -118,10 +118,12 @@ impl EntityInputHandler for Editor {
         let line = text.byte_to_line(range.start);
         let layouts = self.layouts.borrow();
         let layout = layouts.iter().find(|layout| layout.line == line)?;
-        let end = range.end.min(layout.start + layout.shaped.text.len());
         Some(Bounds::from_corners(
             point(layout.x_of(range.start, self.scroll_x), layout.bounds.top()),
-            point(layout.x_of(end, self.scroll_x), layout.bounds.bottom()),
+            point(
+                layout.x_of(range.end, self.scroll_x),
+                layout.bounds.bottom(),
+            ),
         ))
     }
 

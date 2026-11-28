@@ -90,8 +90,21 @@ impl SyntaxState {
         range: Range<usize>,
         cancel: &SyntaxCancellation,
     ) -> Result<Vec<TokenSpan>, InvalidOffset> {
-        text::validate_range(snapshot.rope(), &range)?;
-        if range.is_empty() || cancel.is_cancelled() {
+        self.tokens_for_ranges(snapshot, selection, changes, &[range], cancel)
+    }
+
+    /// Query ordered, disjoint UTF-8 ranges against one full parse, with one
+    /// work and output budget across all ranges.
+    pub fn tokens_for_ranges(
+        &mut self,
+        snapshot: &TextSnapshot,
+        selection: &Selection,
+        changes: &[TextChange],
+        ranges: &[Range<usize>],
+        cancel: &SyntaxCancellation,
+    ) -> Result<Vec<TokenSpan>, InvalidOffset> {
+        validate_syntax_ranges(snapshot, ranges)?;
+        if ranges.iter().all(Range::is_empty) || cancel.is_cancelled() {
             return Ok(Vec::new());
         }
         if self
@@ -123,11 +136,26 @@ impl SyntaxState {
             self.parsed = Some(stamp.clone());
         }
         Ok(match provider {
-            Provider::Java(java) => java.tokens(snapshot, range, cancel),
+            Provider::Java(java) => java.tokens(snapshot, ranges, cancel),
             #[cfg(not(target_arch = "wasm32"))]
-            Provider::Native(native) => native.tokens(snapshot, range, cancel),
+            Provider::Native(native) => native.tokens(snapshot, ranges, cancel),
         })
     }
+}
+
+pub fn validate_syntax_ranges(
+    snapshot: &TextSnapshot,
+    ranges: &[Range<usize>],
+) -> Result<(), InvalidOffset> {
+    let mut end = 0;
+    for range in ranges {
+        if range.start < end {
+            return Err(InvalidOffset);
+        }
+        text::validate_range(snapshot.rope(), range)?;
+        end = range.end;
+    }
+    Ok(())
 }
 
 fn edit_chain<'a>(

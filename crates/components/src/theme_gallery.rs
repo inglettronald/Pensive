@@ -14,6 +14,7 @@ const SAMPLE_OVERRIDE: &str = r##"
 text_muted = "#9a9a9a"
 diff_removed = "#f0954a"
 diff_added = "#3fb8c4"
+syntax_keyword = "#ffd2a8"
 
 [fonts]
 ui = "Geist"
@@ -21,7 +22,7 @@ code = "Geist Mono"
 "##;
 
 pub(crate) fn mocks() -> Vec<Mock> {
-    let size = |mock: Mock| mock.size(1280., 1240.);
+    let size = |mock: Mock| mock.size(1280., 1460.);
     vec![
         size(Mock::component("theme", "gallery", || {
             ThemeGallery.into_any_element()

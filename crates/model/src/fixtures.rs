@@ -26,6 +26,8 @@ const WEEK: u64 = 7 * DAY;
 pub const PENSIVE: ProjectId = ProjectId(0);
 /// The pensive project's main worktree.
 pub const PENSIVE_ROOT: &str = "~/Projects/pensive";
+/// A portable syntax sample for editor mocks and tests, outside the sidebar timeline.
+pub const SYNTAX_SAMPLE: &str = "review/Greeting.java";
 pub const HARBOR: ProjectId = ProjectId(1);
 pub const LANTERN: ProjectId = ProjectId(2);
 pub const GLYPH_UI: ProjectId = ProjectId(3);

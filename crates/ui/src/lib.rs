@@ -117,6 +117,7 @@ pub fn mocks() -> Vec<mock::Mock> {
     [
         root::mocks(),
         project::mocks(),
+        editor::mocks::mocks(),
         settings::mocks(),
         notices::mocks(),
         mock_browser::mocks(),

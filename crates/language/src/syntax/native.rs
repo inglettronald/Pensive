@@ -155,7 +155,7 @@ impl Native {
     pub(super) fn tokens(
         &self,
         snapshot: &TextSnapshot,
-        range: Range<usize>,
+        ranges: &[Range<usize>],
         cancel: &SyntaxCancellation,
     ) -> Vec<TokenSpan> {
         let Some(tree) = &self.tree else {
@@ -163,48 +163,59 @@ impl Native {
         };
         let rope = snapshot.rope();
         let mut cursor = QueryCursor::new();
-        cursor.set_byte_range(range.clone()).set_match_limit(4096);
+        cursor.set_match_limit(4096);
         let mut remaining = MAX_PROGRESS_CALLBACKS;
-        let mut progress = |_: &QueryCursorState| out_of_budget(&mut remaining, cancel);
         let mut found = Vec::new();
-        {
-            let mut captures = cursor.captures_with_options(
-                &self.grammar.query,
-                tree.root_node(),
-                |node: Node<'_>| node_text(rope, node),
-                QueryCursorOptions::new().progress_callback(&mut progress),
-            );
-            while let Some((matched, index)) = captures.next() {
-                if cancel.is_cancelled() || found.len() == MAX_SPANS {
-                    return Vec::new();
-                }
-                let capture = matched.captures[*index];
-                let Some(role) = self.grammar.roles[capture.index as usize] else {
-                    continue;
-                };
-                let bytes = capture.node.byte_range();
-                let start = bytes.start.max(range.start);
-                let end = bytes.end.min(range.end);
-                if start < end
-                    && text::validate_range(rope, &(start..end)).is_ok()
-                    && self.grammar.predicates[matched.pattern_index]
-                        .iter()
-                        .all(|predicate| predicate.matches(matched, rope))
-                {
-                    found.push(Capture {
-                        visible: start..end,
-                        bytes,
-                        role,
-                        pattern: matched.pattern_index,
-                        index: capture.index,
-                    });
+        for range in ranges.iter().filter(|range| !range.is_empty()) {
+            if cancel.is_cancelled() {
+                return Vec::new();
+            }
+            cursor.set_byte_range(range.clone());
+            let mut progress = |_: &QueryCursorState| out_of_budget(&mut remaining, cancel);
+            {
+                let mut captures = cursor.captures_with_options(
+                    &self.grammar.query,
+                    tree.root_node(),
+                    |node: Node<'_>| node_text(rope, node),
+                    QueryCursorOptions::new().progress_callback(&mut progress),
+                );
+                while let Some((matched, index)) = captures.next() {
+                    if cancel.is_cancelled() || found.len() == MAX_SPANS {
+                        return Vec::new();
+                    }
+                    let capture = matched.captures[*index];
+                    let Some(role) = self.grammar.roles[capture.index as usize] else {
+                        continue;
+                    };
+                    let bytes = capture.node.byte_range();
+                    let start = bytes.start.max(range.start);
+                    let end = bytes.end.min(range.end);
+                    if start < end
+                        && text::validate_range(rope, &(start..end)).is_ok()
+                        && self.grammar.predicates[matched.pattern_index]
+                            .iter()
+                            .all(|predicate| predicate.matches(matched, rope))
+                    {
+                        found.push(Capture {
+                            visible: start..end,
+                            bytes,
+                            role,
+                            pattern: matched.pattern_index,
+                            index: capture.index,
+                        });
+                    }
                 }
             }
+            if remaining == 0 || cancel.is_cancelled() || cursor.did_exceed_match_limit() {
+                return Vec::new();
+            }
         }
-        if remaining == 0 || cancel.is_cancelled() || cursor.did_exceed_match_limit() {
-            return Vec::new();
+        let spans = flatten(snapshot, &found);
+        if spans.len() <= MAX_SPANS {
+            spans
+        } else {
+            Vec::new()
         }
-        flatten(snapshot, &found)
     }
 }
 

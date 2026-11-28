@@ -45,7 +45,7 @@ pub(crate) fn versions(
 ) -> Option<FileVersions> {
     let samples = samples_in(worktree)?;
     let mut commits = samples.commits.into_iter();
-    let (files, new_origin) = match &key.source {
+    let (mut files, new_origin) = match &key.source {
         Source::Uncommitted => (samples.uncommitted, FileOrigin::Worktree),
         Source::Commit(sha) => {
             let commit = commits.find(|sample| sample.commit.sha == *sha)?;
@@ -53,6 +53,9 @@ pub(crate) fn versions(
         }
     };
     let old_revision = commits.next().map(|sample| sample.commit.sha.to_string());
+    if key.path == Path::new(super::SYNTAX_SAMPLE) {
+        files.push(syntax_sample());
+    }
     let old_path = renamed_from.unwrap_or(&key.path);
     let old = files
         .iter()
@@ -497,6 +500,36 @@ fn root() -> Vec<(char, String)> {
     ]));
     lines.extend(unchanged(75..100));
     lines
+}
+
+fn syntax_sample() -> Sample {
+    let mut lines = vec![
+        (' ', "public class Greeting {"),
+        (' ', "    // Keep the response short."),
+        ('-', "    private final Object prefix = 404;"),
+        ('+', "    private final Object prefix = \"café\";"),
+        ('+', "    private final int limit = 12;"),
+        (' ', ""),
+        (' ', "    /*"),
+        (' ', "     * The default is used by the preview."),
+    ];
+    lines.extend(std::iter::repeat_n((' ', "     * More context."), 110));
+    lines.extend([
+        (' ', "     * End of the preview notes."),
+        (' ', "     */"),
+        (' ', "    public Object message() {"),
+        ('-', "        return send(\"old\", 12);"),
+        ('+', "        return send(\"new\", 24);"),
+        (' ', "    }"),
+        (' ', "}"),
+    ]);
+    file(
+        super::SYNTAX_SAMPLE,
+        FileStatus::Modified,
+        (3, 2),
+        Staging::Unstaged,
+    )
+    .lines(&lines)
 }
 
 /// The change the canvas draws in the main view.

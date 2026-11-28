@@ -9,7 +9,7 @@ mod tokens;
 
 use std::{collections::BTreeMap, fmt, sync::Arc};
 
-pub use syntax::{SyntaxCancellation, SyntaxState};
+pub use syntax::{SyntaxCancellation, SyntaxState, validate_syntax_ranges};
 pub use tokens::{TokenRole, TokenSpan};
 
 /// A canonical name, stable across registries and independent of source identity.

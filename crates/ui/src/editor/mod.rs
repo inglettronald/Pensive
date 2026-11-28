@@ -1,12 +1,16 @@
 //! A code editor over a document: it shows the document's diff in one of three modes, edits it
 //! from the keyboard, mouse and input method, and saves as the save setting says.
 
+mod display_line;
 mod input;
 mod keys;
 mod line;
+#[cfg(feature = "mocks")]
+pub(crate) mod mocks;
 mod render;
 mod rows;
 mod saving;
+mod syntax;
 
 use std::ops::Range;
 
@@ -14,7 +18,7 @@ use gpui::{
     App, Context, Entity, FocusHandle, Focusable, ListAlignment, ListState, MouseDownEvent,
     MouseMoveEvent, MouseUpEvent, Pixels, Point, ScrollEvent, Subscription, Window, px,
 };
-use model::{Document, Rope};
+use model::{Document, Rope, SyntaxViewport};
 use theme::ActiveTheme;
 
 pub(crate) use keys::bind_keys;
@@ -46,7 +50,10 @@ pub struct Editor {
     /// Unchanged lines opened from folds in Changes mode, by line.
     revealed: Vec<Range<usize>>,
     rows: Vec<Row>,
+    /// The model inputs last used to build the rows. A syntax completion only repaints them.
+    row_input: Option<(usize, usize, usize)>,
     list: ListState,
+    syntax_viewport: SyntaxViewport,
     selection: Selection,
     /// The column Up and Down aim for, kept across short lines.
     goal_column: Option<usize>,
@@ -58,6 +65,7 @@ pub struct Editor {
     layouts: Layouts,
     focus_handle: FocusHandle,
     _document: Option<Subscription>,
+    _release: Subscription,
     _blur: [Subscription; 2],
 }
 
@@ -75,7 +83,9 @@ impl Editor {
             mode: Mode::default(),
             revealed: Vec::new(),
             rows: Vec::new(),
+            row_input: None,
             list: ListState::new(0, ListAlignment::Top, OVERDRAW),
+            syntax_viewport: SyntaxViewport::default(),
             selection: Selection::default(),
             goal_column: None,
             selecting: false,
@@ -84,6 +94,7 @@ impl Editor {
             layouts: Layouts::default(),
             focus_handle,
             _document: None,
+            _release: cx.on_release(Self::release_syntax_viewport),
             _blur: [blur, deactivate],
         }
     }
@@ -99,10 +110,15 @@ impl Editor {
             return;
         }
         self.auto_save_now(cx);
+        self.release_syntax_viewport(cx);
         self._document = document.as_ref().map(|document| {
             cx.observe(document, |this, _, cx| {
                 this.clamp_selection(cx);
-                this.update_rows(cx);
+                if this.row_input != this.row_input(cx) {
+                    this.update_rows(cx);
+                } else {
+                    cx.notify();
+                }
             })
         });
         let first_change = document.as_ref().map_or(0, |document| {
@@ -116,13 +132,23 @@ impl Editor {
             text.line_to_byte(line.min(text.len_lines() - 1))
         });
         self.document = document;
+        self.syntax_viewport = SyntaxViewport::default();
         self.selection = Selection::at(first_change);
         self.goal_column = None;
         self.revealed.clear();
         self.scroll_x = Pixels::ZERO;
         self.rows.clear();
+        self.row_input = None;
         self.list.reset(0);
         self.reveal_cursor(cx);
+    }
+
+    fn release_syntax_viewport(&mut self, cx: &mut App) {
+        if let Some(document) = &self.document {
+            document.update(cx, |document, _| {
+                document.release_syntax_viewport(&self.syntax_viewport);
+            });
+        }
     }
 
     pub fn mode(&self) -> Mode {
@@ -177,6 +203,7 @@ impl Editor {
 
     /// Rebuilds the rows from the document and tells the list which ones changed height.
     fn update_rows(&mut self, cx: &mut Context<Self>) {
+        self.row_input = self.row_input(cx);
         let rows = match &self.document {
             Some(document) => {
                 let document = document.read(cx);
@@ -196,6 +223,15 @@ impl Editor {
         });
         self.rows = rows;
         cx.notify();
+    }
+
+    fn row_input(&self, cx: &App) -> Option<(usize, usize, usize)> {
+        let document = self.document.as_ref()?.read(cx);
+        Some((
+            document.diff_revision(),
+            document.snapshot().stamp().revision,
+            self.line_count(cx),
+        ))
     }
 
     fn cursor_moved(&mut self, cx: &mut Context<Self>) {
@@ -539,8 +575,8 @@ mod tests {
         VisualTestContext, point,
     };
     use model::{
-        FileKey, GitBackend, Projects, Source, Version,
-        fixtures::{FakeGit, PENSIVE_ROOT},
+        DocumentSide, FileKey, GitBackend, Projects, Source, TokenRole, Version,
+        fixtures::{FakeGit, PENSIVE_ROOT, SYNTAX_SAMPLE},
     };
 
     use super::*;
@@ -708,8 +744,12 @@ mod tests {
     )]
     async fn clicks_undo_and_select_all_forget_the_goal_column(cx: &mut TestAppContext) {
         let (editor, _, cx) = editor(cx).await;
-        let inside = point(px(300.), px(20.));
         cx.simulate_input("x");
+        let inside = editor.read_with(cx, |editor, _| {
+            let layouts = editor.layouts.borrow();
+            let row = layouts.first().unwrap();
+            point(px(300.), row.bounds.center().y)
+        });
         forgets_the_goal_column(&editor, cx, "click", |cx| {
             crate::test_support::click(cx, inside)
         });
@@ -744,5 +784,162 @@ mod tests {
         cx.simulate_input("x");
         cx.simulate_keystrokes("enter backspace");
         assert_eq!(text(&editor, cx), original);
+    }
+
+    fn token_at(
+        document: &Document,
+        viewport: &SyntaxViewport,
+        side: DocumentSide,
+        byte: usize,
+    ) -> Option<TokenRole> {
+        document
+            .syntax_spans(viewport, side)
+            .iter()
+            .find(|span| span.bytes().contains(&byte))
+            .map(model::TokenSpan::role)
+    }
+
+    #[gpui::test]
+    async fn syntax_follows_real_viewports_sides_and_edits(cx: &mut TestAppContext) {
+        let (editor, _, cx) = editor_on(Source::Uncommitted, SYNTAX_SAMPLE, cx).await;
+        let (document, viewport) = editor.read_with(cx, |editor, _| {
+            (
+                editor.document().unwrap().clone(),
+                editor.syntax_viewport.clone(),
+            )
+        });
+        let visible_token_at =
+            |document: &Document, side, byte| token_at(document, &viewport, side, byte);
+        document.read_with(cx, |document, _| {
+            let base = document.base_snapshot().rope().to_string();
+            let new = document.text().to_string();
+            assert_eq!(
+                visible_token_at(document, DocumentSide::Base, base.find("404").unwrap()),
+                Some(TokenRole::Number)
+            );
+            assert_eq!(
+                visible_token_at(document, DocumentSide::New, new.find("café").unwrap()),
+                Some(TokenRole::String)
+            );
+            assert_eq!(
+                visible_token_at(document, DocumentSide::Base, base.find("old").unwrap()),
+                Some(TokenRole::String)
+            );
+            assert_eq!(
+                visible_token_at(document, DocumentSide::New, new.find("24").unwrap()),
+                Some(TokenRole::Number)
+            );
+            assert_eq!(
+                visible_token_at(
+                    document,
+                    DocumentSide::New,
+                    document.text().line_to_byte(55) + 7
+                ),
+                None
+            );
+        });
+
+        editor.update_in(cx, |editor, _, cx| editor.reveal(54..58, cx));
+        cx.run_until_parked();
+        document.read_with(cx, |document, _| {
+            assert_eq!(
+                visible_token_at(
+                    document,
+                    DocumentSide::New,
+                    document.text().line_to_byte(55) + 7
+                ),
+                Some(TokenRole::Comment)
+            );
+        });
+
+        editor.update_in(cx, |editor, _, cx| editor.set_mode(Mode::Plain, cx));
+        let scroll_to = |cx: &mut VisualTestContext, line| {
+            editor.update_in(cx, |editor, _, cx| {
+                editor.list.scroll_to(gpui::ListOffset {
+                    item_ix: line,
+                    offset_in_item: Pixels::ZERO,
+                });
+                cx.notify();
+            });
+        };
+        scroll_to(cx, 55);
+        let edit = document.read_with(cx, |document, _| document.text().line_to_byte(66));
+        document.update(cx, |document, cx| {
+            document.edit(
+                edit..edit,
+                "     */\r\n    private static int live = 7;\r\n    /*\r\n",
+                cx,
+            );
+            assert!(
+                document
+                    .syntax_spans(&viewport, DocumentSide::New)
+                    .is_empty()
+            );
+        });
+        scroll_to(cx, 66);
+        cx.run_until_parked();
+        document.read_with(cx, |document, _| {
+            let text = document.text().to_string();
+            assert!(
+                document
+                    .syntax_spans(&viewport, DocumentSide::Base)
+                    .is_empty()
+            );
+            assert_eq!(
+                visible_token_at(document, DocumentSide::New, text.find("static").unwrap()),
+                Some(TokenRole::Keyword)
+            );
+            assert_eq!(
+                visible_token_at(document, DocumentSide::New, text.find("café").unwrap()),
+                None
+            );
+        });
+
+        let git = Arc::new(FakeGit::default());
+        let projects = cx.new(|_| Projects::new(git));
+        let key = FileKey {
+            source: Source::Commit("5e35ea9".into()),
+            path: SYNTAX_SAMPLE.into(),
+        };
+        projects
+            .update(cx, |projects, cx| {
+                projects.open_document(PENSIVE_ROOT.into(), key.clone(), cx)
+            })
+            .await
+            .unwrap();
+        let commit = projects.read_with(cx, |projects, _| {
+            projects
+                .document(Path::new(PENSIVE_ROOT), &key)
+                .unwrap()
+                .clone()
+        });
+        scroll_to(cx, 110);
+        editor.update_in(cx, |editor, _, cx| {
+            editor.set_mode(Mode::Changes, cx);
+            editor.set_document(Some(commit.clone()), cx);
+        });
+        cx.run_until_parked();
+        let commit_viewport = editor.read_with(cx, |editor, _| editor.syntax_viewport.clone());
+        document.read_with(cx, |document, _| {
+            assert!(
+                document
+                    .syntax_spans(&viewport, DocumentSide::New)
+                    .is_empty()
+            );
+        });
+        commit.read_with(cx, |document, _| {
+            let base = document.base_snapshot().rope().to_string();
+            assert!(!document.is_editable());
+            assert_eq!(
+                token_at(
+                    document,
+                    &commit_viewport,
+                    DocumentSide::Base,
+                    base.find("404").unwrap()
+                ),
+                Some(TokenRole::Number)
+            );
+            assert!(!document.text().to_string().contains("static int live"));
+        });
     }
 }

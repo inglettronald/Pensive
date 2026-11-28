@@ -1,12 +1,52 @@
-use std::ops::Range;
+use std::{
+    collections::VecDeque,
+    ops::Range,
+    rc::{Rc, Weak},
+};
 
 use gpui::{Context, Task};
-use language::{SyntaxCancellation, SyntaxState, TokenSpan};
+use language::{SyntaxCancellation, SyntaxState, TokenSpan, validate_syntax_ranges};
 use text::{InvalidOffset, TextChange};
 
 use super::{Document, DocumentSide, DocumentSnapshot};
 
 const EDIT_HISTORY_LIMIT: usize = 128;
+
+/// Identifies an editor's current attachment to a document.
+#[derive(Clone, Default)]
+pub struct SyntaxViewport(Rc<()>);
+
+#[derive(Clone, Default)]
+enum QueryOwner {
+    #[default]
+    Direct,
+    Viewport(Weak<()>),
+}
+
+impl From<&SyntaxViewport> for QueryOwner {
+    fn from(viewport: &SyntaxViewport) -> Self {
+        Self::Viewport(Rc::downgrade(&viewport.0))
+    }
+}
+
+impl PartialEq for QueryOwner {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Direct, Self::Direct) => true,
+            (Self::Viewport(a), Self::Viewport(b)) => a.ptr_eq(b),
+            _ => false,
+        }
+    }
+}
+
+impl QueryOwner {
+    fn is_live(&self) -> bool {
+        match self {
+            Self::Direct => true,
+            Self::Viewport(owner) => owner.strong_count() > 0,
+        }
+    }
+}
 
 #[derive(Default)]
 pub(super) struct DocumentSyntax {
@@ -17,8 +57,16 @@ pub(super) struct DocumentSyntax {
 
 #[derive(Default)]
 struct Side {
+    input: Option<DocumentSnapshot>,
     cache: Cache,
     worker: Option<Worker>,
+    // Replacing a queued query moves it behind other owners already waiting.
+    queries: VecDeque<Query>,
+}
+
+#[derive(Default)]
+struct Query {
+    owner: QueryOwner,
     pending: Option<Request>,
     result: Option<(Request, Vec<TokenSpan>)>,
 }
@@ -32,16 +80,42 @@ struct Cache {
 #[derive(Clone)]
 struct Request {
     input: DocumentSnapshot,
-    range: Range<usize>,
+    ranges: Vec<Range<usize>>,
 }
 
-impl Request {
-    fn matches(&self, input: &DocumentSnapshot, range: &Range<usize>) -> bool {
-        self.range == *range && self.input.same_input(input)
+impl Side {
+    fn query(&self, owner: &QueryOwner) -> Option<&Query> {
+        self.queries.iter().find(|query| query.owner == *owner)
+    }
+
+    fn worker_for(&self, owner: &QueryOwner) -> Option<&Worker> {
+        self.worker.as_ref().filter(|worker| worker.owner == *owner)
+    }
+
+    fn latest<'a>(&'a self, query: &'a Query) -> Option<&'a Request> {
+        query
+            .pending
+            .as_ref()
+            .or_else(|| {
+                self.worker_for(&query.owner)
+                    .filter(|worker| !worker.cancel.is_cancelled())
+                    .map(|worker| &worker.request)
+            })
+            .or_else(|| query.result.as_ref().map(|(request, _)| request))
+    }
+
+    fn remove_closed_queries(&mut self) {
+        self.queries.retain(|query| query.owner.is_live());
+        if let Some(worker) = &self.worker
+            && !worker.owner.is_live()
+        {
+            worker.cancel.cancel();
+        }
     }
 }
 
 struct Worker {
+    owner: QueryOwner,
     request: Request,
     cancel: SyntaxCancellation,
     _task: Task<()>,
@@ -79,54 +153,165 @@ impl DocumentSnapshot {
 
 impl Document {
     /// Request syntax for a half-open UTF-8 byte range in one diff side. The
-    /// latest request on that side takes precedence. Completion notifies observers.
+    /// latest standalone request on that side takes precedence. Completion notifies observers.
     pub fn request_syntax(
         &mut self,
         side: DocumentSide,
         range: Range<usize>,
         cx: &mut Context<Self>,
     ) -> Result<(), InvalidOffset> {
+        self.request_syntax_ranges(side, vec![range], cx)
+    }
+
+    /// Request one batch of ordered, disjoint ranges on a side. Gaps need not
+    /// be queried even though the parser retains full-file context.
+    pub fn request_syntax_ranges(
+        &mut self,
+        side: DocumentSide,
+        ranges: Vec<Range<usize>>,
+        cx: &mut Context<Self>,
+    ) -> Result<(), InvalidOffset> {
+        self.request_syntax_for(QueryOwner::Direct, side, ranges, cx)
+    }
+
+    fn request_syntax_for(
+        &mut self,
+        owner: QueryOwner,
+        side: DocumentSide,
+        ranges: Vec<Range<usize>>,
+        cx: &mut Context<Self>,
+    ) -> Result<(), InvalidOffset> {
         let input = self.source_snapshot(side);
-        text::validate_range(input.text.rope(), &range)?;
+        validate_syntax_ranges(&input.text, &ranges)?;
         let state = self.syntax.side_mut(side);
+        state.remove_closed_queries();
+        let matches =
+            |request: &Request| request.ranges == ranges && request.input.same_input(&input);
         if state
-            .pending
-            .as_ref()
-            .is_some_and(|request| request.matches(&input, &range))
-            || state.worker.as_ref().is_some_and(|worker| {
-                !worker.cancel.is_cancelled() && worker.request.matches(&input, &range)
-            })
-            || state
-                .result
-                .as_ref()
-                .is_some_and(|(request, _)| request.matches(&input, &range))
+            .query(&owner)
+            .and_then(|query| state.latest(query))
+            .is_some_and(matches)
         {
             return Ok(());
         }
-        state.result = None;
-        if let Some(worker) = &state.worker {
+        if let Some(worker) = state.worker_for(&owner) {
             worker.cancel.cancel();
         }
-        let plain = range.is_empty() || !input.present || input.language.syntax.is_none();
-        let request = Request { input, range };
+        let mut query = state
+            .queries
+            .iter()
+            .position(|query| query.owner == owner)
+            .and_then(|index| state.queries.remove(index))
+            .unwrap_or_else(|| Query {
+                owner,
+                ..Query::default()
+            });
+        query.pending = None;
+        if matches!(query.owner, QueryOwner::Viewport(_)) && ranges.is_empty() {
+            return Ok(());
+        }
+        // A scroll back can reuse the last completed window while the
+        // superseded query drains.
+        if query
+            .result
+            .as_ref()
+            .is_some_and(|(request, _)| matches(request))
+        {
+            state.queries.push_back(query);
+            return Ok(());
+        }
+        let plain =
+            ranges.iter().all(Range::is_empty) || !input.present || input.language.syntax.is_none();
+        state.input = Some(input.clone());
+        let request = Request { input, ranges };
         if plain {
-            state.pending = None;
-            state.result = Some((request, Vec::new()));
+            query.result = Some((request, Vec::new()));
             cx.notify();
         } else {
-            state.pending = Some(request);
-            self.start_syntax(side, cx);
+            query.pending = Some(request);
         }
+        state.queries.push_back(query);
+        self.start_syntax(side, cx);
         Ok(())
     }
 
     /// Tokens for the requested range of the current input. Returns `None`
     /// while work is pending or stale, and an empty slice for plain text.
     pub fn syntax_tokens(&self, side: DocumentSide, range: Range<usize>) -> Option<&[TokenSpan]> {
-        let (request, spans) = self.syntax.side(side).result.as_ref()?;
-        request
-            .matches(&self.source_snapshot(side), &range)
-            .then_some(spans.as_slice())
+        let state = self.syntax.side(side);
+        let query = state.query(&QueryOwner::Direct)?;
+        let (request, spans) = query.result.as_ref()?;
+        (std::ptr::eq(state.latest(query)?, request)
+            && request.ranges == [range]
+            && request.input.same_input(&self.source_snapshot(side)))
+        .then_some(spans.as_slice())
+    }
+
+    /// Whether this viewport needs to replace its padded coverage.
+    pub fn syntax_viewport_needs(
+        &self,
+        viewport: &SyntaxViewport,
+        side: DocumentSide,
+        visible: &[Range<usize>],
+    ) -> bool {
+        let state = self.syntax.side(side);
+        let previous = state
+            .query(&viewport.into())
+            .and_then(|query| state.latest(query));
+        if visible.is_empty() {
+            return previous.is_some();
+        }
+        let input = self.source_snapshot(side);
+        if !input.present || input.language.syntax.is_none() {
+            return false;
+        }
+        let Some(previous) = previous else {
+            return true;
+        };
+        let mut ranges = previous.ranges.iter().peekable();
+        visible.iter().any(|visible| {
+            while ranges
+                .peek()
+                .is_some_and(|range| range.end <= visible.start)
+            {
+                ranges.next();
+            }
+            ranges
+                .peek()
+                .is_none_or(|range| visible.start < range.start || visible.end > range.end)
+        })
+    }
+
+    /// Each viewport has its own query budget and shares this side's parser.
+    pub fn request_viewport_syntax(
+        &mut self,
+        viewport: &SyntaxViewport,
+        side: DocumentSide,
+        ranges: Vec<Range<usize>>,
+        cx: &mut Context<Self>,
+    ) -> Result<(), InvalidOffset> {
+        self.request_syntax_for(viewport.into(), side, ranges, cx)
+    }
+
+    /// Discard a detached editor's queued work, running query, and spans.
+    pub fn release_syntax_viewport(&mut self, viewport: &SyntaxViewport) {
+        let owner = QueryOwner::from(viewport);
+        for state in [&mut self.syntax.base, &mut self.syntax.new] {
+            state.queries.retain(|query| query.owner != owner);
+            if let Some(worker) = state.worker_for(&owner) {
+                worker.cancel.cancel();
+            }
+        }
+    }
+
+    /// Published spans for this viewport, including its last result while a
+    /// replacement query runs. Input mutations clear stale spans.
+    pub fn syntax_spans(&self, viewport: &SyntaxViewport, side: DocumentSide) -> &[TokenSpan] {
+        self.syntax
+            .side(side)
+            .query(&viewport.into())
+            .and_then(|query| query.result.as_ref())
+            .map_or(&[], |(_, spans)| spans)
     }
 
     pub(super) fn record_syntax_change(&mut self, change: &TextChange) {
@@ -156,32 +341,30 @@ impl Document {
         let input = self.source_snapshot(side);
         let state = self.syntax.side_mut(side);
         if state
-            .pending
+            .input
             .as_ref()
-            .is_some_and(|request| !request.input.same_input(&input))
+            .is_some_and(|previous| !previous.same_input(&input))
         {
-            state.pending = None;
-        }
-        if state
-            .result
-            .as_ref()
-            .is_some_and(|(request, _)| !request.input.same_input(&input))
-        {
-            state.result = None;
-        }
-        if let Some(worker) = &state.worker
-            && !worker.request.input.same_input(&input)
-        {
-            worker.cancel.cancel();
+            state.input = None;
+            state.queries.clear();
+            if let Some(worker) = &state.worker {
+                worker.cancel.cancel();
+            }
         }
     }
 
     fn start_syntax(&mut self, side: DocumentSide, cx: &mut Context<Self>) {
         let state = self.syntax.side_mut(side);
+        state.remove_closed_queries();
         if state.worker.is_some() {
             return;
         }
-        let Some(request) = state.pending.take() else {
+        let Some((owner, request)) = state.queries.iter_mut().find_map(|query| {
+            query
+                .pending
+                .take()
+                .map(|request| (query.owner.clone(), request))
+        }) else {
             return;
         };
         let mut cache = std::mem::take(&mut state.cache);
@@ -196,7 +379,7 @@ impl Document {
             let (cache, spans) = cx
                 .background_executor()
                 .spawn(async move {
-                    let Request { input, range } = work;
+                    let Request { input, ranges } = work;
                     if cache
                         .input
                         .as_ref()
@@ -206,7 +389,13 @@ impl Document {
                     }
                     let spans = cache
                         .syntax
-                        .tokens(&input.text, &input.language, &changes, range, &work_cancel)
+                        .tokens_for_ranges(
+                            &input.text,
+                            &input.language,
+                            &changes,
+                            &ranges,
+                            &work_cancel,
+                        )
                         .expect("request range validated against its snapshot");
                     cache.input = Some(input);
                     (cache, spans)
@@ -219,8 +408,13 @@ impl Document {
                 if let Some(worker) = state.worker.take()
                     && !worker.cancel.is_cancelled()
                     && worker.request.input.same_input(&current)
+                    && worker.owner.is_live()
+                    && let Some(query) = state
+                        .queries
+                        .iter_mut()
+                        .find(|query| query.owner == worker.owner)
                 {
-                    state.result = Some((worker.request.clone(), spans));
+                    query.result = Some((worker.request.clone(), spans));
                     cx.notify();
                 }
                 document.start_syntax(side, cx);
@@ -228,6 +422,7 @@ impl Document {
             .ok();
         });
         self.syntax.side_mut(side).worker = Some(Worker {
+            owner,
             request,
             cancel,
             _task: task,

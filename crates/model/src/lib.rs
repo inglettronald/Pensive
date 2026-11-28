@@ -26,7 +26,7 @@ pub use config::{ConfigBackend, ConfigEvent, ConfigFiles};
 pub use diff::{
     ChangedLines, FileOrigin, FileSource, FileVersions, LineDiff, Version, changed_words,
 };
-pub use document::{Document, DocumentEvent, DocumentSide, DocumentSnapshot};
+pub use document::{Document, DocumentEvent, DocumentSide, DocumentSnapshot, SyntaxViewport};
 pub use git::{GitBackend, Repository};
 pub use git_problem::{GitProblem, GitVersion, Platform};
 pub use language::{TokenRole, TokenSpan};

@@ -99,39 +99,43 @@ impl Java {
     pub(super) fn tokens(
         &self,
         snapshot: &TextSnapshot,
-        range: Range<usize>,
+        ranges: &[Range<usize>],
         cancel: &SyntaxCancellation,
     ) -> Vec<TokenSpan> {
         let Some(parsed) = &self.parsed else {
             return Vec::new();
         };
-        let first = parsed
-            .tokens
-            .partition_point(|token| parsed.source.raw_byte(token.bytes.end) <= range.start);
         let mut spans = Vec::new();
-        for token in &parsed.tokens[first..] {
-            if cancel.is_cancelled() || spans.len() == MAX_SPANS {
-                return Vec::new();
-            }
-            let bytes = parsed.source.raw_bytes(token.bytes.clone());
-            if bytes.start >= range.end {
-                break;
-            }
-            let role = match token.kind {
-                JavaTokenKind::Comment => Some(TokenRole::Comment),
-                JavaTokenKind::String | JavaTokenKind::Character => Some(TokenRole::String),
-                JavaTokenKind::Number => Some(TokenRole::Number),
-                JavaTokenKind::Keyword => Some(TokenRole::Keyword),
-                JavaTokenKind::Identifier => parsed.index.roles.get(&token.bytes.start).copied(),
-                _ => None,
-            };
-            let clipped = bytes.start.max(range.start)..bytes.end.min(range.end);
-            if let Some(role) = role
-                && !clipped.is_empty()
-            {
-                spans.push(
-                    TokenSpan::new(snapshot, clipped, role).expect("mapped Java token bounds"),
-                );
+        for range in ranges.iter().filter(|range| !range.is_empty()) {
+            let first = parsed
+                .tokens
+                .partition_point(|token| parsed.source.raw_byte(token.bytes.end) <= range.start);
+            for token in &parsed.tokens[first..] {
+                if cancel.is_cancelled() || spans.len() == MAX_SPANS {
+                    return Vec::new();
+                }
+                let bytes = parsed.source.raw_bytes(token.bytes.clone());
+                if bytes.start >= range.end {
+                    break;
+                }
+                let role = match token.kind {
+                    JavaTokenKind::Comment => Some(TokenRole::Comment),
+                    JavaTokenKind::String | JavaTokenKind::Character => Some(TokenRole::String),
+                    JavaTokenKind::Number => Some(TokenRole::Number),
+                    JavaTokenKind::Keyword => Some(TokenRole::Keyword),
+                    JavaTokenKind::Identifier => {
+                        parsed.index.roles.get(&token.bytes.start).copied()
+                    }
+                    _ => None,
+                };
+                let clipped = bytes.start.max(range.start)..bytes.end.min(range.end);
+                if let Some(role) = role
+                    && !clipped.is_empty()
+                {
+                    spans.push(
+                        TokenSpan::new(snapshot, clipped, role).expect("mapped Java token bounds"),
+                    );
+                }
             }
         }
         spans
@@ -329,8 +333,8 @@ mod tests {
         assert!(java.parse(&input, Some(&[change]), &cancel));
         let range = 0..rope.len_bytes();
         assert_eq!(
-            java.tokens(&input, range.clone(), &cancel),
-            cold.tokens(&input, range, &cancel)
+            java.tokens(&input, std::slice::from_ref(&range), &cancel),
+            cold.tokens(&input, &[range], &cancel)
         );
 
         let body = &new.index.bodies[0];

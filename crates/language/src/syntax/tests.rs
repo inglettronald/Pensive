@@ -148,6 +148,35 @@ fn rust_precedence_and_hidden_multiline_context_are_preserved_in_byte_ranges() {
 
 #[cfg(not(target_arch = "wasm32"))]
 #[test]
+fn sparse_queries_skip_a_gap_that_would_exhaust_the_capture_budget() {
+    let first = "const FIRST: u32 = 1;\n";
+    let last = "const LAST: u32 = 2;\n";
+    let source = format!("{first}{}{last}", "// hidden\n".repeat(MAX_SPANS + 1));
+    let input = snapshot(&source);
+    let selection = Registry::default().resolve("main.rs");
+    let mut state = SyntaxState::default();
+    assert!(tokens(&mut state, &input, &selection).is_empty());
+    let last_start = source.len() - last.len();
+    let spans = state
+        .tokens_for_ranges(
+            &input,
+            &selection,
+            &[],
+            &[0..first.len(), last_start..source.len()],
+            &SyntaxCancellation::default(),
+        )
+        .unwrap();
+    has_role(&source, &spans, "1", TokenRole::Number);
+    assert!(spans.iter().any(|span| {
+        span.role() == TokenRole::Number
+            && span.bytes().start >= last_start
+            && &source[span.bytes()] == "2"
+    }));
+    assert!(!spans.iter().any(|span| span.role() == TokenRole::Comment));
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[test]
 fn xml_attributes_and_markdown_eof_use_source_bytes() {
     let registry = Registry::default();
     for (path, source, expected) in [

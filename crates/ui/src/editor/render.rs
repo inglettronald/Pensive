@@ -4,17 +4,19 @@ use std::ops::Range;
 
 use components::{Button, DiffRow, IconName, LineKind};
 use gpui::{
-    AnyElement, App, Context, CursorStyle, ElementId, ElementInputHandler, HighlightStyle,
-    MouseButton, StyledText, WeakEntity, Window, canvas, div, list, prelude::*,
+    AnyElement, App, Context, CursorStyle, ElementId, ElementInputHandler, MouseButton, WeakEntity,
+    Window, canvas, div, list, prelude::*,
 };
-use model::changed_words;
+use model::{DocumentSide, changed_words};
 use theme::{ActiveTheme, Typeset, dp};
 
 use super::{
     Editor,
+    display_line::{DisplayLine, local_range, runs},
     keys::CONTEXT,
-    line::LineElement,
+    line::{LineElement, LineInteraction},
     rows::{Mode, Row, STEP},
+    syntax::foregrounds,
 };
 use crate::text_editing::{self, movement};
 
@@ -33,6 +35,23 @@ impl Editor {
         let colors = &cx.theme().colors;
         let marks = self.mode != Mode::Plain;
         let word = |kind: LineKind| kind.hue(colors).map(|hue| hue.opacity(0.28));
+        let display_line =
+            |side, start, text: String, highlights: &[_], marked: Option<&Range<usize>>| {
+                let foregrounds = foregrounds(
+                    document.syntax_spans(&self.syntax_viewport, side),
+                    start,
+                    &text,
+                    colors,
+                );
+                let styles = runs(
+                    &text,
+                    window.text_style().to_run(text.len()),
+                    &foregrounds,
+                    highlights,
+                    marked,
+                );
+                DisplayLine::compose(start, text, styles, &[]).into()
+            };
         match row.clone() {
             Row::Line { line, added, pair } => {
                 let kind = if added && marks {
@@ -42,7 +61,7 @@ impl Editor {
                 };
                 let (start, text) = movement::line(document.text(), line);
                 let end = start + text.len();
-                let highlights = match (pair, word(kind)) {
+                let highlights: Vec<_> = match (pair, word(kind)) {
                     (Some(pair), Some(color)) if marks => {
                         changed_words(document.base_line(pair), &text)
                             .1
@@ -57,50 +76,67 @@ impl Editor {
                     && selected.end >= start
                     && !selected.is_empty())
                 .then(|| {
-                    let from = selected.start.max(start) - start;
-                    let to = selected.end.min(end) - start;
+                    let from = selected.start.max(start);
+                    let to = selected.end.min(end);
                     (from..to, selected.end > end)
                 });
                 let cursor = self.selection.cursor();
                 let focused = self.focus_handle.is_focused(window);
+                let marked = self
+                    .selection
+                    .marked
+                    .as_ref()
+                    .and_then(|range| local_range(&text, start, range));
                 let element = LineElement {
-                    editor: this.clone(),
-                    line,
-                    start,
-                    text: text.into(),
-                    selection,
-                    cursor: (focused && (start..=end).contains(&cursor)).then(|| cursor - start),
-                    highlights,
-                    marked: self
-                        .selection
-                        .marked
-                        .as_ref()
-                        .filter(|marked| start <= marked.start && marked.end <= end)
-                        .map(|marked| marked.start - start..marked.end - start),
+                    display: display_line(
+                        DocumentSide::New,
+                        start,
+                        text,
+                        &highlights,
+                        marked.as_ref(),
+                    ),
+                    interaction: Some(LineInteraction {
+                        line,
+                        selection,
+                        cursor: (focused && (start..=end).contains(&cursor)).then_some(cursor),
+                        autoscroll: self.autoscroll.then(|| this.clone()),
+                        layouts: self.layouts.clone(),
+                    }),
                     scroll_x: self.scroll_x,
-                    autoscroll: self.autoscroll,
-                    layouts: self.layouts.clone(),
                 };
                 DiffRow::new(kind, Some(line + 1), element).into_any_element()
             }
             Row::Removed { line, pair } => {
-                let text = document.base_line(line).to_string();
-                let words = pair
-                    .filter(|_| marks)
-                    .map(|pair| changed_words(&text, &movement::line(document.text(), pair).1).0)
+                let text = document.base_line(line);
+                let highlights: Vec<_> = pair
+                    .zip(word(LineKind::Removed))
+                    .filter(|(pair, _)| marks && *pair < document.text().len_lines())
+                    .map(|(pair, color)| {
+                        changed_words(text, &movement::line(document.text(), pair).1)
+                            .0
+                            .into_iter()
+                            .map(|range| (range, color))
+                            .collect()
+                    })
                     .unwrap_or_default();
-                let style = HighlightStyle {
-                    background_color: word(LineKind::Removed),
-                    ..Default::default()
+                let element = LineElement {
+                    display: display_line(
+                        DocumentSide::Base,
+                        document
+                            .base_line_range(line)
+                            .map_or(0, |range| range.start),
+                        text.to_owned(),
+                        &highlights,
+                        None,
+                    ),
+                    scroll_x: self.scroll_x,
+                    interaction: None,
                 };
-                let text = StyledText::new(text)
-                    .with_highlights(words.into_iter().map(|range| (range, style)));
-                DiffRow::new(
-                    LineKind::Removed,
-                    None,
-                    div().ml(-self.scroll_x).child(text),
-                )
-                .into_any_element()
+                div()
+                    .cursor(CursorStyle::Arrow)
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    .child(DiffRow::new(LineKind::Removed, None, element))
+                    .into_any_element()
             }
             Row::Fold { lines, down, up } => self.render_fold(lines, down, up, this, cx),
         }
@@ -180,6 +216,7 @@ impl Render for Editor {
         let theme = cx.theme();
         let code = cx.density().code;
         let rows = cx.entity().downgrade();
+        let syntax = rows.clone();
         let entity = cx.entity();
         let focus_handle = self.focus_handle.clone();
         let editor = div().id("editor").track_focus(&self.focus_handle);
@@ -221,7 +258,7 @@ impl Render for Editor {
             )
             .child(
                 canvas(
-                    |_, _, _| {},
+                    move |_, _, cx| Self::schedule_syntax(&syntax, cx),
                     move |bounds, _, window, cx| {
                         window.handle_input(
                             &focus_handle,

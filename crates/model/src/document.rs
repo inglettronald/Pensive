@@ -2,6 +2,7 @@
 //! for an uncommitted file, editing with undo and saving it back to the worktree.
 
 mod syntax;
+pub use syntax::SyntaxViewport;
 
 use std::{
     ops::Range,
@@ -56,6 +57,7 @@ pub struct Document {
     /// document is reloaded or the file is overwritten.
     conflict: Option<Version>,
     diff: LineDiff,
+    diff_revision: usize,
     /// The diff running. Replacing it cancels it; stamps also guard publication.
     diffing: Option<Task<()>>,
     diff_generation: usize,
@@ -212,6 +214,7 @@ impl Document {
             refresh_generation: 0,
             conflict: None,
             diff: contents.diff,
+            diff_revision: 0,
             diffing: None,
             diff_generation: 0,
             syntax: syntax::DocumentSyntax::default(),
@@ -282,11 +285,20 @@ impl Document {
         &self.diff
     }
 
+    /// Changes when a new diff is published, even when the edit revision stays the same.
+    pub fn diff_revision(&self) -> usize {
+        self.diff_revision
+    }
+
+    /// The source bytes of a committed line, without its line ending.
+    pub fn base_line_range(&self, index: usize) -> Option<Range<usize>> {
+        self.base_lines.get(index).cloned()
+    }
+
     /// The `index`th line of the committed text, without its line ending.
     pub fn base_line(&self, index: usize) -> &str {
-        self.base_lines
-            .get(index)
-            .map_or("", |range| &self.base[range.clone()])
+        self.base_line_range(index)
+            .map_or("", |range| &self.base[range])
     }
 
     /// Whether it has edits that aren't on disk yet.
@@ -425,6 +437,7 @@ impl Document {
             return false;
         }
         self.diff = diff;
+        self.diff_revision = stamp.generation;
         true
     }
 
@@ -937,6 +950,66 @@ mod tests {
                 document.syntax_tokens(DocumentSide::New, 0..7),
                 Some([].as_slice())
             );
+        });
+    }
+
+    #[gpui::test]
+    fn syntax_viewports_keep_separate_budgets_and_release_pending_work(cx: &mut TestAppContext) {
+        // Either range fits on its own, but together they exceed the provider's span budget.
+        const TOKENS: usize = 33_000;
+        let values = vec!["0"; TOKENS].join(",");
+        let text = format!("[{values},\n{values}\n]");
+        let (document, _) = sample(&text, cx);
+        let first = SyntaxViewport::default();
+        let second = SyntaxViewport::default();
+        let side = DocumentSide::New;
+        let first_range = 1..1 + values.len();
+        let second_start = first_range.end + 2;
+        let second_range = second_start..second_start + values.len();
+        document.update(cx, |document, cx| {
+            let mut registry = Registry::default();
+            registry
+                .associate(language::Association::Extension("rs".into()), "json")
+                .unwrap();
+            document.set_languages(Arc::new(registry), cx);
+            document
+                .request_viewport_syntax(&first, side, vec![first_range.clone()], cx)
+                .unwrap();
+            document
+                .request_viewport_syntax(&second, side, vec![second_range.clone()], cx)
+                .unwrap();
+        });
+        cx.run_until_parked();
+        let assert_coverage =
+            |document: &Document, viewport: &SyntaxViewport, range: &Range<usize>| {
+                let spans = document.syntax_spans(viewport, side);
+                assert_eq!(spans.len(), TOKENS);
+                assert_eq!(spans.first().unwrap().bytes().start, range.start);
+                assert_eq!(spans.last().unwrap().bytes().end, range.end);
+            };
+        document.read_with(cx, |document, _| {
+            assert_coverage(document, &first, &first_range);
+            assert_coverage(document, &second, &second_range);
+        });
+
+        document.update(cx, |document, cx| {
+            let replacement = 1..2;
+            document
+                .request_viewport_syntax(&first, side, vec![replacement], cx)
+                .unwrap();
+            document.release_syntax_viewport(&first);
+            assert!(document.syntax_spans(&first, side).is_empty());
+            assert_coverage(document, &second, &second_range);
+        });
+        cx.run_until_parked();
+        document.read_with(cx, |document, _| {
+            assert!(document.syntax_spans(&first, side).is_empty());
+            assert!(!document.syntax_viewport_needs(
+                &second,
+                side,
+                std::slice::from_ref(&second_range)
+            ));
+            assert_coverage(document, &second, &second_range);
         });
     }
 
