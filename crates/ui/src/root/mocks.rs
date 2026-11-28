@@ -9,6 +9,8 @@ use model::{
     fixtures::{FakeGit, HARBOR, PENSIVE},
 };
 
+use theme::Theme;
+
 use super::Pensive;
 use crate::{
     mock_window,
@@ -57,6 +59,14 @@ pub(crate) fn mocks() -> Vec<Mock> {
         mock_window::mock("root", "project", |w, cx| {
             window(Some(PENSIVE), None, untouched, w, cx)
         }),
+        mock_window::fixed("root", "project_light", |w, cx| {
+            cx.set_global(Theme::pensive_light());
+            window(Some(PENSIVE), None, untouched, w, cx)
+        }),
+        mock_window::fixed("root", "project_paper", |w, cx| {
+            cx.set_global(Theme::pensive_paper());
+            window(Some(PENSIVE), None, untouched, w, cx)
+        }),
         mock_window::mock("root", "run_not_wired", |w, cx| {
             let view = mock_window::pensive(Some(PENSIVE), w, cx);
             view.update(cx, |pensive, cx| {
@@ -66,6 +76,14 @@ pub(crate) fn mocks() -> Vec<Mock> {
             view.into()
         }),
         mock_window::mock("root", "palette", |w, cx| {
+            window(Some(PENSIVE), Some(Tab::All), untouched, w, cx)
+        }),
+        mock_window::fixed("root", "palette_light", |w, cx| {
+            cx.set_global(Theme::pensive_light());
+            window(Some(PENSIVE), Some(Tab::All), untouched, w, cx)
+        }),
+        mock_window::fixed("root", "palette_paper", |w, cx| {
+            cx.set_global(Theme::pensive_paper());
             window(Some(PENSIVE), Some(Tab::All), untouched, w, cx)
         }),
         mock_window::mock("root", "active", |w, cx| {

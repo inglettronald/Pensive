@@ -4,7 +4,9 @@ use gpui::{
     AnyElement, App, Hsla, IntoElement, ParentElement, RenderOnce, Rgba, Styled, Window, div,
 };
 use mock::Mock;
-use theme::{ActiveTheme, DensityPreset, TextRole, ThemeOverride, Typeset, VariantArray, dp, gray};
+use theme::{
+    ActiveTheme, DensityPreset, TextRole, Theme, ThemeOverride, Typeset, VariantArray, dp, gray,
+};
 
 use crate::Gallery;
 
@@ -25,6 +27,14 @@ pub(crate) fn mocks() -> Vec<Mock> {
     vec![
         size(Mock::component("theme", "gallery", || {
             ThemeGallery.into_any_element()
+        })),
+        size(Mock::new("theme", "light", |_, cx| {
+            cx.set_global(Theme::pensive_light());
+            mock::element_view(cx, || ThemeGallery.into_any_element())
+        })),
+        size(Mock::new("theme", "paper", |_, cx| {
+            cx.set_global(Theme::pensive_paper());
+            mock::element_view(cx, || ThemeGallery.into_any_element())
         })),
         size(Mock::new("theme", "override", |_, cx| {
             let (theme_override, _) =
@@ -49,7 +59,7 @@ impl RenderOnce for ThemeGallery {
 
         let mut gallery = Gallery::new(format!("{} · {} + {}", theme.name, fonts.ui, fonts.code))
             .section(
-                "Palette",
+                "Pensive Dark grays",
                 (1..=12).map(|step| (format!("gray {step}"), swatch(gray(step), border, 64.))),
             );
         for group in roles.chunk_by(|a, b| a.group == b.group) {
@@ -112,7 +122,12 @@ fn sample(role: TextRole) -> &'static str {
 }
 
 fn hex(color: Hsla) -> String {
-    let Rgba { r, g, b, .. } = color.into();
+    let Rgba { r, g, b, a } = color.into();
     let channel = |value: f32| (value * 255.).round() as u8;
-    format!("#{:02x}{:02x}{:02x}", channel(r), channel(g), channel(b))
+    let rgb = format!("#{:02x}{:02x}{:02x}", channel(r), channel(g), channel(b));
+    if a < 1. {
+        format!("{rgb}{:02x}", channel(a))
+    } else {
+        rgb
+    }
 }

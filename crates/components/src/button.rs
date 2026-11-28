@@ -59,9 +59,9 @@ impl ButtonStyle {
                 fill: colors.accent_solid,
                 hover: colors.accent_solid_hover,
                 border: colors.accent_solid,
-                label: colors.text_strong,
+                label: colors.accent_label,
                 divider: colors.accent_border,
-                hint: colors.text,
+                hint: colors.accent_label.opacity(0.8),
             },
         }
     }

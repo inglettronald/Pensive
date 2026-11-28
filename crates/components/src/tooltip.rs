@@ -68,7 +68,7 @@ impl RenderOnce for Tooltip {
             .border_1()
             .border_color(self.tone.outline(colors))
             .bg(colors.surface_raised)
-            .shadow(Shadow::Small.layers())
+            .shadow(Shadow::Small.layers(cx))
             .typeset(density.small)
             .text_color(if self.tone == Tone::Neutral {
                 colors.text

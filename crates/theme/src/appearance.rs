@@ -4,7 +4,7 @@ use gpui::{App, Pixels, SharedString};
 use settings::{AnySetting, Category, Choice, Control, Page, Setting, Settings};
 use strum::VariantArray;
 
-use crate::{BASE_THEME, BASE_THEME_NAME, DensityPreset, Theme, UserThemes, dp};
+use crate::{BUILT_IN, DensityPreset, Theme, UserThemes, dp};
 
 pub static APPEARANCE: Category = Category::new("Appearance", "Theme, size and fonts");
 
@@ -12,14 +12,15 @@ pub(crate) static THEME: Setting<SharedString> = Setting {
     key: "theme",
     name: "Theme",
     description: "The colors, and the fonts unless they're set below",
-    default: SharedString::new_static(BASE_THEME),
+    default: SharedString::new_static(BUILT_IN[0].key),
     control: Control::Select(|cx| {
         let user_themes = cx
             .try_global::<UserThemes>()
             .into_iter()
             .flat_map(UserThemes::names);
-        [Choice::new(BASE_THEME.into(), BASE_THEME_NAME)]
-            .into_iter()
+        BUILT_IN
+            .iter()
+            .map(|built_in| Choice::new(built_in.key.into(), built_in.name))
             .chain(user_themes.map(|name| Choice::new(name.clone(), name.clone())))
             .collect()
     }),

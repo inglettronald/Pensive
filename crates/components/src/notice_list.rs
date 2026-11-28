@@ -172,7 +172,7 @@ impl RenderOnce for NoticeList {
             .border_1()
             .border_color(colors.border)
             .bg(colors.surface_raised)
-            .shadow(Shadow::Medium.layers())
+            .shadow(Shadow::Medium.layers(cx))
             .child(
                 div()
                     .flex()

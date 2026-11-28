@@ -19,7 +19,7 @@ pub use fonts::{ThemeFonts, ThemeFontsRefinement};
 pub use shadow::Shadow;
 /// Lists every value of `DensityPreset` and `TextRole`, for galleries.
 pub use strum::VariantArray;
-use theme::{BASE_THEME, BASE_THEME_NAME};
+use theme::BUILT_IN;
 pub use theme::{Theme, ThemeOverride, UserThemes};
 
 /// Loads the bundled fonts, declares the appearance settings, and installs the default theme and

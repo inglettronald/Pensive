@@ -10,7 +10,7 @@ When the code and the interface compete for attention, the code wins. Syntax col
 
 ## Color carries meaning
 
-The base is neutral gray, and Pensive is dark by choice. Color shows up only when it tells you something. Green, red and amber report changes and how things went. One blue marks interface signals. If taking a color away loses no information, take it away.
+The base is neutral gray, and Pensive is dark by default. Pensive Light keeps the grays neutral for a bright room, and Pensive Paper turns them sepia, with brown ink, so no surface is white. Color shows up only when it tells you something. Green, red and amber report changes and how things went. One blue marks interface signals. If taking a color away loses no information, take it away.
 
 ## Quiet until something matters
 
@@ -38,4 +38,4 @@ Motion explains a change and then stops. A segmented control's selection stretch
 
 ## Taste is a setting
 
-When a visual choice comes down to taste, it becomes a setting with an opinionated default. The defaults should look finished if nobody touches them. Calm is the default density, and Dense is one setting away. Anyone who wants a light theme can build one as a user theme.
+When a visual choice comes down to taste, it becomes a setting with an opinionated default. The defaults should look finished if nobody touches them. Calm is the default density, and Dense is one setting away. Pensive Light and Pensive Paper ship beside Pensive Dark, and anything else can be a user theme.
